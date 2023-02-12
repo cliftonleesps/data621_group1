@@ -1,0 +1,387 @@
+---
+title: "DATA621_H1_MoneyBall"
+author: "David Simbandumwe"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, result = 'asis', message=TRUE, warning=TRUE)
+rm(list=ls())
+
+```
+
+
+
+
+
+```{r libraries}
+
+library(skimr)
+library(summarytools)
+library(explore)
+library(GGally)
+library(corrplot)
+library(dplyr)
+library(tidyr)
+library(MASS)
+library(regclass)
+library(campfin)
+library(reshape2)
+library(stringr)
+
+```
+
+
+
+
+```{r global, echo=FALSE}
+
+configFile <- list(
+                  fileNameTrain = './hw1/moneyball-training-data.csv',
+                  fileNameTest = './hw1/moneyball-evaluation-data.csv'
+              )
+
+
+```
+
+
+
+
+
+# Overview
+The data-driven approach to sports management has gained significant traction over the years. In baseball, Sabermetrics has replaced instinct and gut feelings. Managers/coaches can optimize decisions, and interested parties can be predicted outcomes through careful analysis of the numbers. This assignment uses historic team statistics to forecast the number of team wins in a particular year. 
+
+The following table is a short description of the data set used for this analysis.
+![Money Ball](./a1_moneyball.png)
+
+
+
+## Assignment 1
+
+In this homework assignment, you will explore, analyze and model a data set containing approximately 2200 records. Each record represents a professional baseball team from the years 1871 to 2006 inclusive. Each record has the performance of the team for the given year, with all of the statistics adjusted to match the performance of a 162 game season.
+
+Your objective is to build a multiple linear regression model on the training data to predict the number of wins for the team. You can only use the variables given to you (or variables that you derive from the variables provided)
+
+## Deliverables:
+- A write-up submitted in PDF format. Your write-up should have four sections. Each one is described below. You may assume you are addressing me as a fellow data scientist, so do not need to shy away from technical details.
+- Assigned predictions (the number of wins for the team) for the evaluation data set.
+- Include your R statistical programming code in an Appendix.
+
+
+
+# 1. DATA EXPLORATION (25 Points)
+
+As part of the data exploration, I created a basic model as a baseline for the analysis. For this model, I cleaned up some of the missing values but did not transform the data. 
+
+- remove INDEX
+- Rename columns for brevity
+- Remove columns with NA values BAT_HBP, BASE_CS
+- Reviewing the data, 0 values are very unlikely given the number of games. These values have been converted from 0 to NA 
+
+
+```{r load training data}
+
+# Load training data set
+train_df <- read.csv(configFile$fileNameTrain)
+train_df <- train_df %>% dplyr::select(-c('INDEX'))
+
+# Update column names
+columnNames <- names(train_df)
+columnNames <- str_replace(columnNames, "TEAM_BATTING", "BAT")
+columnNames <- str_replace(columnNames, "TEAM_PITCHING", "PITCH")
+columnNames <- str_replace(columnNames, "TEAM_FIELDING", "FIELD")
+columnNames <- str_replace(columnNames, "TEAM_BASERUN", "BASE")
+names(train_df) <- columnNames
+
+
+# Remove columns with high proportion of NA 
+train_df <- train_df %>% dplyr::select(-c(BAT_HBP,BASE_CS))
+
+
+# Change 0 values to NA
+train_df[train_df == 0] <- NA
+
+# Replace NA with median / mean
+columnNames <- names(train_df)
+train_df <- flag_na(train_df, columnNames)
+train_df <- train_df %>% mutate(across(where(is.numeric), ~replace_na(., round(median(., na.rm=TRUE)))))
+#train_df <- train_df %>% mutate(across(where(is.numeric), ~replace_na(., round(mean(., na.rm=TRUE)))))
+
+```
+
+
+A basic model was developed and optimized based on the AIC score. 
+
+```{r model}
+
+
+fit0 <- lm(TARGET_WINS ~ ., data=train_df)
+summary.lm(fit0)
+
+fit0.step <- stepAIC(fit0, direction = "both", trace = FALSE)
+summary.lm(fit0.step)
+
+par(mfrow=c(2,2))
+plot(fit0.step)
+
+
+```
+
+
+```{r load testing data set}
+
+test_df <- read.csv(configFile$fileNameTest)
+test_df <- test_df %>% dplyr::select(-c('INDEX'))
+
+
+columnNames <- names(test_df)
+columnNames <- str_replace(columnNames, "TEAM_BATTING", "BAT")
+columnNames <- str_replace(columnNames, "TEAM_PITCHING", "PITCH")
+columnNames <- str_replace(columnNames, "TEAM_FIELDING", "FIELD")
+columnNames <- str_replace(columnNames, "TEAM_BASERUN", "BASE")
+
+names(test_df) <- columnNames
+
+
+test_df <- test_df %>% dplyr::select(-c(BAT_HBP,BASE_CS))
+
+columnNames <- names(test_df)
+
+test_df[test_df == 0] <- NA
+test_df <- flag_na(test_df, columnNames)
+test_df <- test_df %>% mutate(across(where(is.numeric), ~replace_na(., round(median(., na.rm=TRUE)))))
+#test_df <- test_df %>% mutate(across(where(is.numeric), ~replace_na(., round(mean(., na.rm=TRUE)))))
+
+```
+
+
+
+
+
+# Predict TRAINING and TESTING data sets
+
+```{r predict wins}
+
+train_df$PREDICT_WINS <- predict(fit0.step, newdata=train_df)
+test_df$PREDICT_WINS <- predict(fit0.step, newdata=test_df)
+
+```
+
+
+
+
+
+
+
+# EXPLORE TRAINING DATA
+Explore updated TRAIN data set 
+
+
+```{r}
+st_options(
+  dfSummary.custom.2 = 
+    expression(
+      paste(
+        "Q1 - Q3 :",
+        round(
+          quantile(column_data, probs = .25, type = 2, 
+                   names = FALSE, na.rm = TRUE), digits = 1
+        ), " - ",
+        round(
+          quantile(column_data, probs = .75, type = 2, 
+                   names = FALSE, na.rm = TRUE), digits = 1
+        )
+      )
+    )
+)
+
+
+
+view(dfSummary(train_df,
+               plain.ascii  = FALSE,
+               style        = "grid"
+               ),
+     method = "browser"
+     )
+
+
+print(
+  dfSummary(train_df, 
+            varnumbers   = TRUE,
+            na.col       = FALSE,
+            style        = "grid",
+            plain.ascii  = FALSE,
+            freq.silent  = TRUE,
+            headings     = TRUE,
+            graph.magnif = .8,
+            tmp.img.dir  = "/tmp"),
+  method = "viewer"
+)
+
+```
+
+
+
+
+```{r}
+
+m_df <- melt(train_df)
+m_df %>% ggplot(aes(x= value)) + 
+    geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') 
+
+
+m_df %>% ggplot(aes(x = value)) +
+  geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
+  facet_wrap(vars(variable),scales = "free", ncol = 4)
+
+
+```
+
+
+
+```{r,  message=FALSE}
+
+
+M <- cor(train_df)
+M[(M < 0.2) & (M > -0.2)] <- 0
+corrplot(M, method = 'number')
+
+# correlation
+train_df %>% ggcorr(
+    nbreaks = 10,
+    label = TRUE,
+    label_size = 4,
+    #geom = "circle",
+   color = "grey50")
+
+
+# pairwise analysis
+columnNames <- c('TARGET_WINS','BAT_H','BAT_2B','BAT_3B','BAT_HR',
+                  'BAT_BB','PITCH_H','PITCH_HR','PITCH_BB','FIELD_E')
+
+train_df %>% dplyr::select(columnNames) %>% pairs(panel = panel.smooth, gap=0.5)
+
+
+```
+
+
+
+```{r}
+
+set.seed(123)
+
+sample_n(train_df, 400) %>% ggplot(aes(x=BAT_H, y=TARGET_WINS)) + 
+  xlab('Batting Hits') +
+  ylab('Wins') + 
+  geom_point(size=3, color='black', alpha=0.2) +
+  geom_point(size=2, color='blue', alpha=0.2) +
+  geom_smooth(method='lm', color='black')
+
+```
+
+
+
+
+
+
+# EXPLORE TESTING DATA
+Explore updating TEST data set
+
+
+```{r}
+st_options(
+  dfSummary.custom.2 = 
+    expression(
+      paste(
+        "Q1 - Q3 :",
+        round(
+          quantile(column_data, probs = .25, type = 2, 
+                   names = FALSE, na.rm = TRUE), digits = 1
+        ), " - ",
+        round(
+          quantile(column_data, probs = .75, type = 2, 
+                   names = FALSE, na.rm = TRUE), digits = 1
+        )
+      )
+    )
+)
+
+
+
+view(dfSummary(test_df,
+               plain.ascii  = FALSE,
+               style        = "grid"
+               ),
+     method = "browser"
+     )
+
+
+print(
+  dfSummary(test_df, 
+            varnumbers   = TRUE,
+            na.col       = FALSE,
+            style        = "grid",
+            plain.ascii  = FALSE,
+            freq.silent  = TRUE,
+            headings     = TRUE,
+            graph.magnif = .8,
+            tmp.img.dir  = "/tmp"),
+  method = "viewer"
+)
+
+```
+
+
+
+
+```{r}
+
+m_df <- melt(test_df)
+m_df %>% ggplot(aes(x= value)) + 
+    geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') 
+
+
+m_df %>% ggplot(aes(x = value)) +
+  geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
+  facet_wrap(vars(variable),scales = "free", ncol = 4)
+
+
+```
+
+
+
+```{r,  message=FALSE}
+
+
+M <- cor(test_df)
+M[(M < 0.2) & (M > -0.2)] <- 0
+corrplot(M, method = 'number')
+
+# correlation
+train_df %>% ggcorr(
+    nbreaks = 10,
+    label = TRUE,
+    label_size = 4,
+    #geom = "circle",
+   color = "grey50")
+
+
+# pairwise analysis
+columnNames <- c('TARGET_WINS','BAT_H','BAT_2B','BAT_3B','BAT_HR',
+                  'BAT_BB','PITCH_H','PITCH_HR','PITCH_BB','FIELD_E')
+
+train_df %>% dplyr::select(columnNames) %>% pairs(panel = panel.smooth, gap=0.5)
+
+
+```
+
+
+
+
