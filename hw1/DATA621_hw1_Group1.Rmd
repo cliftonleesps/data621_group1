@@ -254,7 +254,7 @@ Notes / Questions
 - there is also saber metrics model that Pythagorean Winning Percentage taht is supposed to preduct wins https://www.mlb.com/glossary/advanced-stats/pythagorean-winning-percentage
 
 </i></b>
-
+ 
 
 ```{r}
 lm1 <- lm(TARGET_WINS ~ ., data = trainDf)
