@@ -9,6 +9,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 library(tidyverse)
+library(reshape2)
 library(kableExtra)
 library(Matrix)
 library(MASS)
@@ -19,13 +20,28 @@ library(performance)
 library(naniar)
 library(psych)
 library(GGally)
-knitr::opts_chunk$set(echo = FALSE, warning = F, message = F)
+library(campfin)
+
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 ```
 
 # Critical Thining Group 1 (Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver)
 
 ## 1. DATA EXPLORATION
 
+
+<b><i>
+Notes / Questions
+
+- added boxplot and density plot 
+- do we want to use a corr plot with the numbers
+  - there are a couple of variable with high correlations that we might want to explore
+  - Batting_hr - Pitching_hr = .97
+  - Batting_hr - Batting_so = .73
+  - what is the cutoff in correlation that will require adjustment
+-
+
+</i></b>
 
 
 ```{r}
@@ -46,6 +62,16 @@ Also of note is the number of missing values from certain variables. Most notabl
 The means and medians of each variable are all relatively close in value for each individual variable. This tells us that most data is free from extreme outliers as they tend to skew the mean relative to the median.
 
 
+<b><i>
+Notes / Questions
+
+- Given the number of games in a year I don't believe that 0 is a valid measurement for most of the attributes
+- use MICE to fill missing values vs Median or Mean
+
+
+</i></b>
+
+
 ```{r}
 stats <- trainDf %>%
   dplyr::select(-c(INDEX)) %>%
@@ -60,6 +86,32 @@ kable(displayDf, digits = 2, format = "html", row.names = T) %>%
     position = "center"
   )
 ```
+
+
+<b><i>
+Notes / Questions
+
+- Review the distributions plots for each attribute focus on non normally distributed attributes
+- Box plots show outliers discuss valid data based on https://www.baseball-reference.com/leagues/majors/bat.shtml
+
+</i></b>
+
+
+```{r}
+
+mDF <- melt(trainDf)
+mDF %>% ggplot(aes(x= value)) + 
+    geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') 
+
+
+mDF %>% ggplot(aes(x = value)) +
+  geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
+  facet_wrap(vars(variable),scales = "free", ncol = 4)
+
+```
+
+
+
 
 Doing some preliminary analysis of the data we can compare the team pitching hits (`TEAM_PITCHING_H`) against the target wins (`TARGET_WINS`) to validate our assumption that more hits allowed is negatively correlated with the number of wins. While there does appear to be a negative correlation it is not obviously linear. There is clearly a lot of clustering below 5,000 allowed hits but the number of wins varies significantly. There are also some obvious outliers here with one team allowing nearly 30,000 hits.
 
@@ -102,8 +154,11 @@ Ultimately I know very little about baseball in general so I do not have an intu
 ```{r}
 rcore <- rcorr(as.matrix(trainDf %>% dplyr::select(where(is.numeric) & -INDEX & -TEAM_BATTING_HBP)))
 coeff <- rcore$r
-corrplot(coeff, tl.cex = .7)
+corrplot(coeff, tl.cex = .7 , method = 'number')
 ```
+
+
+
 
 Lastly lets take a closer look at the missing data. We've already determined that the batter hit by pitch (`TEAM_BATTING_HBP`) variable is missing 91% of its data but what of the other variables.
 
@@ -118,11 +173,41 @@ gg_miss_var(trainDf)
 
 ## 2. DATA PREPARATION
 
+
+
 First what we will do is drop the `INDEX` and `TEAM_BATTING_HBP` variables from our dataset. We've already determined that the `TEAM_BATTING_HBP` variable is missing 91% of its data and the `INDEX` variable is simply an index of the row number.
 
 ```{r}
 droppedDf <- trainDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_H))
 ```
+
+
+<b><i>
+Notes / Questions
+
+- BASE_CS is missing 33% of its values is it an issue to fill that many values
+- added the na_flag to the data set
+- do we want to calculate singles?
+- should we include Hits and Singles, Doubles, Triples, HR - this is the same data captured differently
+- Slugging Percentage is an interesting measure that we could add https://en.wikipedia.org/wiki/Slugging_percentage
+- Here are some advanced stats that might be interesting https://www.mlb.com/glossary/advanced-stats
+- It would be interesting to test Pythagorean Winning Percentage https://www.mlb.com/glossary/advanced-stats/pythagorean-winning-percentage
+
+</i></b>
+
+
+```{r}
+
+columnNames <- names(droppedDf)
+droppedDf <- flag_na(droppedDf, columnNames)
+
+
+columnNames <- names(evalDf)
+evalDf <- flag_na(evalDf, columnNames)
+
+```
+
+
 
 Next we will use the `mice` library to impute the missing values in the `trainDf` data.frame. MICE is actually an acronym which stands for multiple imputation by chained equations. In order to use MICE one must assume that the missing values are missing at random, meaning the missingness can be accounted for by variables where there is complete information. Then as the name implies MICE runs multiple iterations over the data and generates the data to fill in the missing values.
 
@@ -151,11 +236,24 @@ kable(displayDf, caption = "Money Ball Dataset", digits = 2, format = "html", ro
   )
 ```
 
+
+
+
+
+
 ### 3. BUILD MODELS
 
 Now I will build three separate linear models and compare their performance and fit. 
 
 For the first model I will use the naive method of selecting every variable in the raw un-cleaned data set. Our intuition tells us this is unlikely to be the best performing model as we already know there are some issues with the data and we are using every variable. 
+
+<b><i>
+Notes / Questions
+
+- we could try building a model that does not include any of the outlier variables values
+- there is also saber metrics model that Pythagorean Winning Percentage taht is supposed to preduct wins https://www.mlb.com/glossary/advanced-stats/pythagorean-winning-percentage
+
+</i></b>
 
 
 ```{r}
@@ -262,6 +360,17 @@ check_model(aicLm, check = c("vif","normality","linearity","homogeneity"))
 ```
 
 ## Conclusion
+
+
+
+<b><i>
+Notes / Questions
+
+- This is actually a better source to do the research :) https://www.seanlahman.com/baseball-archive/statistics/
+
+</i></b>
+
+
 
 Overall none of the models that I was able to generate instill much confidence in their ability to predict. The model with the best fit according to the $R^2$ statistic was filled with missing data that caused clearly incorrect negative predictions.
 
