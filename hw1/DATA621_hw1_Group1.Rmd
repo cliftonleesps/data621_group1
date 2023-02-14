@@ -1,0 +1,268 @@
+---
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(kableExtra)
+library(Matrix)
+library(MASS)
+library(mice)
+library(Hmisc)
+library(corrplot)
+library(performance)
+library(naniar)
+library(psych)
+library(GGally)
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F)
+```
+
+# Critical Thining Group 1 (Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver)
+
+## 1. DATA EXPLORATION
+
+
+
+```{r}
+
+trainDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/moneyball-training-data.csv")
+evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/moneyball-evaluation-data.csv")
+
+```
+
+The data we are using for this model consists of two separate datasets. The training set consists of 2,276 rows across 15 variables (excluding the target and index). The data we are using for testing our model against contains 259 rows. All the variables in our dataset are numeric. 
+
+The table below shows us some valuable descriptive statistics for the training data. We can see that many of the variables have a minimum of 0 but not all. 
+
+One interesting piece of information is the min/max of the `TARGET_WINS` variable. The minimum is 0 meaning there are teams that did not win a single game. The maximum is 146 which indicates no team in the training dataset had a perfect season, as we know from the data a season consists of 162 games.
+
+Also of note is the number of missing values from certain variables. Most notably the `TEAM_BATTING_HBP` which we know is the batters hit by pitch variable. With 91% of the data missing we will remove this variable from our dataset because there simply is not enough information to impute a sensible value. 
+
+The means and medians of each variable are all relatively close in value for each individual variable. This tells us that most data is free from extreme outliers as they tend to skew the mean relative to the median.
+
+
+```{r}
+stats <- trainDf %>%
+  dplyr::select(-c(INDEX)) %>%
+  describe()
+displayDf <- as.data.frame(stats) %>%
+  dplyr::mutate(missing = 2276 - n) %>%
+  dplyr::select(-c(vars, n, trimmed, mad, range))
+kable(displayDf, digits = 2, format = "html", row.names = T) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = F,
+    position = "center"
+  )
+```
+
+Doing some preliminary analysis of the data we can compare the team pitching hits (`TEAM_PITCHING_H`) against the target wins (`TARGET_WINS`) to validate our assumption that more hits allowed is negatively correlated with the number of wins. While there does appear to be a negative correlation it is not obviously linear. There is clearly a lot of clustering below 5,000 allowed hits but the number of wins varies significantly. There are also some obvious outliers here with one team allowing nearly 30,000 hits.
+
+```{r}
+trainDf %>%
+  ggplot(aes(x = TEAM_PITCHING_H, y = TARGET_WINS)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Allowed Hits vs. Target Wins", x = "Allowed Hits", y = "Target Wins")
+```
+
+Looking at another relationship between strike outs and wins we can see a the strike out data has fewer outliers but not as strong of a negative correlation as one would expect with target wins. 
+```{r}
+trainDf %>%
+  ggplot(aes(x = TEAM_BATTING_SO, y = TARGET_WINS)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Strike outs vs. Target Wins", x = "Strike outs", y = "Target Wins")
+```
+
+
+Plotting a histogram of the target wins we can see the distribution closely resembles the normal distribution. 
+
+```{r}
+trainDf %>% ggplot(aes(x = TARGET_WINS)) +
+  geom_histogram()
+```
+
+Plotting the correlations between TARGET_WINS and the variables (excluding `INDEX` and `TEAM_BATTING_HBP`) we can see that very few variables are strongly correlated with the target variable. 
+
+Unsurprisingly we can see that `TEAM_BATTING_HR` and `TEAM_PITCHING_HR` are strongly positively correlated as one would expect since they basically are measuring the same thing. 
+
+There are some other strong correlations that are less obvious such as Errors (`TEAM_FIELDING_E`) being strongly correlated with walks by batters (`TEAM_BATTING_BB`), strike outs (`TEAM_BATTING_SO`), and team pitching hits allowed (`TEAM_PITCHING_H`)
+
+Digging a little deeper we can see there is a pearson correlation coefficient of `r cor(trainDf$TEAM_FIELDING_E, trainDf$TEAM_BATTING_BB)` for errors and walks by batters which indicates a strong negative correlation between the two variables. Looking at errors compared with team pitching hits allowed we see a correlation of `r cor(trainDf$TEAM_FIELDING_E, trainDf$TEAM_PITCHING_H)` which indicates a strong positive correlation. 
+
+Ultimately I know very little about baseball in general so I do not have an intuition regarding why these variables would be strongly correlated with each other. 
+
+
+```{r}
+rcore <- rcorr(as.matrix(trainDf %>% dplyr::select(where(is.numeric) & -INDEX & -TEAM_BATTING_HBP)))
+coeff <- rcore$r
+corrplot(coeff, tl.cex = .7)
+```
+
+Lastly lets take a closer look at the missing data. We've already determined that the batter hit by pitch (`TEAM_BATTING_HBP`) variable is missing 91% of its data but what of the other variables.
+
+Using the plot below we can visualize the missingness of the remaining variables. There are 5 variables that contain varying degrees of missing data. We will use the information to fill in the missing values in our data preparation step.
+
+`TEAM_BASERUN_CS` appears to be missing the second most amount of values but at only 772 missing values out of 2276 this is much less of a concern than the HBP variable we identified earlier. The remaining variables that are missing data have less than 25% of their data missing so should be safe to impute.
+
+```{r}
+gg_miss_var(trainDf)
+```
+
+
+## 2. DATA PREPARATION
+
+First what we will do is drop the `INDEX` and `TEAM_BATTING_HBP` variables from our dataset. We've already determined that the `TEAM_BATTING_HBP` variable is missing 91% of its data and the `INDEX` variable is simply an index of the row number.
+
+```{r}
+droppedDf <- trainDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_H))
+```
+
+Next we will use the `mice` library to impute the missing values in the `trainDf` data.frame. MICE is actually an acronym which stands for multiple imputation by chained equations. In order to use MICE one must assume that the missing values are missing at random, meaning the missingness can be accounted for by variables where there is complete information. Then as the name implies MICE runs multiple iterations over the data and generates the data to fill in the missing values.
+
+```{r}
+imputeDf <- mice(droppedDf, m = 5, maxit = 50, seed = 123, printFlag = F)
+cleanDf <- complete(imputeDf)
+```
+
+We now have a data set free from missing data values with the meaningless `INDEX` variable removed and the `TEAM_BATTING_HBP` removed as well due to it containing 91% missing values. We can observe using the table below that there are no longer any missing values. 
+
+One interesting comparison we can make is for a variable that had a large number of missing values, we can look at how the summary statistics may have changed with the imputed data. 
+
+`TEAM_BASERUN_CS` was missing 772 values or about 34% of data. We can observe that the mean and median did change from 52.80 to 75.71 and 49.0 to 57.0 The min of 0 and max of 201 did not change which is good.
+
+```{r}
+stats <- cleanDf  %>%
+  describe()
+displayDf <- as.data.frame(stats) %>%
+  dplyr::mutate(missing = 2276 - n) %>%
+  dplyr::select(-c(vars, n, trimmed, mad, range))
+kable(displayDf, caption = "Money Ball Dataset", digits = 2, format = "html", row.names = T) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = F,
+    position = "center"
+  )
+```
+
+### 3. BUILD MODELS
+
+Now I will build three separate linear models and compare their performance and fit. 
+
+For the first model I will use the naive method of selecting every variable in the raw un-cleaned data set. Our intuition tells us this is unlikely to be the best performing model as we already know there are some issues with the data and we are using every variable. 
+
+
+```{r}
+lm1 <- lm(TARGET_WINS ~ ., data = trainDf)
+lm1Sum <- summary(lm1)
+```
+
+For the second model I will use the cleaned data set with missing values imputed using the MICE method. In addition I will try to select variables which result in a better fit using my out intuition. 
+
+```{r}
+lm2 <- lm(formula = TARGET_WINS ~  
+    TEAM_PITCHING_HR + TEAM_PITCHING_BB  + TEAM_BATTING_2B + TEAM_BATTING_3B +
+    TEAM_FIELDING_E, data = cleanDf)
+lm2Sum <- summary(lm2)
+```
+
+```{r}
+lm3 <- lm(TARGET_WINS ~ ., data=cleanDf)
+aicLm <- stepAIC(lm3, trace = FALSE)
+aicSum <- summary(aicLm)
+```
+
+Below are the results $R^2$, residual standard error, and F-statistics of each model. Surprisingly the non-cleaned, non-imputed raw training data had the best fitting statistics. 
+
+```{r}
+plot(compare_performance(lm1,lm2,aicLm, rank=T))
+```
+
+```{r}
+r <- c(lm1Sum$r.squared, lm2Sum$r.squared, aicSum$r.squared)
+rsse <- c(lm1Sum$sigma, lm2Sum$sigma, aicSum$sigma)
+adjusted.r <- c(lm1Sum$adj.r.squared, lm2Sum$adj.r.squared, aicSum$adj.r.squared)
+modelDf <- data.frame(r,rsse,adjusted.r)
+kable(modelDf, caption = "Money Ball Dataset", digits = 2, format = "html", row.names = F) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = F,
+    position = "center"
+  )
+```
+
+
+## 4. SELECT MODELS
+
+I will then use the evaluation data set to make predictions using the three models. In order to make the first and third prediction models  work I will need to impute the missing values from the evaluation dataset. I will use the same method as I did for the training data set. If I do not add these missing values the prediction results will return no values for the rows that contain the missing values.
+
+
+Below is a table containing the predicted TARGET_WINS for each model. Some things that stand out at a first glance are that the first model which is producing negative value predictions. Obviously it isn't possible to have a negative amount of wins, so this model is not very useful. The second and third model which are both based on the cleaned and imputed data do not suffer from these issues of predicting large negative values. In general both the AIC generated model and the second model are producing similar results.
+
+```{r}
+evalImputeDf <- mice(evalDf, m = 5, maxit = 50, seed = 123, printFlag = F)
+evalImputeDf <- complete(evalImputeDf)
+```
+
+```{r}
+lm1Pred <- lm1 %>% predict(evalImputeDf)
+lm2Pred <- lm2 %>% predict(evalImputeDf)
+aicPred <- aicLm %>% predict(evalImputeDf)
+```
+
+```{r}
+predsDf <- evalImputeDf %>% 
+  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred) %>%
+  dplyr::select(c(lm1, lm2, aic))
+  kable(head(predsDf, 15), caption = "Money Ball Dataset", digits = 2, format = "html", row.names = F) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = F,
+    position = "center"
+  )
+```
+
+
+We can also see when plotting the predictions that there doesn't seem to be much obvious difference between the models aside from the clearly outrageous outliers generated by the first model.
+
+```{r}
+xT <- evalImputeDf %>% 
+  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred)
+par(mfrow=c(2,2))
+plot(1:nrow(xT), xT$lm1, xlab="LM1", ylab="Wins", title="LM1")
+plot(1:nrow(xT), xT$lm2, xlab="LM2", ylab="Wins", title="LM2")
+plot(1:nrow(xT), xT$aic, xlab="AIC", ylab="Wins", title="AIC")
+```
+
+We can the graphs below to check the validity of our models. All three models suffer from a lack of linearity which indicates that a linear regression model may not be the greatest technique for predicting values from this data with the given variables. The two models that included all the most variables (model 1 & model 3), suffer from co-linearity issues.
+
+### Model 1
+
+```{r}
+check_model(lm1, check = c("vif","normality","linearity","homogeneity"))
+
+```
+
+### Model 2
+
+```{r}
+check_model(lm2, check = c("vif","normality","linearity","homogeneity"))
+```
+
+### Model 3
+
+```{r}
+check_model(aicLm, check = c("vif","normality","linearity","homogeneity"))
+```
+
+## Conclusion
+
+Overall none of the models that I was able to generate instill much confidence in their ability to predict. The model with the best fit according to the $R^2$ statistic was filled with missing data that caused clearly incorrect negative predictions.
+
+The second and third models both had significantly lower $R^2$ scores which indicated a poor fit overall. In addition, none of the models performed well when checked for linearity or homogeneity of variance. While the second model did not suffer from colinearity issues the other two models did.
