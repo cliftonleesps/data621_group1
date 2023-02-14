@@ -1,0 +1,15 @@
+---
+title: "HW 1 part 1"
+date: "13 02 2023"
+output: html_document
+---
+
+1. DATA EXPLORATION (25 Points)
+Describe the size and the variables in the moneyball training data set. Consider that too much detail will cause a 
+manager to lose interest while too little detail will make the manager consider that you aren’t doing your job. Some 
+suggestions are given below. Please do NOT treat this as a check list of things to do to complete the assignment. 
+You should have your own thoughts on what to tell the boss. These are just ideas.
+a. Mean / Standard Deviation / Median
+b. Bar Chart or Box Plot of the data
+c. Is the data correlated to the target variable (or to other variables?)
+d. Are any of the variables missing and need to be imputed “fixed”?
