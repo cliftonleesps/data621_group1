@@ -5,6 +5,7 @@ output:
     highlight: github
 editor_options: 
   chunk_output_type: console
+bibliography: references.bib
 ---
 
 ```{r setup, include=FALSE}
@@ -186,7 +187,7 @@ Notes / Questions
 - added the na_flag to the data set
 - do we want to calculate singles?
 - should we include Hits and Singles, Doubles, Triples, HR - this is the same data captured differently
-- Slugging Percentage is an interesting measure that we could add https://en.wikipedia.org/wiki/Slugging_percentage
+- Slugging Percentage is an interesting measure that we could add https://en.wikipedia.org/wiki/Slugging_percentage @enwiki:1123388426
 - Here are some advanced stats that might be interesting https://www.mlb.com/glossary/advanced-stats
 - It would be interesting to test Pythagorean Winning Percentage https://www.mlb.com/glossary/advanced-stats/pythagorean-winning-percentage
 
@@ -372,3 +373,6 @@ Notes / Questions
 Overall none of the models that I was able to generate instill much confidence in their ability to predict. The model with the best fit according to the $R^2$ statistic was filled with missing data that caused clearly incorrect negative predictions.
 
 The second and third models both had significantly lower $R^2$ scores which indicated a poor fit overall. In addition, none of the models performed well when checked for linearity or homogeneity of variance. While the second model did not suffer from colinearity issues the other two models did.
+
+
+## References
