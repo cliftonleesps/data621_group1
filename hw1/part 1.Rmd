@@ -29,12 +29,12 @@ knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 <b><i>
 Notes / Questions
 
-- added boxplot and density plot 
-- do we want to use a corr plot with the numbers
+- added boxplot and density plot; thanks!
+- do we want to use a corr plot with the numbers; I changed it to circles for presentation purposes.
   - there are a couple of variable with high correlations that we might want to explore
-  - Batting_hr - Pitching_hr = .97
-  - Batting_hr - Batting_so = .73
-  - what is the cutoff in correlation that will require adjustment
+  - Batting_hr - Pitching_hr = .97 - this is VERY, VERY SUSPICIOUS. Do most baseball games end with similar runs for both teams? Aren't there many one-sided wins?
+  - Batting_hr - Batting_so = .73 - this might be plausible. Some teams swing for the fences instead of trying to get on base; I'm looking at you, Chicago Cubs!
+  - what is the cutoff in correlation that will require adjustment - good question. Above 0.9? Most baseball stats measure distinct actions and occurances. 0.9 correlations show a serious data problem or something else is fishy.
 -
 
 </i></b>
@@ -74,7 +74,13 @@ Also of note is the number of missing values from certain variables. Most notabl
 The means and medians of each variable are all relatively close in value for each individual variable. This tells us that most data is free from extreme outliers as they tend to skew the mean relative to the median.
 
 
+<b><i>
+Notes / Questions
 
+- Review the distributions plots for each attribute focus on non normally distributed attributes - please read the initial attempt below.
+- Box plots show outliers discuss valid data based on https://www.baseball-reference.com/leagues/majors/bat.shtml
+
+</i></b>
 #### Distribution and Box Plots
 
 Next, we'll visually check for normal distributions and box plots in both the dependent and independent variables. The grid plot below shows normalcy in most features except for extremely right skewed features such as hits allowed (PITCH_H) and errors (FIELDING_E).  Box plots for these further show a high number of outliers exist outside of the interquartile ranges so their effects should be carefully considered.
@@ -139,16 +145,6 @@ Notes / Questions
 </i></b>
 
 
-
-
-
-<b><i>
-Notes / Questions
-
-- Review the distributions plots for each attribute focus on non normally distributed attributes
-- Box plots show outliers discuss valid data based on https://www.baseball-reference.com/leagues/majors/bat.shtml
-
-</i></b>
 
 
 
