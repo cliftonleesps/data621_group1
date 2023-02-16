@@ -1,8 +1,10 @@
 ---
+title: "Homework #1: Moneyball"
 output:
   prettydoc::html_pretty:
-    theme: cayman
+    theme: leonids
     highlight: github
+    self_contained: no
 editor_options: 
   chunk_output_type: console
 bibliography: references.bib
@@ -22,16 +24,15 @@ library(naniar)
 library(psych)
 library(GGally)
 library(campfin)
+library(caret)
 
 knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 ```
 
-# Critical Thinking Group 1 (Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver)
-
-## 1. DATA EXPLORATION
+Critical Thinking Group 1 (Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver)
 
 
-<b><i><b><i>
+<b><i>
 Notes / Questions
 
 - added boxplot and density plot; thanks!
@@ -40,10 +41,25 @@ Notes / Questions
   - Batting_hr - Pitching_hr = .97 - this is VERY, VERY SUSPICIOUS. Do most baseball games end with similar runs for both teams? Aren't there many one-sided wins?
   - Batting_hr - Batting_so = .73 - this might be plausible. Some teams swing for the fences instead of trying to get on base; I'm looking at you, Chicago Cubs!
   - what is the cutoff in correlation that will require adjustment - good question. Above 0.9? Most baseball stats measure distinct actions and occurances. 0.9 correlations show a serious data problem or something else is fishy.
--
+  
+  - Review the distributions plots for each attribute focus on non normally distributed attributes - please read the initial attempt below.
+  - Box plots show outliers discuss valid data based on https://www.baseball-reference.com/leagues/majors/bat.shtml
+
+  - Given the number of games in a year I don't believe that 0 is a valid measurement for most of the attributes
+  - use MICE to fill missing values vs Median or Mean
 
 </i></b>
 
+
+## Overview
+The use of historical statistics to predict future outcomes, particularly wins and losses, and identify opportunities for improving team or individual performance, has gained significant attention in professional sports. The aim of this analysis is to develop several models that can predict a baseball team's wins over a season based on team stats such as homeruns, strikeouts, base hits, and more. We will begin by examining the data for any issues, such as missing data, or outliers, and take the necessary measures to clean the data. We will subsequently create and evaluate three different linear models that forecast seasonal wins using the dataset, which includes both training and evaluation data. We will train the models using the main training data and then evaluate their performance against the evaluation data to determine their effectiveness. Finally, we will choose the best model that balances accuracy and simplicity for predicting seasonal wins.
+
+## 1. DATA EXPLORATION
+The baseball training dataset contains 2,276 observations of 17 variables detailing various teams' performances per year from 1871 to 2006. The description of the columns is shown below. Due to the relatively long period, we expect to see outliers and missing data as the league modified official game rules; these rule changes undoubtedly caused teams and players to change their tactics in response. Additionally, the number of single base hits is noticeably missing from the columns. However, we will derive this value as the number other types of hits (double, triples, home runs) can be subtracted from total hits. Lastly, other columns representing game number (out of 162), inning number (1-9), and matching opponent columns would have been vastly useful for predictions. One last noticeable omission from the original dataset is the of the number of single base hits. However, this value can possibly be calculated as a difference between other types of hits (double, triples, home runs) and total hits. 
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ex-pr/DATA607/Project-1/a1_moneyball.png">
+</p>
 
 ```{r initialization, include=FALSE}
 
@@ -52,16 +68,21 @@ evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_grou
 
 ```
 
-The baseball training dataset contains 2,276 observations detailing various teams' performances per year from 1871 to 2006. Due to the relatively long period, we expect to see outliers and missing data as the league modified official game rules; these rule changes undoubtedly caused teams and players to change their tactics in response. Additionally, the number of single base hits is noticeably missing from the columns. However, we will derive this value as the number other types of hits (double, triples, home runs) can be subtracted from total hits. Lastly, other columns representing game number (out of 162), inning number (1-9), and matching opponent columns would have been vastly useful for predictions. One last noticeable omission from the original dataset is the of the number of single base hits. However, this value can possibly be calculated as a difference between other types of hits (double, triples, home runs) and total hits.
 
-#### Summary Statistics
+#### 1.1 Summary Statistics
 
-The table below shows us some valuable descriptive statistics for the training data. We can see that many of the variables have a minimum of 0 but not all. The means and medians of each variable are all relatively close in value for each individual variable. This tells us that most data is free from extreme outliers as they tend to skew the mean relative to the median.
+The table below shows us some valuable descriptive statistics for the training data. The data set contains all integers. We can see that many of the variables have a minimum of 0 but not all. The means and medians of each variable are all relatively close in value for each individual variable. This tells us that most data is free from extreme outliers as they tend to skew the mean relative to the median.
+
+One interesting piece of information is the min/max of the `TARGET_WINS` variable. The minimum is 0 meaning there are teams that did not win a single game. The maximum is 146 which indicates no team in the training dataset had a perfect season, as we know from the data a season consists of 162 games.
+
+Also of note is the number of missing values from certain variables. Most notably the `TEAM_BATTING_HBP` (batters hit by pitch variable). With 91% of the data missing we will remove this variable from our dataset because there simply is not enough information to impute a sensible value. The column `TEAM_BASERUN_CS` (caught stealing) had 34% of the missing data, we may consider removing it later. The missing data for these two columns may be due to a change official rules or tactics before the modern era of baseball.
+
 
 ```{r summary_chart, echo=FALSE}
 stats <- trainDf %>%
   dplyr::select(-c(INDEX)) %>%
   describe()
+
 displayDf <- as.data.frame(stats) %>%
   dplyr::mutate(missing = 2276 - n) %>%
   dplyr::select(-c(vars, n, trimmed, mad, range))
@@ -72,23 +93,19 @@ kable(displayDf, digits = 2, format = "html", row.names = T) %>%
     position = "center"
   )
 ```
-One interesting piece of information is the min/max of the `TARGET_WINS` variable. The minimum is 0 meaning there are teams that did not win a single game. The maximum is 146 which indicates no team in the training dataset had a perfect season, as we know from the data a season consists of 162 games.
 
-Also of note is the number of missing values from certain variables. Most notably the `TEAM_BATTING_HBP` (batters hit by pitch variable). With 91% of the data missing we will remove this variable from our dataset because there simply is not enough information to impute a sensible value. The missing data for these two columns may be due to a change official rules or tactics before the modern era of baseball.
+#### 1.2 Distribution and Box Plots
 
-The means and medians of each variable are all relatively close in value for each individual variable. This tells us that most data is free from extreme outliers as they tend to skew the mean relative to the median.
+Next, we'll visually check for normal distributions and box plots in both the dependent and independent variables. The density plot below shows normalcy in most features except for extremely right skewed features such as hits allowed (PITCHING_H) or errors (FIELDING_E). Homeruns by batters (BATTING_HR) and strikeouts by batters (BATTING_SO) variables seem bimodal. It implies the existence of two distinct clusters within the baseball season data, where teams tended to score more in one of the clusters. \
+Box plots for these further show a high number of outliers exist outside of the interquartile ranges so their effects should be carefully considered and we may deal with non-unimodal distributions.
 
+```{r density_boxplot, echo=FALSE, warning=FALSE, message=FALSE, fig.height=8, fig.width=10}
+m_df <- trainDf%>%
+  dplyr::select(-c(INDEX)) %>%
+  melt() 
 
-
-#### Distribution and Box Plots
-
-Next, we'll visually check for normal distributions and box plots in both the dependent and independent variables. The grid plot below shows normalcy in most features except for extremely right skewed features such as hits allowed (PITCH_H) and errors (FIELDING_E).  Box plots for these further show a high number of outliers exist outside of the interquartile ranges so their effects should be carefully considered.
-
-```{r density_boxplot, echo=FALSE}
-
-m_df <- melt(trainDf)
 m_df %>% ggplot(aes(x= value)) + 
-    geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') 
+    geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
 
 
 m_df %>% ggplot(aes(x = value)) +
@@ -107,7 +124,7 @@ trainDf %>%
   labs(title = "Allowed Hits vs. Target Wins", x = "Allowed Hits", y = "Target Wins")
 ```
 
-Looking at another relationship between strike outs and wins we can see a the strike out data has fewer outliers but not as strong of a negative correlation as one would expect with target wins. 
+Looking at another relationship between strike outs (`TEAM_BATTING_SO`) and wins we can see a the strike out data has fewer outliers but not as strong of a negative correlation as one would expect with target wins. 
 ```{r, so_wins, echo=FALSE}
 trainDf %>%
   ggplot(aes(x = TEAM_BATTING_SO, y = TARGET_WINS)) +
@@ -116,10 +133,20 @@ trainDf %>%
   labs(title = "Strike outs vs. Target Wins", x = "Strike outs", y = "Target Wins")
 ```
 
+```{r wins_features, echo=FALSE, fig.height=8, fig.width=10}
+featurePlot(trainDf[,2:ncol(trainDf)], trainDf[,1], plot = "scatter", type = c("p", "smooth"), span = 1)
+```
 
-#### Correlation Matrix
+#### 1.3 Correlation Matrix
 
-Plotting the correlations between TARGET_WINS and the variables (excluding INDEX and TEAM_BATTING_HBP) we can see that very few variables are strongly correlated with the target variable.
+Plotting the correlations between TARGET_WINS and the variables (excluding INDEX and TEAM_BATTING_HBP) we can see that very few variables are strongly correlated with the target variable. Columns with correlations close to zero are unlikely to offer significant insights into the factors that contribute to a team's victories.\
+
+To avoid multicolinearity, we should not include features that have strong correlation. Comparing offensive (any column starting with BATTING or BASERUN) to defensive stats unexpectedly shows some correlation, pointing to potential problems. Qualitatively, the matrix implies some teams or players are exceptional both at hitting (offensive) and fielding (defensive). Furthermore, a typical team's number of batted home runs and allowed home runs has a correlation of nearly 1.0. This is obviously not what we should look at. If a team hits four home runs, is it likely it will also allow its opponent to hit four also? As we know, many baseball games have low even scores (1-2, 3-2) but there many one sided wins also. Home runs hit (BATTING_HR) and home runs allowed (PITCHING_HR) are immediately suspect and are good candidates for outright exclusion. Alternatively, the correlation between a team's hits (BATTING_H) and hits allowed (PITCHING_H) is around 0.3 which is seems reasonable.
+
+There are some other strong correlations that are less obvious such as Errors (`TEAM_FIELDING_E`) being strongly negatively correlated with walks by batters (`TEAM_BATTING_BB`), strike outs (`TEAM_BATTING_SO`).  All combined together, teams that get a lot of hits do not generally make fielding errors.
+
+Digging a little deeper we can see there is a Pearson correlation coefficient of `r cor(trainDf$TEAM_FIELDING_E, trainDf$TEAM_BATTING_BB)` for errors and walks by batters which indicates a strong negative correlation between the two variables. Looking at errors compared with team pitching hits allowed we see a correlation of `r cor(trainDf$TEAM_FIELDING_E, trainDf$TEAM_PITCHING_H)` which indicates a strong positive correlation. 
+
 
 ```{r correlation_matrix, echo=FALSE}
 rcore <- rcorr(as.matrix(trainDf %>% dplyr::select(where(is.numeric) & -INDEX & -TEAM_BATTING_HBP)))
@@ -127,42 +154,22 @@ coeff <- rcore$r
 corrplot(coeff, tl.cex = .7 , method = 'circle')
 ```
 
+```{r corr_numbers, echo=FALSE}
+tst <- trainDf
+tst <- tst[,-1 ]
 
-Comparing offensive (any column starting with BATTING or BASERUN) to defensive stats unexpectedly shows some correlation, pointing to potential problems. Qualitatively, the matrix implies some teams or players are exceptional both at hitting (offensive) and fielding (defensive). Furthermore, a typical team's number of batted home runs and allowed home runs has a correlation of nearly 1.0! This is obviously ridiculous; if a team hits four home runs, is it likely it will also allow its opponent to hit four also? As we know, many baseball games have low even scores (1-2, 3-2) but there many one sided wins also. Home runs hit (BATTING_HR) and home runs allowed (PITCHING_HR) are immediately suspect and are good candidates for outright exclusion. Alternatively, the correlation between a team's hits (BATTING_H) and hits allowed (PITCHING_H) is around 0.3 which is seems reasonable.
-
-There are some other strong correlations that are less obvious such as Errors (`TEAM_FIELDING_E`) being strongly negatively correlated with walks by batters (`TEAM_BATTING_BB`), strike outs (`TEAM_BATTING_SO`).  All combined together, teams that get a lot of hits do not generally make fielding errors.
-
-Digging a little deeper we can see there is a Pearson correlation coefficient of `r cor(trainDf$TEAM_FIELDING_E, trainDf$TEAM_BATTING_BB)` for errors and walks by batters which indicates a strong negative correlation between the two variables. Looking at errors compared with team pitching hits allowed we see a correlation of `r cor(trainDf$TEAM_FIELDING_E, trainDf$TEAM_PITCHING_H)` which indicates a strong positive correlation. 
-
-<b><i>
-Notes / Questions
-
-- Given the number of games in a year I don't believe that 0 is a valid measurement for most of the attributes
-- use MICE to fill missing values vs Median or Mean
+kable(cor(drop_na(tst))[,1], "html", escape = F, col.names = c('Coefficient')) %>%
+  kable_styling("striped", full_width = F) %>%
+  column_spec(1, bold = T)
 
 
-</i></b>
+```
 
-
-
-
-
-<b><i>
-Notes / Questions
-
-- Review the distributions plots for each attribute focus on non normally distributed attributes - please read the initial attempt below.
-- Box plots show outliers discuss valid data based on https://www.baseball-reference.com/leagues/majors/bat.shtml
-
-</i></b>
-
-
-
-
-Lastly lets take a closer look at the missing data. We've already determined that the batter hit by pitch (`TEAM_BATTING_HBP`) variable is missing 91% of its data but what of the other variables.
+Lastly lets take a closer look at the missing data. We've already determined that the batter hit by pitch (`TEAM_BATTING_HBP`) variable is missing 91% of its data but what of the other variables. We will just drop the column from the further analysis.
 
 Using the plot below we can visualize the missingness of the remaining variables. There are 5 variables that contain varying degrees of missing data. We will use the information to fill in the missing values in our data preparation step.
 
-`TEAM_BASERUN_CS` appears to be missing the second most amount of values but at only 772 missing values out of 2276 this is much less of a concern than the HBP variable we identified earlier. The remaining variables that are missing data have less than 25% of their data missing so should be safe to impute.
+`TEAM_BASERUN_CS` appears to be missing the second most amount of values but at only 772 missing values out of 2276 this is much less of a concern than the HBP variable we identified earlier. The remaining variables that are missing data have less than 25% of their data missing so should be safe to impute. 
 
 ```{r missing_data, echo=FALSE}
 gg_miss_var(trainDf)
@@ -172,13 +179,7 @@ gg_miss_var(trainDf)
 ## 2. DATA PREPARATION
 
 
-
-First what we will do is drop the `INDEX` and `TEAM_BATTING_HBP` variables from our dataset. We've already determined that the `TEAM_BATTING_HBP` variable is missing 91% of its data and the `INDEX` variable is simply an index of the row number.
-
-```{r}
-droppedDf <- trainDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_H))
-```
-
+### 2.1 Missing Data
 
 <b><i>
 Notes / Questions
@@ -193,6 +194,20 @@ Notes / Questions
 
 </i></b>
 
+First what we will do is drop the `INDEX` and `TEAM_BATTING_HBP` variables from our dataset. We've already determined that the `TEAM_BATTING_HBP` variable is missing 91% of its data and the `INDEX` variable is simply an index of the row number.
+
+```{r echo=FALSE}
+droppedDf <- trainDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_HBP))
+```
+
+MAYBE For easier understanding of the data, we will remove `TEAM` word from the column names?
+```{r}
+#names(droppedDf) <- names(droppedDf) %>% 
+ # str_replace_all('TEAM_', '')
+
+#names(evalDf) <- names(evalDf) %>% 
+  #str_replace_all('TEAM_', '')
+```
 
 ```{r}
 
@@ -204,7 +219,6 @@ columnNames <- names(evalDf)
 evalDf <- flag_na(evalDf, columnNames)
 
 ```
-
 
 
 Next we will use the `mice` library to impute the missing values in the `trainDf` data.frame. MICE is actually an acronym which stands for multiple imputation by chained equations. In order to use MICE one must assume that the missing values are missing at random, meaning the missingness can be accounted for by variables where there is complete information. Then as the name implies MICE runs multiple iterations over the data and generates the data to fill in the missing values.
@@ -236,9 +250,6 @@ kable(displayDf, caption = "Money Ball Dataset", digits = 2, format = "html", ro
 
 
 
-
-
-
 ### 3. BUILD MODELS
 
 Now I will build three separate linear models and compare their performance and fit. 
@@ -264,7 +275,7 @@ For the second model I will use the cleaned data set with missing values imputed
 ```{r}
 lm2 <- lm(formula = TARGET_WINS ~  
     TEAM_PITCHING_HR + TEAM_PITCHING_BB  + TEAM_BATTING_2B + TEAM_BATTING_3B +
-    TEAM_FIELDING_E, data = cleanDf)
+   TEAM_FIELDING_E, data = cleanDf)
 lm2Sum <- summary(lm2)
 ```
 
