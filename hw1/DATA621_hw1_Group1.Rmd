@@ -55,8 +55,7 @@ Notes / Questions
 The use of historical statistics to predict future outcomes, particularly wins and losses, and identify opportunities for improving team or individual performance, has gained significant attention in professional sports. The aim of this analysis is to develop several models that can predict a baseball team's wins over a season based on team stats such as homeruns, strikeouts, base hits, and more. We will begin by examining the data for any issues, such as missing data, or outliers, and take the necessary measures to clean the data. We will subsequently create and evaluate three different linear models that forecast seasonal wins using the dataset, which includes both training and evaluation data. We will train the models using the main training data and then evaluate their performance against the evaluation data to determine their effectiveness. Finally, we will choose the best model that balances accuracy and simplicity for predicting seasonal wins.
 
 ## 1. DATA EXPLORATION
-The baseball training dataset contains 2,276 observations of 17 variables detailing various teams' performances per year from 1871 to 2006. The description of the columns is shown below. Due to the relatively long period, we expect to see outliers and missing data as the league modified official game rules; these rule changes undoubtedly caused teams and players to change their tactics in response. Additionally, the number of single base hits is noticeably missing from the columns. However, we will derive this value as the number other types of hits (double, triples, home runs) can be subtracted from total hits. Lastly, other columns representing game number (out of 162), inning number (1-9), and matching opponent columns would have been vastly useful for predictions. One last noticeable omission from the original dataset is the of the number of single base hits. However, this value can possibly be calculated as a difference between other types of hits (double, triples, home runs) and total hits. 
-
+The baseball training dataset contains 2,276 observations of 17 variables detailing various teams' performances per year from 1871 to 2006. The description of the columns is shown below. Due to the relatively long period, we expect to see outliers and missing data as the league modified official game rules; these rule changes undoubtedly caused teams and players to change their tactics in response. Additionally, the number of single base hits is noticeably missing from the columns. However, we will derive this value as the number of other types of hits (doubles, triples, home runs) can be subtracted from total hits. Lastly, other columns representing game number (out of 162), inning number (1-9), and matching opponent columns would have been vastly useful for predictions. One last noticeable omission from the original dataset is of the number of single base hits. However, this value can possibly be calculated as a difference between other types of hits (doubles, triples, home runs) and total hits. 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ex-pr/DATA607/Project-1/a1_moneyball.png">
 </p>
@@ -132,7 +131,7 @@ trainDf %>%
   geom_smooth(method = "lm", se = FALSE) +
   labs(title = "Strike outs vs. Target Wins", x = "Strike outs", y = "Target Wins")
 ```
-
+**We should DO this instead? Will take less space**
 ```{r wins_features, echo=FALSE, fig.height=8, fig.width=10}
 featurePlot(trainDf[,2:ncol(trainDf)], trainDf[,1], plot = "scatter", type = c("p", "smooth"), span = 1)
 ```
@@ -223,10 +222,48 @@ evalDf <- flag_na(evalDf, columnNames)
 
 Next we will use the `mice` library to impute the missing values in the `trainDf` data.frame. MICE is actually an acronym which stands for multiple imputation by chained equations. In order to use MICE one must assume that the missing values are missing at random, meaning the missingness can be accounted for by variables where there is complete information. Then as the name implies MICE runs multiple iterations over the data and generates the data to fill in the missing values.
 
+**Part below is the modification from Ben**
+We check what impute method we use for each column. "pmm" is predictive mean matching, replacing missing data with column means.
+
+Let's also take a look at the density plots pre and post-imputation to make sure densities look similar. Unfortunately, for `TEAM_BASERUN_SB`, `TEAM_BATTING_SO`, and `TEAM_FIELDING DP` they do not. But in the case of `TEAM_BATTING_SO` our distribution becomes roughly more normal, so it may be beneficial. For the `TEAM_BASERUN_SB` and `TEAM_BASERUN_CS` and `TEAM_FIELDING_DP` we may need to consider alternative methods.
+
+
 ```{r}
 imputeDf <- mice(droppedDf, m = 5, maxit = 50, seed = 123, printFlag = F)
+imputeDf$meth
 cleanDf <- complete(imputeDf)
+m_imputed <- melt(cleanDf)
+densityplot(imputeDf)
 ```
+
+
+We should also try to transform some variables so that they may fit a more normal distribution, particularly `TEAM_BATTING_HR`, `TEAM_BATTING_SO`, `TEAM_PITCHING_HR`, but also `TEAM_PITCHING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and `TEAM_FIELDING_E`. Square root doesn't seem to help much.
+
+```{r}
+# Reminder of our distributions
+m_imputed %>% ggplot(aes(x= value)) + 
+    geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
+    theme(strip.text.x = element_text(size = 6, angle = 0))
+# Transform some non-normal variables.
+transformed_df <- cleanDf |> mutate_each(funs(sqrt),
+                   batting_hr_log = TEAM_BATTING_HR,
+                   batting_so_log = TEAM_BATTING_SO,
+                   baserun_cs_log = TEAM_BASERUN_CS,
+                   pitching_hr_log = TEAM_PITCHING_HR) |> melt()
+# Plot. Not great.
+transformed_df %>% ggplot(aes(x= value)) + 
+    geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
+    theme(strip.text.x = element_text(size = 6, angle = 0))
+library(scales)
+# May need to try Boxcox after fitting the model. What we can do is remove large low density ranges for some variables.
+transformed_df <- cleanDf |> subset(TEAM_PITCHING_H < 5000, TEAM_PITCHING_BB < 1100) |> melt()
+transformed_df |> ggplot(aes(x= value)) + 
+    geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
+    theme(strip.text.x = element_text(size = 6, angle = 0))
+#TEAM_PITCHING_BB < 1100, TEAM_PITCHING_SO < 2500, TEAM_FIELDING_E < 500)
+```
+
+**End of Ben's modification**
 
 We now have a data set free from missing data values with the meaningless `INDEX` variable removed and the `TEAM_BATTING_HBP` removed as well due to it containing 91% missing values. We can observe using the table below that there are no longer any missing values. 
 
