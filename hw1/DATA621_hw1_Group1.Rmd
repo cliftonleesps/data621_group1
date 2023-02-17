@@ -188,6 +188,13 @@ First what we will do is drop the `INDEX` and `TEAM_BATTING_HBP` variables from 
 droppedDf <- trainDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_HBP))
 ```
 
+We'll also derive a new column for single base hits derived from subtracting double, triples and home runs from the total number of hits.
+
+```{r single_base_hits}
+droppedDf <- droppedDf %>% mutate(TEAM_BATTING_1B = TEAM_BATTING_H - TEAM_BATTING_2B - TEAM_BATTING_3B - TEAM_BATTING_HR)
+```
+
+
 MAYBE For easier understanding of the data, we will remove `TEAM` word from the column names?
 ```{r}
 #names(droppedDf) <- names(droppedDf) %>% 
@@ -216,7 +223,6 @@ We check what impute method we use for each column. "pmm" is predictive mean mat
 
 Let's also take a look at the density plots pre and post-imputation to make sure densities look similar. Unfortunately, for `TEAM_BASERUN_SB`, `TEAM_BATTING_SO`, and `TEAM_FIELDING DP` they do not. But in the case of `TEAM_BATTING_SO` our distribution becomes roughly more normal, so it may be beneficial. For the `TEAM_BASERUN_SB` and `TEAM_BASERUN_CS` and `TEAM_FIELDING_DP` we may need to consider alternative methods.
 
-
 ```{r}
 imputeDf <- mice(droppedDf, m = 5, maxit = 50, seed = 123, printFlag = F)
 imputeDf$meth
@@ -224,7 +230,6 @@ cleanDf <- complete(imputeDf)
 m_imputed <- melt(cleanDf)
 densityplot(imputeDf)
 ```
-
 
 We should also try to transform some variables so that they may fit a more normal distribution, particularly `TEAM_BATTING_HR`, `TEAM_BATTING_SO`, `TEAM_PITCHING_HR`, but also `TEAM_PITCHING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and `TEAM_FIELDING_E`. Square root doesn't seem to help much.
 
