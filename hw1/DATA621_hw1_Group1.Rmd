@@ -47,6 +47,13 @@ Notes / Questions
 
   - Given the number of games in a year I don't believe that 0 is a valid measurement for most of the attributes
   - use MICE to fill missing values vs Median or Mean
+  
+  - add feature TEAM_1B? By Cliff
+  - define range for this stats. By David
+  - try to build model around pythagorean winning per
+  - 1: no transformations, 2 - manual transformations, 3- box-cox
+  - zeroes to NA, apply mice after
+  - outliers: check the real data, maybe substitute with median/mean
 
 </i></b>
 
@@ -113,24 +120,6 @@ m_df %>% ggplot(aes(x = value)) +
 
 ```
 
-Doing some preliminary analysis of the data we can compare the team pitching hits (`TEAM_PITCHING_H`) against the target wins (`TARGET_WINS`) to validate our assumption that more hits allowed is negatively correlated with the number of wins. While there does appear to be a negative correlation it is not obviously linear. There is clearly a lot of clustering below 5,000 allowed hits but the number of wins varies significantly. There are also some obvious outliers here with one team allowing nearly 30,000 hits.
-
-```{r scatter_hits_wins, echo=FALSE}
-trainDf %>%
-  ggplot(aes(x = TEAM_PITCHING_H, y = TARGET_WINS)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(title = "Allowed Hits vs. Target Wins", x = "Allowed Hits", y = "Target Wins")
-```
-
-Looking at another relationship between strike outs (`TEAM_BATTING_SO`) and wins we can see a the strike out data has fewer outliers but not as strong of a negative correlation as one would expect with target wins. 
-```{r, so_wins, echo=FALSE}
-trainDf %>%
-  ggplot(aes(x = TEAM_BATTING_SO, y = TARGET_WINS)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(title = "Strike outs vs. Target Wins", x = "Strike outs", y = "Target Wins")
-```
 **We should DO this instead? Will take less space**
 ```{r wins_features, echo=FALSE, fig.height=8, fig.width=10}
 featurePlot(trainDf[,2:ncol(trainDf)], trainDf[,1], plot = "scatter", type = c("p", "smooth"), span = 1)
