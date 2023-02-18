@@ -48,7 +48,7 @@ Notes / Questions
   - Given the number of games in a year I don't believe that 0 is a valid measurement for most of the attributes
   - use MICE to fill missing values vs Median or Mean
   
-  - add feature TEAM_1B? By Cliff
+  - <del>add feature TEAM_1B? By Cliff</del>
   - define range for this stats. By David
   - try to build model around pythagorean winning per
   - 1: no transformations, 2 - manual transformations, 3- box-cox
@@ -129,7 +129,7 @@ featurePlot(trainDf[,2:ncol(trainDf)], trainDf[,1], plot = "scatter", type = c("
 
 Plotting the correlations between TARGET_WINS and the variables (excluding INDEX and TEAM_BATTING_HBP) we can see that very few variables are strongly correlated with the target variable. Columns with correlations close to zero are unlikely to offer significant insights into the factors that contribute to a team's victories.\
 
-To avoid multicolinearity, we should not include features that have strong correlation. Comparing offensive (any column starting with BATTING or BASERUN) to defensive stats unexpectedly shows some correlation, pointing to potential problems. Qualitatively, the matrix implies some teams or players are exceptional both at hitting (offensive) and fielding (defensive). Furthermore, a typical team's number of batted home runs and allowed home runs has a correlation of nearly 1.0. This is obviously not what we should look at. If a team hits four home runs, is it likely it will also allow its opponent to hit four also? As we know, many baseball games have low even scores (1-2, 3-2) but there many one sided wins also. Home runs hit (BATTING_HR) and home runs allowed (PITCHING_HR) are immediately suspect and are good candidates for outright exclusion. Alternatively, the correlation between a team's hits (BATTING_H) and hits allowed (PITCHING_H) is around 0.3 which is seems reasonable.
+To avoid multicolinearity, we should not include features that have strong correlation. Comparing offensive (any column starting with `BATTING` or `BASERUN`) to defensive stats unexpectedly shows some correlation, pointing to potential problems. Qualitatively, the matrix implies some teams or players are exceptional both at hitting (offensive) and fielding (defensive). Furthermore, a typical team's number of batted home runs and allowed home runs has a correlation of nearly 1.0. This is an unexpected correlation but can be explained by noticing most games are decided by a difference of one or two runs (whether the games are high scoring or not). Any final models should include one of these two home run variables. Alternatively, the correlation between a team's hits (`BATTING_H`) and hits allowed (`PITCHING_H`) is around 0.3 which is seems reasonable.
 
 There are some other strong correlations that are less obvious such as Errors (`TEAM_FIELDING_E`) being strongly negatively correlated with walks by batters (`TEAM_BATTING_BB`), strike outs (`TEAM_BATTING_SO`).  All combined together, teams that get a lot of hits do not generally make fielding errors.
 
