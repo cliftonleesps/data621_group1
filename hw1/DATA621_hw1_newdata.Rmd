@@ -33,6 +33,8 @@ library(explore)
 library(GGally)
 library(corrplot)
 
+library(leaps)
+
 
 
 knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
@@ -65,7 +67,7 @@ teamDF <- evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/da
 
 teamDF <- teamDF %>% dplyr::select('yearID','lgID','teamID','franchID','divID','Rank','G','W','L',
                          'R','AB','H','X2B','X3B','HR','BB','SO','SB','CS','HBP','SF','RA','ER','ERA',
-                         'CG','SHO','SV','IPouts','HA','HRA','BBA','SOA','E','DP','FP')
+                         'CG','SHO','SV','IPouts','HA','HRA','BBA','SOA','E','DP','FP','name')
 
 
 
@@ -236,6 +238,16 @@ lmA1Sum
 
 
 
+```{r}
+
+lmA2.step <- stats::step(lmA1, k=2)
+lmA2Sum.step <- summary(lmA2.step)
+lmA2Sum.step
+
+
+```
+
+
 
 ```{r}
 
@@ -246,7 +258,137 @@ lmA1Sum.step
 ```
 
 
+## Cross Validation
 
+```{r}
+
+
+```
+
+
+
+```{r}
+
+imputeDf <- mice(teamAdjDF, m = 5, maxit = 50, seed = 123, printFlag = F)
+imputeDf$meth
+cleanDf <- complete(imputeDf)
+m_imputed <- melt(cleanDf)
+densityplot(imputeDf)
+
+
+```
+
+
+```{r}
+
+
+library(tidyverse)
+library(caret)
+
+
+set.seed(123)
+random_sample <- createDataPartition(cleanDf$TARGET_WINS,
+								p = 0.8, list = FALSE)
+
+training_df <- cleanDf[random_sample, ]
+testing_df <- cleanDf[-random_sample, ]
+
+
+model <- lm(TARGET_WINS ~., data = training_df, na.action=na.exclude)
+summary(model)
+predictions <- predict(model, testing_df, na.action=na.exclude)
+
+
+data.frame( R2 = R2(predictions, testing_df$TARGET_WINS),
+			RMSE = RMSE(predictions, testing_df$TARGET_WINS),
+			MAE = MAE(predictions, testing_df$TARGET_WINS))
+
+
+```
+
+
+
+
+
+```{r}
+
+# R program to implement
+# Leave one out cross validation
+
+# defining training control
+# as Leave One Out Cross Validation
+train_control <- trainControl(method = "LOOCV")
+
+# training the model by assigning sales column
+# as target variable and rest other column
+# as independent variable
+model <- train(TARGET_WINS ~., data = training_df,
+			method = "lm",
+			trControl = train_control)
+
+# printing model performance metrics
+# along with other details
+print(model)
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+# R program to implement
+# K-fold cross-validation
+
+# setting seed to generate a
+# reproducible random sampling
+set.seed(125)
+
+# defining training control
+# as cross-validation and
+# value of K equal to 10
+train_control <- trainControl(method = "cv",
+							number = 10)
+
+# training the model by assigning sales column
+# as target variable and rest other column
+# as independent variable
+model <- train(TARGET_WINS ~., data = training_df,
+			method = "lm",
+			trControl = train_control)
+
+# printing model performance metrics
+# along with other details
+print(model)
+
+
+
+
+
+
+
+```
+
+
+
+
+```{r}
+
+
+
+
+```
+
+
+```{r}
+
+
+
+```
 
 
 
