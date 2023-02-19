@@ -25,8 +25,12 @@ library(psych)
 library(GGally)
 library(campfin)
 library(caret)
+library(yardstick)
+
 
 knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+set.seed(1234)
+
 ```
 
 Critical Thinking Group 1 (Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver)
@@ -50,6 +54,17 @@ Notes / Questions
   
   - <del>add feature TEAM_1B? By Cliff</del>
   - define range for this stats. By David
+  
+|             - TEAM_BATTING_BB 12.5 ≤ 512.4 ≤ 878.4 ==> No zero values
+|             - TEAM_BATTING_SO 44.2 ≤ 812 ≤ 1641.6 ==> No zero values
+|             - TEAM_BASERUN_SB 3.7 ≤ 97 ≤ 697.2 ==> No zero values
+|             - TEAM_BASERUN_CS 8.1 ≤ 45.2 ≤ 200.9 ==> No zero values
+|             - TEAM_PITCHING_BB 21.7 ≤ 515 ≤ 881.4 ==> No zero values
+
+|             - TEAM_FIELDING_DP 0 ≤ 145 ≤ 228.3 ==> actuall is a zero value
+
+|             - TEAM_PITCHING_H ==> actual distribution is more standard
+  
   - try to build model around pythagorean winning per
   - 1: no transformations, 2 - manual transformations, 3- box-cox
   - zeroes to NA, apply mice after
@@ -415,6 +430,251 @@ Notes / Questions
 Overall none of the models that I was able to generate instill much confidence in their ability to predict. The model with the best fit according to the $R^2$ statistic was filled with missing data that caused clearly incorrect negative predictions.
 
 The second and third models both had significantly lower $R^2$ scores which indicated a poor fit overall. In addition, none of the models performed well when checked for linearity or homogeneity of variance. While the second model did not suffer from colinearity issues the other two models did.
+
+
+
+## Appendix A
+
+Even with significant efforts to compensate for poor data quality the resulting models are poor predictors of win totals. Finding better data is the best course of action for developing a better predictive model.
+
+https://www.seanlahman.com/baseball-archive/statistics/
+
+
+```{r}
+
+teamDF <- evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/Teams.csv")
+
+teamDF <- teamDF %>% dplyr::select('yearID','lgID','teamID','franchID','divID','Rank','G','W','L',
+                         'R','AB','H','X2B','X3B','HR','BB','SO','SB','CS','HBP','SF','RA','ER','ERA',
+                         'CG','SHO','SV','IPouts','HA','HRA','BBA','SOA','E','DP','FP','name')
+
+
+
+
+# normalize data 162 games
+teamDF$gFactor <-  162 / (teamDF$W + teamDF$L)
+
+teamDF$TARGET_WINS <-  teamDF$gFactor * teamDF$W
+teamDF$TEAM_BATTING_H <- teamDF$gFactor * teamDF$H
+teamDF$TEAM_BATTING_2B  <- teamDF$gFactor * teamDF$X2B
+teamDF$TEAM_BATTING_3B  <- teamDF$gFactor * teamDF$X3B
+teamDF$TEAM_BATTING_HR  <- teamDF$gFactor * teamDF$HR
+teamDF$TEAM_BATTING_BB  <- teamDF$gFactor * teamDF$BB
+teamDF$TEAM_BATTING_SO  <- teamDF$gFactor * teamDF$SO
+teamDF$TEAM_BASERUN_SB  <- teamDF$gFactor * teamDF$SB
+teamDF$TEAM_BASERUN_CS  <- teamDF$gFactor * teamDF$CS
+teamDF$TEAM_BATTING_HBP <- teamDF$gFactor * teamDF$HBP
+teamDF$TEAM_PITCHING_H  <- teamDF$gFactor * teamDF$HA
+teamDF$TEAM_PITCHING_HR <- teamDF$gFactor * teamDF$HRA
+teamDF$TEAM_PITCHING_BB <- teamDF$gFactor * teamDF$BBA
+teamDF$TEAM_PITCHING_SO <- teamDF$gFactor * teamDF$SOA
+teamDF$TEAM_FIELDING_E  <- teamDF$gFactor * teamDF$E
+teamDF$TEAM_FIELDING_DP <- teamDF$gFactor * teamDF$DP 
+
+
+# Pythagorean winning percentage
+#  (runs scored ^ 2) / [(runs scored ^ 2) + (runs allowed ^ 2)]
+teamDF$pythPercent <- (teamDF$R^2) / ((teamDF$R^2) + (teamDF$RA^2))
+
+
+teamAdjDF <- teamDF %>% dplyr::select("TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B","TEAM_BATTING_3B","TEAM_BATTING_HR",
+                "TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB","TEAM_BASERUN_CS",
+                "TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR","TEAM_PITCHING_BB",
+                "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP")
+
+
+```
+
+
+
+```{r}
+
+tDF <- teamAdjDF 
+
+t = preProcess(tDF, c("BoxCox", "center", "scale"))
+tDF <- data.frame(predict(t, tDF))
+
+teamAdjDF$BC_TEAM_BASERUN_SB <- tDF$TEAM_BASERUN_SB
+teamAdjDF$BC_TEAM_BATTING_H <- tDF$TEAM_BATTING_H
+teamAdjDF$BC_TEAM_FIELDING_E <- tDF$TEAM_FIELDING_E
+
+```
+
+
+
+
+```{r}
+
+random_sample <- createDataPartition(teamAdjDF$TARGET_WINS,
+								p = 0.8, list = FALSE)
+
+trainingTeam_df <- teamAdjDF[random_sample, ]
+testingTeam_df <- teamAdjDF[-random_sample, ]
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+m_df <- trainingTeam_df %>% melt() 
+
+m_df %>% ggplot(aes(x= value)) + 
+    geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+
+m_df %>% ggplot(aes(x = value)) +
+  geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
+  facet_wrap(vars(variable),scales = "free", ncol = 4)
+
+```
+
+
+
+```{r}
+
+rcore <- rcorr(as.matrix(trainingTeam_df %>% dplyr::select(where(is.numeric))))
+coeff <- rcore$r
+corrplot(coeff, tl.cex = .7 , method = 'number')
+
+```
+
+
+```{r}
+
+imputeDf <- mice(trainingTeam_df, m = 5, maxit = 50, seed = 123, printFlag = F)
+imputeDf$meth
+trainingTeam_df <- complete(imputeDf)
+m_imputed <- melt(trainingTeam_df)
+densityplot(imputeDf)
+
+```
+
+
+
+
+```{r}
+
+lmA1 <- lm(TARGET_WINS ~ . -TEAM_BASERUN_SB - TEAM_BATTING_H - TEAM_FIELDING_E, data = trainingTeam_df)
+lmA1Sum <- summary(lmA1)
+lmA1Sum
+
+```
+
+
+```{r}
+
+lmA1.step <- stepAIC(lmA1, trace = FALSE)
+lmA1Sum.step <- summary(lmA1.step)
+lmA1Sum.step
+
+```
+
+
+
+```{r}
+
+check_model(lmA1.step, check = c("vif","normality","linearity","homogeneity"))
+
+```
+
+
+
+
+```{r}
+
+imputeDf <- mice(testingTeam_df, m = 5, maxit = 50, seed = 123, printFlag = F)
+imputeDf$meth
+testingTeam_df <- complete(imputeDf)
+m_imputed <- melt(testingTeam_df)
+densityplot(imputeDf)
+
+
+```
+
+
+
+
+```{r}
+
+lmA1Pred.step <- lmA1.step %>% predict(testingTeam_df)
+
+```
+
+
+
+
+
+```{r}
+
+
+multi_metric <- metric_set(mape, smape, mase, mpe, rmse, rsq)
+m <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmA1Pred.step)
+
+```
+
+
+
+
+
+
+
+
+## Appendix B:
+
+
+
+```{r}
+
+random_sample <- createDataPartition(teamDF$TARGET_WINS, p = 0.8, list = FALSE)
+
+trainingTeam_df <- teamDF[random_sample, ]
+testingTeam_df <- teamDF[-random_sample, ]
+
+
+```
+
+
+
+
+
+```{r}
+
+lmp <- lm(TARGET_WINS ~ pythPercent, data = trainingTeam_df)
+summary(lmp)
+
+
+```
+
+
+```{r}
+
+check_model(lmp, check = c("vif","normality","linearity","homogeneity"))
+
+```
+
+
+```{r}
+
+
+lmpPred <- lmp %>% predict(testingTeam_df)
+
+
+```
+
+
+
+```{r}
+
+m1 <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmpPred)
+
+```
+
 
 
 ## References
