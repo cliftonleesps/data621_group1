@@ -26,11 +26,8 @@ library(GGally)
 library(campfin)
 library(caret)
 library(yardstick)
-
-
 knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 set.seed(1234)
-
 ```
 
 Critical Thinking Group 1 (Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver)
@@ -83,10 +80,8 @@ The baseball training dataset contains 2,276 observations of 17 variables detail
 </p>
 
 ```{r initialization, include=FALSE}
-
 trainDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/moneyball-training-data.csv")
 evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/moneyball-evaluation-data.csv")
-
 ```
 
 
@@ -103,7 +98,6 @@ Also of note is the number of missing values from certain variables. Most notabl
 stats <- trainDf %>%
   dplyr::select(-c(INDEX)) %>%
   describe()
-
 displayDf <- as.data.frame(stats) %>%
   dplyr::mutate(missing = 2276 - n) %>%
   dplyr::select(-c(vars, n, trimmed, mad, range))
@@ -124,15 +118,11 @@ Box plots for these further show a high number of outliers exist outside of the 
 m_df <- trainDf%>%
   dplyr::select(-c(INDEX)) %>%
   melt() 
-
 m_df %>% ggplot(aes(x= value)) + 
     geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
-
-
 m_df %>% ggplot(aes(x = value)) +
   geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
   facet_wrap(vars(variable),scales = "free", ncol = 4)
-
 ```
 
 **We should DO this instead? Will take less space**
@@ -160,12 +150,9 @@ corrplot(coeff, tl.cex = .7 , method = 'circle')
 ```{r corr_numbers, echo=FALSE}
 tst <- trainDf
 tst <- tst[,-1 ]
-
 kable(cor(drop_na(tst))[,1], "html", escape = F, col.names = c('Coefficient')) %>%
   kable_styling("striped", full_width = F) %>%
   column_spec(1, bold = T)
-
-
 ```
 
 Lastly lets take a closer look at the missing data. We've already determined that the batter hit by pitch (`TEAM_BATTING_HBP`) variable is missing 91% of its data but what of the other variables. We will just drop the column from the further analysis.
@@ -214,26 +201,20 @@ MAYBE For easier understanding of the data, we will remove `TEAM` word from the 
 ```{r}
 #names(droppedDf) <- names(droppedDf) %>% 
  # str_replace_all('TEAM_', '')
-
 #names(evalDf) <- names(evalDf) %>% 
   #str_replace_all('TEAM_', '')
 ```
 
 ```{r}
-
 columnNames <- names(droppedDf)
 droppedDf <- flag_na(droppedDf, columnNames)
-
-
 columnNames <- names(evalDf)
 evalDf <- flag_na(evalDf, columnNames)
-
 ```
 
 
 Next we will use the `mice` library to impute the missing values in the `trainDf` data.frame. MICE is actually an acronym which stands for multiple imputation by chained equations. In order to use MICE one must assume that the missing values are missing at random, meaning the missingness can be accounted for by variables where there is complete information. Then as the name implies MICE runs multiple iterations over the data and generates the data to fill in the missing values.
 
-**Part below is the modification from Ben**
 We check what impute method we use for each column. "pmm" is predictive mean matching, replacing missing data with column means.
 
 Let's also take a look at the density plots pre and post-imputation to make sure densities look similar. Unfortunately, for `TEAM_BASERUN_SB`, `TEAM_BATTING_SO`, and `TEAM_FIELDING DP` they do not. But in the case of `TEAM_BATTING_SO` our distribution becomes roughly more normal, so it may be beneficial. For the `TEAM_BASERUN_SB` and `TEAM_BASERUN_CS` and `TEAM_FIELDING_DP` we may need to consider alternative methods.
@@ -246,7 +227,7 @@ m_imputed <- melt(cleanDf)
 densityplot(imputeDf)
 ```
 
-We should also try to transform some variables so that they may fit a more normal distribution, particularly `TEAM_BATTING_HR`, `TEAM_BATTING_SO`, `TEAM_PITCHING_HR`, but also `TEAM_PITCHING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and `TEAM_FIELDING_E`. Square root doesn't seem to help much.
+We should also try to transform some variables so that they may fit a more normal distribution, particularly `TEAM_BATTING_HR`, `TEAM_BATTING_SO`, `TEAM_PITCHING_HR`, but also `TEAM_PITCHING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and `TEAM_FIELDING_E`. Square rooting these variables helps, as does removing the skewness by reducing the low density ranges.
 
 ```{r}
 # Reminder of our distributions
@@ -255,24 +236,29 @@ m_imputed %>% ggplot(aes(x= value)) +
     theme(strip.text.x = element_text(size = 6, angle = 0))
 # Transform some non-normal variables.
 transformed_df <- cleanDf |> mutate_each(funs(sqrt),
-                   batting_hr_log = TEAM_BATTING_HR,
-                   batting_so_log = TEAM_BATTING_SO,
-                   baserun_cs_log = TEAM_BASERUN_CS,
-                   pitching_hr_log = TEAM_PITCHING_HR) |> melt()
-# Plot. Not great.
-transformed_df %>% ggplot(aes(x= value)) + 
+                   batting_hr_sqrt = TEAM_BATTING_HR,
+                   batting_so_sqrt = TEAM_BATTING_SO,
+                   baserun_cs_sqrt = TEAM_BASERUN_CS,
+                   pitching_hr_sqrt = TEAM_PITCHING_HR) 
+
+visualize_transformed <- transformed_df |> melt()
+
+# Plot.
+visualize_transformed %>% ggplot(aes(x= value)) + 
     geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
     theme(strip.text.x = element_text(size = 6, angle = 0))
-library(scales)
+
 # May need to try Boxcox after fitting the model. What we can do is remove large low density ranges for some variables.
-transformed_df <- cleanDf |> subset(TEAM_PITCHING_H < 5000, TEAM_PITCHING_BB < 1100) |> melt()
-transformed_df |> ggplot(aes(x= value)) + 
+transformed_df <- transformed_df |> subset(TEAM_PITCHING_H < 5000, TEAM_PITCHING_BB < 1100) #TEAM_PITCHING_BB < 1100, TEAM_PITCHING_SO < 2500, TEAM_FIELDING_E < 500)
+
+visualize_transformed <- transformed_df |> melt()
+
+visualize_transformed |> ggplot(aes(x= value)) + 
     geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
     theme(strip.text.x = element_text(size = 6, angle = 0))
-#TEAM_PITCHING_BB < 1100, TEAM_PITCHING_SO < 2500, TEAM_FIELDING_E < 500)
+
 ```
 
-**End of Ben's modification**
 
 We now have a data set free from missing data values with the meaningless `INDEX` variable removed and the `TEAM_BATTING_HBP` removed as well due to it containing 91% missing values. We can observe using the table below that there are no longer any missing values. 
 
@@ -281,7 +267,7 @@ One interesting comparison we can make is for a variable that had a large number
 `TEAM_BASERUN_CS` was missing 772 values or about 34% of data. We can observe that the mean and median did change from 52.80 to 75.71 and 49.0 to 57.0 The min of 0 and max of 201 did not change which is good.
 
 ```{r}
-stats <- cleanDf  %>%
+stats <- transformed_df  %>%
   describe()
 displayDf <- as.data.frame(stats) %>%
   dplyr::mutate(missing = 2276 - n) %>%
@@ -298,7 +284,7 @@ kable(displayDf, caption = "Money Ball Dataset", digits = 2, format = "html", ro
 
 ### 3. BUILD MODELS
 
-Now I will build three separate linear models and compare their performance and fit. 
+Now we will build four separate linear models and compare their performance and fit. 
 
 For the first model I will use the naive method of selecting every variable in the raw un-cleaned data set. Our intuition tells us this is unlikely to be the best performing model as we already know there are some issues with the data and we are using every variable. 
 
@@ -316,7 +302,7 @@ lm1 <- lm(TARGET_WINS ~ ., data = trainDf)
 lm1Sum <- summary(lm1)
 ```
 
-For the second model I will use the cleaned data set with missing values imputed using the MICE method. In addition I will try to select variables which result in a better fit using my out intuition. 
+For the second model we will use the cleaned data set with missing values imputed using the MICE method. In addition I will try to select variables which result in a better fit using my out intuition. 
 
 ```{r}
 lm2 <- lm(formula = TARGET_WINS ~  
@@ -331,10 +317,18 @@ aicLm <- stepAIC(lm3, trace = FALSE)
 aicSum <- summary(aicLm)
 ```
 
+For the fourth model we can run the imputed + features that were engineered (i.e. sqrt), and pick the best model.
+```{r}
+lm4 <- lm(TARGET_WINS~., data=transformed_df)
+aicLm4 <- stepAIC(lm4, trace=FALSE)
+aicSum4 <- summary(aicLm4)
+
+```
+
 Below are the results $R^2$, residual standard error, and F-statistics of each model. Surprisingly the non-cleaned, non-imputed raw training data had the best fitting statistics. 
 
 ```{r}
-plot(compare_performance(lm1,lm2,aicLm, rank=T))
+plot(compare_performance(lm1,lm2,aicLm,aicLm4, rank=T))
 ```
 
 ```{r}
@@ -353,7 +347,7 @@ kable(modelDf, caption = "Money Ball Dataset", digits = 2, format = "html", row.
 
 ## 4. SELECT MODELS
 
-I will then use the evaluation data set to make predictions using the three models. In order to make the first and third prediction models  work I will need to impute the missing values from the evaluation dataset. I will use the same method as I did for the training data set. If I do not add these missing values the prediction results will return no values for the rows that contain the missing values.
+I will then use the evaluation data set to make predictions using the three models. In order to make the first and third prediction models work I will need to impute the missing values from the evaluation dataset. I will use the same method as I did for the training data set. If I do not add these missing values the prediction results will return no values for the rows that contain the missing values.
 
 
 Below is a table containing the predicted TARGET_WINS for each model. Some things that stand out at a first glance are that the first model which is producing negative value predictions. Obviously it isn't possible to have a negative amount of wins, so this model is not very useful. The second and third model which are both based on the cleaned and imputed data do not suffer from these issues of predicting large negative values. In general both the AIC generated model and the second model are producing similar results.
@@ -361,18 +355,25 @@ Below is a table containing the predicted TARGET_WINS for each model. Some thing
 ```{r}
 evalImputeDf <- mice(evalDf, m = 5, maxit = 50, seed = 123, printFlag = F)
 evalImputeDf <- complete(evalImputeDf)
+
+transformed_eval <- evalImputeDf |> mutate_each(funs(sqrt),
+                   batting_hr_sqrt = TEAM_BATTING_HR,
+                   batting_so_sqrt = TEAM_BATTING_SO,
+                   baserun_cs_sqrt = TEAM_BASERUN_CS,
+                   pitching_hr_sqrt = TEAM_PITCHING_HR)
 ```
 
 ```{r}
 lm1Pred <- lm1 %>% predict(evalImputeDf)
 lm2Pred <- lm2 %>% predict(evalImputeDf)
 aicPred <- aicLm %>% predict(evalImputeDf)
+aicPred4 <- aicLm4 %>% predict(evalImputeDf)
 ```
 
 ```{r}
 predsDf <- evalImputeDf %>% 
-  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred) %>%
-  dplyr::select(c(lm1, lm2, aic))
+  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred, aic4 = aicPred4) %>%
+  dplyr::select(c(lm1, lm2, aic, aic4))
   kable(head(predsDf, 15), caption = "Money Ball Dataset", digits = 2, format = "html", row.names = F) %>%
   kable_styling(
     bootstrap_options = c("striped", "hover"),
@@ -382,24 +383,24 @@ predsDf <- evalImputeDf %>%
 ```
 
 
-We can also see when plotting the predictions that there doesn't seem to be much obvious difference between the models aside from the clearly outrageous outliers generated by the first model.
+We can also see when plotting the predictions that there doesn't seem to be much obvious difference between the models aside from the clearly outrageous outliers generated by the first model, and the 4th model showing a slightly tighter range in wins.
 
 ```{r}
 xT <- evalImputeDf %>% 
-  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred)
+  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred, aic4 = aicPred4)
 par(mfrow=c(2,2))
 plot(1:nrow(xT), xT$lm1, xlab="LM1", ylab="Wins", title="LM1")
 plot(1:nrow(xT), xT$lm2, xlab="LM2", ylab="Wins", title="LM2")
 plot(1:nrow(xT), xT$aic, xlab="AIC", ylab="Wins", title="AIC")
+plot(1:nrow(xT), xT$aic4, xlab="AIC4", ylab="Wins", title="AIC4")
 ```
 
-We can the graphs below to check the validity of our models. All three models suffer from a lack of linearity which indicates that a linear regression model may not be the greatest technique for predicting values from this data with the given variables. The two models that included all the most variables (model 1 & model 3), suffer from co-linearity issues.
+We can the graphs below to check the validity of our models. All models suffer from a lack of linearity which indicates that a linear regression model may not be the greatest technique for predicting values from this data with the given variables. The models that included all the most variables (model 1, model 3, model 4), suffer from co-linearity issues.
 
 ### Model 1
 
 ```{r}
 check_model(lm1, check = c("vif","normality","linearity","homogeneity"))
-
 ```
 
 ### Model 2
@@ -414,6 +415,11 @@ check_model(lm2, check = c("vif","normality","linearity","homogeneity"))
 check_model(aicLm, check = c("vif","normality","linearity","homogeneity"))
 ```
 
+### Model 4
+
+```{r}
+check_model(aicLm4, check = c("vif","normality","linearity","homogeneity"))
+```
 ## Conclusion
 
 
@@ -441,19 +447,12 @@ https://www.seanlahman.com/baseball-archive/statistics/
 
 
 ```{r}
-
 teamDF <- evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/Teams.csv")
-
 teamDF <- teamDF %>% dplyr::select('yearID','lgID','teamID','franchID','divID','Rank','G','W','L',
                          'R','AB','H','X2B','X3B','HR','BB','SO','SB','CS','HBP','SF','RA','ER','ERA',
                          'CG','SHO','SV','IPouts','HA','HRA','BBA','SOA','E','DP','FP','name')
-
-
-
-
 # normalize data 162 games
 teamDF$gFactor <-  162 / (teamDF$W + teamDF$L)
-
 teamDF$TARGET_WINS <-  teamDF$gFactor * teamDF$W
 teamDF$TEAM_BATTING_H <- teamDF$gFactor * teamDF$H
 teamDF$TEAM_BATTING_2B  <- teamDF$gFactor * teamDF$X2B
@@ -470,48 +469,34 @@ teamDF$TEAM_PITCHING_BB <- teamDF$gFactor * teamDF$BBA
 teamDF$TEAM_PITCHING_SO <- teamDF$gFactor * teamDF$SOA
 teamDF$TEAM_FIELDING_E  <- teamDF$gFactor * teamDF$E
 teamDF$TEAM_FIELDING_DP <- teamDF$gFactor * teamDF$DP 
-
-
 # Pythagorean winning percentage
 #  (runs scored ^ 2) / [(runs scored ^ 2) + (runs allowed ^ 2)]
 teamDF$pythPercent <- (teamDF$R^2) / ((teamDF$R^2) + (teamDF$RA^2))
-
-
 teamAdjDF <- teamDF %>% dplyr::select("TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B","TEAM_BATTING_3B","TEAM_BATTING_HR",
                 "TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB","TEAM_BASERUN_CS",
                 "TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR","TEAM_PITCHING_BB",
                 "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP")
-
-
 ```
 
 
 
 ```{r}
-
 tDF <- teamAdjDF 
-
 t = preProcess(tDF, c("BoxCox", "center", "scale"))
 tDF <- data.frame(predict(t, tDF))
-
 teamAdjDF$BC_TEAM_BASERUN_SB <- tDF$TEAM_BASERUN_SB
 teamAdjDF$BC_TEAM_BATTING_H <- tDF$TEAM_BATTING_H
 teamAdjDF$BC_TEAM_FIELDING_E <- tDF$TEAM_FIELDING_E
-
 ```
 
 
 
 
 ```{r}
-
 random_sample <- createDataPartition(teamAdjDF$TARGET_WINS,
 								p = 0.8, list = FALSE)
-
 trainingTeam_df <- teamAdjDF[random_sample, ]
 testingTeam_df <- teamAdjDF[-random_sample, ]
-
-
 ```
 
 
@@ -521,89 +506,69 @@ testingTeam_df <- teamAdjDF[-random_sample, ]
 
 
 ```{r}
-
 m_df <- trainingTeam_df %>% melt() 
-
 m_df %>% ggplot(aes(x= value)) + 
     geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
-
-
 m_df %>% ggplot(aes(x = value)) +
   geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
   facet_wrap(vars(variable),scales = "free", ncol = 4)
-
 ```
 
 
 
 ```{r}
-
 rcore <- rcorr(as.matrix(trainingTeam_df %>% dplyr::select(where(is.numeric))))
 coeff <- rcore$r
 corrplot(coeff, tl.cex = .7 , method = 'number')
-
 ```
 
 
 ```{r}
-
 imputeDf <- mice(trainingTeam_df, m = 5, maxit = 50, seed = 123, printFlag = F)
 imputeDf$meth
 trainingTeam_df <- complete(imputeDf)
 m_imputed <- melt(trainingTeam_df)
 densityplot(imputeDf)
-
 ```
 
 
 
 
 ```{r}
-
 lmA1 <- lm(TARGET_WINS ~ . -TEAM_BASERUN_SB - TEAM_BATTING_H - TEAM_FIELDING_E, data = trainingTeam_df)
 lmA1Sum <- summary(lmA1)
 lmA1Sum
-
 ```
 
 
 ```{r}
-
 lmA1.step <- stepAIC(lmA1, trace = FALSE)
 lmA1Sum.step <- summary(lmA1.step)
 lmA1Sum.step
-
 ```
 
 
 
 ```{r}
-
 check_model(lmA1.step, check = c("vif","normality","linearity","homogeneity"))
-
 ```
 
 
 
 
 ```{r}
-
 imputeDf <- mice(testingTeam_df, m = 5, maxit = 50, seed = 123, printFlag = F)
 imputeDf$meth
 testingTeam_df <- complete(imputeDf)
 m_imputed <- melt(testingTeam_df)
 densityplot(imputeDf)
-
-
 ```
 
 
 
 
 ```{r}
-
 lmA1Pred.step <- lmA1.step %>% predict(testingTeam_df)
-
 ```
 
 
@@ -611,11 +576,8 @@ lmA1Pred.step <- lmA1.step %>% predict(testingTeam_df)
 
 
 ```{r}
-
-
 multi_metric <- metric_set(mape, smape, mase, mpe, rmse, rsq)
 m <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmA1Pred.step)
-
 ```
 
 
@@ -630,13 +592,9 @@ m <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=
 
 
 ```{r}
-
 random_sample <- createDataPartition(teamDF$TARGET_WINS, p = 0.8, list = FALSE)
-
 trainingTeam_df <- teamDF[random_sample, ]
 testingTeam_df <- teamDF[-random_sample, ]
-
-
 ```
 
 
@@ -644,35 +602,24 @@ testingTeam_df <- teamDF[-random_sample, ]
 
 
 ```{r}
-
 lmp <- lm(TARGET_WINS ~ pythPercent, data = trainingTeam_df)
 summary(lmp)
-
-
 ```
 
 
 ```{r}
-
 check_model(lmp, check = c("vif","normality","linearity","homogeneity"))
-
 ```
 
 
 ```{r}
-
-
 lmpPred <- lmp %>% predict(testingTeam_df)
-
-
 ```
 
 
 
 ```{r}
-
 m1 <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmpPred)
-
 ```
 
 
