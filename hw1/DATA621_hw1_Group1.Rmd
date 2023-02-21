@@ -355,7 +355,7 @@ transformed_eval <- evalImputeDf |> mutate_each(funs(sqrt),
 lm1Pred <- lm1 %>% predict(evalImputeDf)
 lm2Pred <- lm2 %>% predict(evalImputeDf)
 aicPred <- lm3step %>% predict(evalImputeDf)
-aicPred4 <- lm4step %>% predict(evalImputeDf)
+aicPred4 <- lm4step %>% predict(transformed_eval)
 ```
 
 ```{r}
