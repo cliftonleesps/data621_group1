@@ -125,14 +125,15 @@ m_df %>% ggplot(aes(x = value)) +
   facet_wrap(vars(variable),scales = "free", ncol = 4)
 ```
 
-**We should DO this instead? Will take less space**
+Lastly, the function featurePlot() will show the relationship between independent variables and the target variable `TARGET_WINS`. 
 ```{r wins_features, echo=FALSE, fig.height=8, fig.width=10}
 featurePlot(trainDf[,2:ncol(trainDf)], trainDf[,1], plot = "scatter", type = c("p", "smooth"), span = 1)
 ```
+In general, while our graphs display certain intriguing connections among the variables, they also expose noteworthy problems with the data. For example, the dataset contains a team that has not won any games, which appears improbable. By checking the web data, we found that it actually happened 2 times: 1872 and 1873. Or that the pitching data contains numerous instances of 0's, several teams have 0 strikeouts by their pitchers over the season, which is highly improbable. Also, there is as a team achieving 20,000 strikeouts. There will be further steps to work with outliers and 0's.
 
 #### 1.3 Correlation Matrix
 
-Plotting the correlations between TARGET_WINS and the variables (excluding INDEX and TEAM_BATTING_HBP) we can see that very few variables are strongly correlated with the target variable. Columns with correlations close to zero are unlikely to offer significant insights into the factors that contribute to a team's victories.\
+Plotting the correlations between `TARGET_WINS` and the variables (excluding `INDEX` and `TEAM_BATTING_HBP`) we can see that very few variables are strongly correlated with the target variable. Columns with correlations close to zero are unlikely to offer significant insights into the factors that contribute to a team's victories.\
 
 To avoid multicolinearity, we should not include features that have strong correlation. Comparing offensive (any column starting with `BATTING` or `BASERUN`) to defensive stats unexpectedly shows some correlation, pointing to potential problems. Qualitatively, the matrix implies some teams or players are exceptional both at hitting (offensive) and fielding (defensive). Furthermore, a typical team's number of batted home runs and allowed home runs has a correlation of nearly 1.0. This is an unexpected correlation but can be explained by noticing most games are decided by a difference of one or two runs (whether the games are high scoring or not). Any final models should include one of these two home run variables. Alternatively, the correlation between a team's hits (`BATTING_H`) and hits allowed (`PITCHING_H`) is around 0.3 which is seems reasonable.
 
@@ -155,7 +156,7 @@ kable(cor(drop_na(tst))[,1], "html", escape = F, col.names = c('Coefficient')) %
   column_spec(1, bold = T)
 ```
 
-Lastly lets take a closer look at the missing data. We've already determined that the batter hit by pitch (`TEAM_BATTING_HBP`) variable is missing 91% of its data but what of the other variables. We will just drop the column from the further analysis.
+Lastly, lets take a closer look at the missing data. We've already determined that the batter hit by pitch (`TEAM_BATTING_HBP`) variable is missing 91% of its data but what of the other variables. We will just drop the column from the further analysis.
 
 Using the plot below we can visualize the missingness of the remaining variables. There are 5 variables that contain varying degrees of missing data. We will use the information to fill in the missing values in our data preparation step.
 
@@ -184,7 +185,7 @@ Notes / Questions
 
 </i></b>
 
-First what we will do is drop the `INDEX` and `TEAM_BATTING_HBP` variables from our dataset. We've already determined that the `TEAM_BATTING_HBP` variable is missing 91% of its data and the `INDEX` variable is simply an index of the row number.
+As discussed above, we will drop the `INDEX` and `TEAM_BATTING_HBP` variables as the `TEAM_BATTING_HBP` variable is missing 91% of its data and the `INDEX` variable is just an identification Variable.
 
 ```{r echo=FALSE}
 droppedDf <- trainDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_HBP))
@@ -195,16 +196,7 @@ We'll also derive a new column for single base hits derived from subtracting dou
 ```{r single_base_hits}
 droppedDf <- droppedDf %>% mutate(TEAM_BATTING_1B = TEAM_BATTING_H - TEAM_BATTING_2B - TEAM_BATTING_3B - TEAM_BATTING_HR)
 ```
-
-
-MAYBE For easier understanding of the data, we will remove `TEAM` word from the column names?
-```{r}
-#names(droppedDf) <- names(droppedDf) %>% 
- # str_replace_all('TEAM_', '')
-#names(evalDf) <- names(evalDf) %>% 
-  #str_replace_all('TEAM_', '')
-```
-
+For further work with NA's, we  create flags to suggest if a variable was missing.
 ```{r}
 columnNames <- names(droppedDf)
 droppedDf <- flag_na(droppedDf, columnNames)
@@ -213,8 +205,7 @@ evalDf <- flag_na(evalDf, columnNames)
 ```
 
 
-Next we will use the `mice` library to impute the missing values in the `trainDf` data.frame. MICE is actually an acronym which stands for multiple imputation by chained equations. In order to use MICE one must assume that the missing values are missing at random, meaning the missingness can be accounted for by variables where there is complete information. Then as the name implies MICE runs multiple iterations over the data and generates the data to fill in the missing values.
-
+To to impute the missing values in the `trainDf` data, the `mice` library is used. To utilize MICE, one must make the assumption that the missing values are missing at random, indicating that the missingness can be explained by variables that have complete information. The MICE algorithm then performs several iterations over the data, as suggested by its name, and generates data to complete the missing values.
 We check what impute method we use for each column. "pmm" is predictive mean matching, replacing missing data with column means.
 
 Let's also take a look at the density plots pre and post-imputation to make sure densities look similar. Unfortunately, for `TEAM_BASERUN_SB`, `TEAM_BATTING_SO`, and `TEAM_FIELDING DP` they do not. But in the case of `TEAM_BATTING_SO` our distribution becomes roughly more normal, so it may be beneficial. For the `TEAM_BASERUN_SB` and `TEAM_BASERUN_CS` and `TEAM_FIELDING_DP` we may need to consider alternative methods.
@@ -227,7 +218,9 @@ m_imputed <- melt(cleanDf)
 densityplot(imputeDf)
 ```
 
+### 2.2 Transform non-normal variables
 We should also try to transform some variables so that they may fit a more normal distribution, particularly `TEAM_BATTING_HR`, `TEAM_BATTING_SO`, `TEAM_PITCHING_HR`, but also `TEAM_PITCHING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and `TEAM_FIELDING_E`. Square rooting these variables helps, as does removing the skewness by reducing the low density ranges.
+The plots below compare the original distributions of non-normal variables and transformed ones. This is just one of the ways to handle the data that doesn't follow normal distribution. The  other way is to use Box-Cox transformations, we may try it after fitting the model.
 
 ```{r}
 # Reminder of our distributions
@@ -260,11 +253,7 @@ visualize_transformed |> ggplot(aes(x= value)) +
 ```
 
 
-We now have a data set free from missing data values with the meaningless `INDEX` variable removed and the `TEAM_BATTING_HBP` removed as well due to it containing 91% missing values. We can observe using the table below that there are no longer any missing values. 
-
-One interesting comparison we can make is for a variable that had a large number of missing values, we can look at how the summary statistics may have changed with the imputed data. 
-
-`TEAM_BASERUN_CS` was missing 772 values or about 34% of data. We can observe that the mean and median did change from 52.80 to 75.71 and 49.0 to 57.0 The min of 0 and max of 201 did not change which is good.
+Our current dataset is devoid of any missing data values, and we have excluded the irrelevant `INDEX` and the `TEAM_BATTING_HBP` variables, which had 91% missing values. As shown in the table below, no missing data values exist anymore, and we can analyze how the summary statistics may have altered with the imputed data.
 
 ```{r}
 stats <- transformed_df  %>%
@@ -283,11 +272,6 @@ kable(displayDf, caption = "Money Ball Dataset", digits = 2, format = "html", ro
 
 
 ### 3. BUILD MODELS
-
-Now we will build four separate linear models and compare their performance and fit. 
-
-For the first model I will use the naive method of selecting every variable in the raw un-cleaned data set. Our intuition tells us this is unlikely to be the best performing model as we already know there are some issues with the data and we are using every variable. 
-
 <b><i>
 Notes / Questions
 
@@ -295,14 +279,18 @@ Notes / Questions
 - there is also saber metrics model that Pythagorean Winning Percentage taht is supposed to preduct wins https://www.mlb.com/glossary/advanced-stats/pythagorean-winning-percentage
 
 </i></b>
-  
+
+At this juncture, with a thorough comprehension of our dataset and having completed the data cleaning process, we can initiate the construction of our multiple linear regression models. We will build four separate linear models and compare their performance. 
+
+For the first model, we will select all the variables from the original un-cleaned dataset. We may use this model as a base model to compare with.
+
 
 ```{r}
 lm1 <- lm(TARGET_WINS ~ ., data = trainDf)
 lm1Sum <- summary(lm1)
 ```
 
-For the second model we will use the cleaned data set with missing values imputed using the MICE method. In addition I will try to select variables which result in a better fit using my out intuition. 
+The second model will be based on the cleaned dataset without missing values and non-normal distributions. We chose variables TEAM_PITCHING_HR,  TEAM_PITCHING_BB, TEAM_BATTING_2B, TEAM_BATTING_3B, TEAM_FIELDING_E based on the intuition and the understanding of the data.
 
 ```{r}
 lm2 <- lm(formula = TARGET_WINS ~  
@@ -310,31 +298,31 @@ lm2 <- lm(formula = TARGET_WINS ~
    TEAM_FIELDING_E, data = cleanDf)
 lm2Sum <- summary(lm2)
 ```
-
+The third model will contain the variables from the cleaned dataset.
 ```{r}
 lm3 <- lm(TARGET_WINS ~ ., data=cleanDf)
-aicLm <- stepAIC(lm3, trace = FALSE)
-aicSum <- summary(aicLm)
+lm3step <- stepAIC(lm3, trace = FALSE)
+lm3sum <- summary(lm3step)
 ```
 
 For the fourth model we can run the imputed + features that were engineered (i.e. sqrt), and pick the best model.
 ```{r}
 lm4 <- lm(TARGET_WINS~., data=transformed_df)
-aicLm4 <- stepAIC(lm4, trace=FALSE)
-aicSum4 <- summary(aicLm4)
+lm4step <- stepAIC(lm4, trace=FALSE)
+lm4sum <- summary(lm4step)
 
 ```
 
 Below are the results $R^2$, residual standard error, and F-statistics of each model. Surprisingly the non-cleaned, non-imputed raw training data had the best fitting statistics. 
 
 ```{r}
-plot(compare_performance(lm1,lm2,aicLm,aicLm4, rank=T))
+plot(compare_performance(lm1,lm2,lm3step,lm4step, rank=T))
 ```
 
 ```{r}
-r <- c(lm1Sum$r.squared, lm2Sum$r.squared, aicSum$r.squared)
-rsse <- c(lm1Sum$sigma, lm2Sum$sigma, aicSum$sigma)
-adjusted.r <- c(lm1Sum$adj.r.squared, lm2Sum$adj.r.squared, aicSum$adj.r.squared)
+r <- c(lm1Sum$r.squared, lm2Sum$r.squared, lm3sum$r.squared)
+rsse <- c(lm1Sum$sigma, lm2Sum$sigma, lm3sum$sigma)
+adjusted.r <- c(lm1Sum$adj.r.squared, lm2Sum$adj.r.squared, lm3sum$adj.r.squared)
 modelDf <- data.frame(r,rsse,adjusted.r)
 kable(modelDf, caption = "Money Ball Dataset", digits = 2, format = "html", row.names = F) %>%
   kable_styling(
@@ -366,8 +354,8 @@ transformed_eval <- evalImputeDf |> mutate_each(funs(sqrt),
 ```{r}
 lm1Pred <- lm1 %>% predict(evalImputeDf)
 lm2Pred <- lm2 %>% predict(evalImputeDf)
-aicPred <- aicLm %>% predict(evalImputeDf)
-aicPred4 <- aicLm4 %>% predict(evalImputeDf)
+aicPred <- lm3step %>% predict(evalImputeDf)
+aicPred4 <- lm4step %>% predict(transformed_eval)
 ```
 
 ```{r}
@@ -412,13 +400,13 @@ check_model(lm2, check = c("vif","normality","linearity","homogeneity"))
 ### Model 3
 
 ```{r}
-check_model(aicLm, check = c("vif","normality","linearity","homogeneity"))
+check_model(lm3step, check = c("vif","normality","linearity","homogeneity"))
 ```
 
 ### Model 4
 
 ```{r}
-check_model(aicLm4, check = c("vif","normality","linearity","homogeneity"))
+check_model(lm4step, check = c("vif","normality","linearity","homogeneity"))
 ```
 ## Conclusion
 
