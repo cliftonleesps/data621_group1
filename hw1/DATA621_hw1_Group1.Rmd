@@ -1,10 +1,11 @@
 ---
 title: "Homework #1: Moneyball"
-output:
-  prettydoc::html_pretty:
-    theme: leonids
-    highlight: github
-    self_contained: no
+author: "Critical Thinking Group 1: Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
 editor_options: 
   chunk_output_type: console
 bibliography: references.bib
@@ -26,12 +27,10 @@ library(GGally)
 library(campfin)
 library(caret)
 library(yardstick)
+library(summarytools)
 knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 set.seed(1234)
 ```
-
-Critical Thinking Group 1 (Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver)
-
 
 <b><i>
 Notes / Questions
@@ -73,7 +72,7 @@ Notes / Questions
 ## Overview
 The use of historical statistics to predict future outcomes, particularly wins and losses, and identify opportunities for improving team or individual performance, has gained significant attention in professional sports. The aim of this analysis is to develop several models that can predict a baseball team's wins over a season based on team stats such as homeruns, strikeouts, base hits, and more. We will begin by examining the data for any issues, such as missing data, or outliers, and take the necessary measures to clean the data. We will subsequently create and evaluate three different linear models that forecast seasonal wins using the dataset, which includes both training and evaluation data. We will train the models using the main training data and then evaluate their performance against the evaluation data to determine their effectiveness. Finally, we will choose the best model that balances accuracy and simplicity for predicting seasonal wins.
 
-## 1. DATA EXPLORATION
+## 1. Date Exploration
 The baseball training dataset contains 2,276 observations of 17 variables detailing various teams' performances per year from 1871 to 2006. The description of the columns is shown below. Due to the relatively long period, we expect to see outliers and missing data as the league modified official game rules; these rule changes undoubtedly caused teams and players to change their tactics in response. Additionally, the number of single base hits is noticeably missing from the columns. However, we will derive this value as the number of other types of hits (doubles, triples, home runs) can be subtracted from total hits. Lastly, other columns representing game number (out of 162), inning number (1-9), and matching opponent columns would have been vastly useful for predictions. One last noticeable omission from the original dataset is of the number of single base hits. However, this value can possibly be calculated as a difference between other types of hits (doubles, triples, home runs) and total hits. 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ex-pr/DATA607/Project-1/a1_moneyball.png">
@@ -85,7 +84,7 @@ evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_grou
 ```
 
 
-#### 1.1 Summary Statistics
+### 1.1 Summary Statistics
 
 The table below shows us some valuable descriptive statistics for the training data. The data set contains all integers. We can see that many of the variables have a minimum of 0 but not all. The means and medians of each variable are all relatively close in value for each individual variable. This tells us that most data is free from extreme outliers as they tend to skew the mean relative to the median.
 
@@ -93,23 +92,41 @@ One interesting piece of information is the min/max of the `TARGET_WINS` variabl
 
 Also of note is the number of missing values from certain variables. Most notably the `TEAM_BATTING_HBP` (batters hit by pitch variable). With 91% of the data missing we will remove this variable from our dataset because there simply is not enough information to impute a sensible value. The column `TEAM_BASERUN_CS` (caught stealing) had 34% of the missing data, we may consider removing it later. The missing data for these two columns may be due to a change official rules or tactics before the modern era of baseball.
 
+```{r echo=FALSE}
+st_options(
+  dfSummary.custom.2 = 
+    expression(
+      paste(
+        "Q1 - Q3 :",
+        round(
+          quantile(column_data, probs = .25, type = 2, 
+                   names = FALSE, na.rm = TRUE), digits = 1
+        ), " - ",
+        round(
+          quantile(column_data, probs = .75, type = 2, 
+                   names = FALSE, na.rm = TRUE), digits = 1
+        )
+      )
+    )
+)
 
-```{r summary_chart, echo=FALSE}
-stats <- trainDf %>%
-  dplyr::select(-c(INDEX)) %>%
-  describe()
-displayDf <- as.data.frame(stats) %>%
-  dplyr::mutate(missing = 2276 - n) %>%
-  dplyr::select(-c(vars, n, trimmed, mad, range))
-kable(displayDf, digits = 2, format = "html", row.names = T) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover"),
-    full_width = F,
-    position = "center"
-  )
+
+print(
+  dfSummary(trainDf, 
+            varnumbers   = TRUE,
+            na.col       = FALSE,
+            style        = "grid",
+            plain.ascii  = FALSE,
+            freq.silent  = TRUE,
+            headings     = TRUE,
+            graph.magnif = .8,
+            tmp.img.dir  = "/tmp"),
+  method = "viewer"
+)
+
 ```
 
-#### 1.2 Distribution and Box Plots
+### 1.2 Distribution and Box Plots
 
 Next, we'll visually check for normal distributions and box plots in both the dependent and independent variables. The density plot below shows normalcy in most features except for extremely right skewed features such as hits allowed (PITCHING_H) or errors (FIELDING_E). Homeruns by batters (BATTING_HR) and strikeouts by batters (BATTING_SO) variables seem bimodal. It implies the existence of two distinct clusters within the baseball season data, where teams tended to score more in one of the clusters. \
 Box plots for these further show a high number of outliers exist outside of the interquartile ranges so their effects should be carefully considered and we may deal with non-unimodal distributions.
@@ -131,7 +148,7 @@ featurePlot(trainDf[,2:ncol(trainDf)], trainDf[,1], plot = "scatter", type = c("
 ```
 In general, while our graphs display certain intriguing connections among the variables, they also expose noteworthy problems with the data. For example, the dataset contains a team that has not won any games, which appears improbable. By checking the web data, we found that it actually happened 2 times: 1872 and 1873. Or that the pitching data contains numerous instances of 0's, several teams have 0 strikeouts by their pitchers over the season, which is highly improbable. Also, there is as a team achieving 20,000 strikeouts. There will be further steps to work with outliers and 0's.
 
-#### 1.3 Correlation Matrix
+### 1.3 Correlation Matrix
 
 Plotting the correlations between `TARGET_WINS` and the variables (excluding `INDEX` and `TEAM_BATTING_HBP`) we can see that very few variables are strongly correlated with the target variable. Columns with correlations close to zero are unlikely to offer significant insights into the factors that contribute to a team's victories.\
 
@@ -167,8 +184,7 @@ gg_miss_var(trainDf)
 ```
 
 
-## 2. DATA PREPARATION
-
+## 2. Data Preparation
 
 ### 2.1 Missing Data
 
@@ -193,11 +209,11 @@ droppedDf <- trainDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_HBP))
 
 We'll also derive a new column for single base hits derived from subtracting double, triples and home runs from the total number of hits.
 
-```{r single_base_hits}
+```{r single_base_hits, echo=FALSE}
 droppedDf <- droppedDf %>% mutate(TEAM_BATTING_1B = TEAM_BATTING_H - TEAM_BATTING_2B - TEAM_BATTING_3B - TEAM_BATTING_HR)
 ```
 For further work with NA's, we  create flags to suggest if a variable was missing.
-```{r}
+```{r echo=FALSE}
 columnNames <- names(droppedDf)
 droppedDf <- flag_na(droppedDf, columnNames)
 columnNames <- names(evalDf)
@@ -210,7 +226,7 @@ We check what impute method we use for each column. "pmm" is predictive mean mat
 
 Let's also take a look at the density plots pre and post-imputation to make sure densities look similar. Unfortunately, for `TEAM_BASERUN_SB`, `TEAM_BATTING_SO`, and `TEAM_FIELDING DP` they do not. But in the case of `TEAM_BATTING_SO` our distribution becomes roughly more normal, so it may be beneficial. For the `TEAM_BASERUN_SB` and `TEAM_BASERUN_CS` and `TEAM_FIELDING_DP` we may need to consider alternative methods.
 
-```{r}
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 imputeDf <- mice(droppedDf, m = 5, maxit = 50, seed = 123, printFlag = F)
 imputeDf$meth
 cleanDf <- complete(imputeDf)
@@ -222,7 +238,7 @@ densityplot(imputeDf)
 We should also try to transform some variables so that they may fit a more normal distribution, particularly `TEAM_BATTING_HR`, `TEAM_BATTING_SO`, `TEAM_PITCHING_HR`, but also `TEAM_PITCHING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and `TEAM_FIELDING_E`. Square rooting these variables helps, as does removing the skewness by reducing the low density ranges.
 The plots below compare the original distributions of non-normal variables and transformed ones. This is just one of the ways to handle the data that doesn't follow normal distribution. The  other way is to use Box-Cox transformations, we may try it after fitting the model.
 
-```{r}
+```{r echo=FALSE}
 # Reminder of our distributions
 m_imputed %>% ggplot(aes(x= value)) + 
     geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
@@ -255,23 +271,43 @@ visualize_transformed |> ggplot(aes(x= value)) +
 
 Our current dataset is devoid of any missing data values, and we have excluded the irrelevant `INDEX` and the `TEAM_BATTING_HBP` variables, which had 91% missing values. As shown in the table below, no missing data values exist anymore, and we can analyze how the summary statistics may have altered with the imputed data.
 
-```{r}
-stats <- transformed_df  %>%
-  describe()
-displayDf <- as.data.frame(stats) %>%
-  dplyr::mutate(missing = 2276 - n) %>%
-  dplyr::select(-c(vars, n, trimmed, mad, range))
-kable(displayDf, caption = "Money Ball Dataset", digits = 2, format = "html", row.names = T) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover"),
-    full_width = F,
-    position = "center"
-  )
+```{r echo=FALSE}
+
+st_options(
+  dfSummary.custom.2 = 
+    expression(
+      paste(
+        "Q1 - Q3 :",
+        round(
+          quantile(column_data, probs = .25, type = 2, 
+                   names = FALSE, na.rm = TRUE), digits = 1
+        ), " - ",
+        round(
+          quantile(column_data, probs = .75, type = 2, 
+                   names = FALSE, na.rm = TRUE), digits = 1
+        )
+      )
+    )
+)
+
+
+print(
+  dfSummary(transformed_df, 
+            varnumbers   = TRUE,
+            na.col       = FALSE,
+            style        = "grid",
+            plain.ascii  = FALSE,
+            freq.silent  = TRUE,
+            headings     = TRUE,
+            graph.magnif = .8,
+            tmp.img.dir  = "/tmp"),
+  method = "viewer"
+)
+
 ```
 
 
-
-### 3. BUILD MODELS
+### 3. Building models
 <b><i>
 Notes / Questions
 
@@ -285,28 +321,28 @@ At this juncture, with a thorough comprehension of our dataset and having comple
 For the first model, we will select all the variables from the original un-cleaned dataset. We may use this model as a base model to compare with.
 
 
-```{r}
+```{r echo=FALSE}
 lm1 <- lm(TARGET_WINS ~ ., data = trainDf)
 lm1Sum <- summary(lm1)
 ```
 
 The second model will be based on the cleaned dataset without missing values and non-normal distributions. We chose variables TEAM_PITCHING_HR,  TEAM_PITCHING_BB, TEAM_BATTING_2B, TEAM_BATTING_3B, TEAM_FIELDING_E based on the intuition and the understanding of the data.
 
-```{r}
+```{r echo=FALSE}
 lm2 <- lm(formula = TARGET_WINS ~  
     TEAM_PITCHING_HR + TEAM_PITCHING_BB  + TEAM_BATTING_2B + TEAM_BATTING_3B +
    TEAM_FIELDING_E, data = cleanDf)
 lm2Sum <- summary(lm2)
 ```
 The third model will contain the variables from the cleaned dataset.
-```{r}
+```{r echo=FALSE}
 lm3 <- lm(TARGET_WINS ~ ., data=cleanDf)
 lm3step <- stepAIC(lm3, trace = FALSE)
 lm3sum <- summary(lm3step)
 ```
 
 For the fourth model we can run the imputed + features that were engineered (i.e. sqrt), and pick the best model.
-```{r}
+```{r echo=FALSE}
 lm4 <- lm(TARGET_WINS~., data=transformed_df)
 lm4step <- stepAIC(lm4, trace=FALSE)
 lm4sum <- summary(lm4step)
@@ -315,11 +351,11 @@ lm4sum <- summary(lm4step)
 
 Below are the results $R^2$, residual standard error, and F-statistics of each model. Surprisingly the non-cleaned, non-imputed raw training data had the best fitting statistics. 
 
-```{r}
+```{r echo=FALSE}
 plot(compare_performance(lm1,lm2,lm3step,lm4step, rank=T))
 ```
 
-```{r}
+```{r echo=FALSE}
 r <- c(lm1Sum$r.squared, lm2Sum$r.squared, lm3sum$r.squared)
 rsse <- c(lm1Sum$sigma, lm2Sum$sigma, lm3sum$sigma)
 adjusted.r <- c(lm1Sum$adj.r.squared, lm2Sum$adj.r.squared, lm3sum$adj.r.squared)
@@ -333,14 +369,11 @@ kable(modelDf, caption = "Money Ball Dataset", digits = 2, format = "html", row.
 ```
 
 
-## 4. SELECT MODELS
+## 4. Selecting Models
 
-I will then use the evaluation data set to make predictions using the three models. In order to make the first and third prediction models work I will need to impute the missing values from the evaluation dataset. I will use the same method as I did for the training data set. If I do not add these missing values the prediction results will return no values for the rows that contain the missing values.
+Next, we apply the models to the evaluation dataset to make predictions. However, to ensure that the models 2-4 work properly, we will fill in the missing values in the evaluation data set using the same imputation method - mice, for model 4 we will also make necessary transformations. 
 
-
-Below is a table containing the predicted TARGET_WINS for each model. Some things that stand out at a first glance are that the first model which is producing negative value predictions. Obviously it isn't possible to have a negative amount of wins, so this model is not very useful. The second and third model which are both based on the cleaned and imputed data do not suffer from these issues of predicting large negative values. In general both the AIC generated model and the second model are producing similar results.
-
-```{r}
+```{r echo=FALSE}
 evalImputeDf <- mice(evalDf, m = 5, maxit = 50, seed = 123, printFlag = F)
 evalImputeDf <- complete(evalImputeDf)
 
@@ -350,15 +383,16 @@ transformed_eval <- evalImputeDf |> mutate_each(funs(sqrt),
                    baserun_cs_sqrt = TEAM_BASERUN_CS,
                    pitching_hr_sqrt = TEAM_PITCHING_HR)
 ```
-
-```{r}
+**CHANGE SINCE THE MODELS WILL BE DIFFERENT**
+The table below contains the predicted `TARGET_WINS` for each model. Upon initial examination, it is noticeable that the first model is generating predictions with negative values. This is not a realistic outcome as it is impossible to have a negative number of wins. Therefore, this model is not particularly valuable. However, the second and third models, which utilize cleaned and imputed data, do not encounter this problem of producing large negative predictions. Generally, both the AIC-generated model and the second model are yielding comparable results.
+```{r echo=FALSE}
 lm1Pred <- lm1 %>% predict(evalImputeDf)
 lm2Pred <- lm2 %>% predict(evalImputeDf)
 aicPred <- lm3step %>% predict(evalImputeDf)
 aicPred4 <- lm4step %>% predict(transformed_eval)
 ```
 
-```{r}
+```{r echo=FALSE}
 predsDf <- evalImputeDf %>% 
   mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred, aic4 = aicPred4) %>%
   dplyr::select(c(lm1, lm2, aic, aic4))
@@ -373,7 +407,7 @@ predsDf <- evalImputeDf %>%
 
 We can also see when plotting the predictions that there doesn't seem to be much obvious difference between the models aside from the clearly outrageous outliers generated by the first model, and the 4th model showing a slightly tighter range in wins.
 
-```{r}
+```{r echo=FALSE}
 xT <- evalImputeDf %>% 
   mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred, aic4 = aicPred4)
 par(mfrow=c(2,2))
@@ -385,29 +419,30 @@ plot(1:nrow(xT), xT$aic4, xlab="AIC4", ylab="Wins", title="AIC4")
 
 We can the graphs below to check the validity of our models. All models suffer from a lack of linearity which indicates that a linear regression model may not be the greatest technique for predicting values from this data with the given variables. The models that included all the most variables (model 1, model 3, model 4), suffer from co-linearity issues.
 
-### Model 1
+**Model 1**
 
-```{r}
+```{r echo=FALSE}
 check_model(lm1, check = c("vif","normality","linearity","homogeneity"))
 ```
 
-### Model 2
+**Model 2**
 
-```{r}
+```{r echo=FALSE}
 check_model(lm2, check = c("vif","normality","linearity","homogeneity"))
 ```
 
-### Model 3
+**Model 3**
 
-```{r}
+```{r echo=FALSE}
 check_model(lm3step, check = c("vif","normality","linearity","homogeneity"))
 ```
 
-### Model 4
+**Model 4**
 
-```{r}
+```{r echo=FALSE}
 check_model(lm4step, check = c("vif","normality","linearity","homogeneity"))
 ```
+
 ## Conclusion
 
 
