@@ -461,21 +461,30 @@ Overall none of the models that I was able to generate instill much confidence i
 The second and third models both had significantly lower $R^2$ scores which indicated a poor fit overall. In addition, none of the models performed well when checked for linearity or homogeneity of variance. While the second model did not suffer from colinearity issues the other two models did.
 
 
+## Appendix A: Lahman’s Baseball Database
 
-## Appendix A
+Despite significant efforts to compensate for poor data quality, the resulting models are poor predictors of win totals. Moreover, the poor data quality is inconsistent with the overall state of baseball statistics. When it comes to the major sports, baseball has the most mature statistics available. Therefore finding better data is the best course of action for developing a better predictive model. 
 
-Even with significant efforts to compensate for poor data quality the resulting models are poor predictors of win totals. Finding better data is the best course of action for developing a better predictive model.
+We were able to locate a cleaner version of the same data set provided in the class. The Lahman's Baseball Database includes the same variables as the sample database with fewer errors and additional reference data that would allow us to connect the database to other sources. 
 
 https://www.seanlahman.com/baseball-archive/statistics/
 
 
+
 ```{r}
+
 teamDF <- evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/Teams.csv")
+
 teamDF <- teamDF %>% dplyr::select('yearID','lgID','teamID','franchID','divID','Rank','G','W','L',
                          'R','AB','H','X2B','X3B','HR','BB','SO','SB','CS','HBP','SF','RA','ER','ERA',
                          'CG','SHO','SV','IPouts','HA','HRA','BBA','SOA','E','DP','FP','name')
+
+
+
+
 # normalize data 162 games
 teamDF$gFactor <-  162 / (teamDF$W + teamDF$L)
+
 teamDF$TARGET_WINS <-  teamDF$gFactor * teamDF$W
 teamDF$TEAM_BATTING_H <- teamDF$gFactor * teamDF$H
 teamDF$TEAM_BATTING_2B  <- teamDF$gFactor * teamDF$X2B
@@ -492,158 +501,427 @@ teamDF$TEAM_PITCHING_BB <- teamDF$gFactor * teamDF$BBA
 teamDF$TEAM_PITCHING_SO <- teamDF$gFactor * teamDF$SOA
 teamDF$TEAM_FIELDING_E  <- teamDF$gFactor * teamDF$E
 teamDF$TEAM_FIELDING_DP <- teamDF$gFactor * teamDF$DP 
+
+
 # Pythagorean winning percentage
 #  (runs scored ^ 2) / [(runs scored ^ 2) + (runs allowed ^ 2)]
 teamDF$pythPercent <- (teamDF$R^2) / ((teamDF$R^2) + (teamDF$RA^2))
-teamAdjDF <- teamDF %>% dplyr::select("TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B","TEAM_BATTING_3B","TEAM_BATTING_HR",
-                "TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB","TEAM_BASERUN_CS",
-                "TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR","TEAM_PITCHING_BB",
-                "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP")
+
+
+
+```
+
+
+A significant advantage of Lahman's data set over the data set provided in class is that it includes information about the year and the team. This data is valuable when considering how baseball has changed over the years. The modern era in baseball is often delineated by the turn of the century. However, when looking at the past 120 years of baseball history, it is easy to pinpoint rule changes, evolutions in playing strategy, and league structure that have fundamentally impacted the game.  
+
+When comparing statistics across time, it is common to use many of the breakdowns below to add context to the analysis:
+
+- The Dead Ball Era (1901 - 1920)
+- World War 2 (1941 - 1945)
+- Segregation Era (1901 - 1947ish)
+- Post-War Era/Yankees Era (1945 - late 50s/early 60s) 
+- Westward Expansion (1953 - 1961)
+- Dead Ball 2 (The Sixties, roughly)
+- Designated Hitter Era (1973 - current, AL only) 
+- Free Agency/Arbitration Era (1975 - current) 
+- Steroid Era (unknown, but late 80s - 2005 seems likely) 
+- Wild Card Era (1994 - current)
+
+Surveying these periods would suggest that a more granular model has the potential to perform better. 
+
+Although we could have chosen any number of the time periods above, exploring the statistical outliers highlights that many of these values correspond to the pre-1969 period. This delineation has some historical support. As Jayson Stark of ESPN argues in this article (https://www.espn.com/mlb/columns/story?columnist=stark_jayson&id=2471349) In 1969 the MLB underwent several rule changes and changes to the league structure that impacted win totals and team statistics. 1969 was the first year of division play and the expanded postseason. The Pitcher's Mound was lowered five inches. The Strike zone shrinks. Five-person rotations kicking in. The save was invented. And more expansion to the unbalanced schedules. 
+
+Thus using 1900 as the beginning of the modern era and 1969 as an additional breakpoint, the dataset can be divided into three segments. The density profiles for the predictor variables approach a normal distribution when grouped by the three segments we identified. To support data exploration, we added a era_cat field to the data set.
+
+
+```{r}
+
+teamDF <- teamDF %>% mutate(era_cat = case_when(yearID >= 1969 ~ '1969+',
+                           yearID >= 1900 & yearID < 1969 ~ '1900-1969',
+                           yearID < 1900 ~ '1900-'))
+
 ```
 
 
 
 ```{r}
-tDF <- teamAdjDF 
-t = preProcess(tDF, c("BoxCox", "center", "scale"))
-tDF <- data.frame(predict(t, tDF))
-teamAdjDF$BC_TEAM_BASERUN_SB <- tDF$TEAM_BASERUN_SB
-teamAdjDF$BC_TEAM_BATTING_H <- tDF$TEAM_BATTING_H
-teamAdjDF$BC_TEAM_FIELDING_E <- tDF$TEAM_FIELDING_E
-```
+
+teamAdjDF <- teamDF %>% dplyr::select("yearID","era_cat","TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B",
+                "TEAM_BATTING_3B",
+                "TEAM_BATTING_HR","TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB",
+                "TEAM_BASERUN_CS","TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR",
+                "TEAM_PITCHING_BB", "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP")
 
 
+random_sample <- createDataPartition(teamAdjDF$TARGET_WINS,p = 0.8, list = FALSE)
 
-
-```{r}
-random_sample <- createDataPartition(teamAdjDF$TARGET_WINS,
-								p = 0.8, list = FALSE)
 trainingTeam_df <- teamAdjDF[random_sample, ]
 testingTeam_df <- teamAdjDF[-random_sample, ]
+
+
 ```
 
 
 
 
+In general the Lahman's data set contains fewer data gaps and the variables are more consistently distributed. There are some missing values in the data set including the Caught Stealing (CS/TEAM_BASERUN_CS) variable is missing 27.9%; the Batters Hit by Pitch (HBP/TEAM_BATTING_HBP) variable is missing 38.8%; and the Sacrifice Flies (SF) variable is missing 51.6% of the values. 
+
+Most of the variables in the data set show some level of skewness, with the following variables having a Kurtosis measure of greater than 3, TEAM_BATTING_H, TEAM_BASERUN_SB, TEAM_BASERUN_CS, TEAM_PITCHING_H, and TEAM_FIELDING_E
+
+The Lahman data set contains several variables with bimodal distributions, including, TEAM_BATTING_HR, TEAM_BATTING_SO, TEAM_BATTING_HR, and TEAM_PITCHING_SO. 
+
+
+```{r}
+
+
+r_num <- nrow(teamDF)
+
+stats <- teamDF %>% describe()
+
+displayDf <- as.data.frame(stats) %>%
+  dplyr::mutate(missing = r_num - n,
+                missing_per = (r_num - n) / r_num *100
+                ) %>%
+  dplyr::select(-c(vars, n, trimmed, mad, range))
+kable(displayDf, digits = 2, format = "html", row.names = T) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = F,
+    position = "center"
+  )
+
+
+```
+
 
 
 
 ```{r}
+
+m_df <- teamDF[random_sample, ]  %>% 
+        dplyr::select("TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B","TEAM_BATTING_3B",
+                "TEAM_BATTING_HR","TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB",
+                "TEAM_BASERUN_CS","TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR",
+                "TEAM_PITCHING_BB", "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP") %>% melt() 
+
+m_df %>% ggplot(aes(x= value)) + 
+      geom_density(color='#023020', fill='gray') + 
+      facet_wrap(~variable, scales = 'free',  ncol = 4) + 
+      theme_bw() +
+      labs(
+          title = 'Variable Density Plots'
+      )
+```
+
+
+
+
+When we group the statistics by the three categories presented earliers, we see a much cleaner density plot across all variables. There are few signs of bimodal distributions, and the skewness of individual variables is reduced greatly.
+
+```{r}
+
+df0 <- teamDF[random_sample, ] %>% filter(era_cat == '1969+')
+
+m_df <- df0 %>% 
+        dplyr::select("TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B","TEAM_BATTING_3B",
+                "TEAM_BATTING_HR","TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB",
+                "TEAM_BASERUN_CS","TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR",
+                "TEAM_PITCHING_BB", "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP") %>% melt() 
+
+m_df %>% ggplot(aes(x= value)) + 
+      geom_density(color='#023020', fill='gray') + 
+      facet_wrap(~variable, scales = 'free',  ncol = 4) + 
+      theme_bw() +
+      labs(
+          title = 'Variable Density Plots (1969+)'
+      )
+  
+
+
+```
+
+
+
+
+The training data set exibits the following characteristics.
+
+
+```{r}
+
+r_num <- nrow(trainingTeam_df)
+
+stats <- trainingTeam_df %>% describe()
+
+displayDf <- as.data.frame(stats) %>%
+  dplyr::mutate(missing = r_num - n,
+                missing_per = (r_num - n) / r_num *100
+                ) %>%
+  dplyr::select(-c(vars, n, trimmed, mad, range))
+
+kable(displayDf, digits = 2, format = "html", row.names = T) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = F,
+    position = "center"
+  )
+
+```
+
+
+
+
+```{r}
+
 m_df <- trainingTeam_df %>% melt() 
+
 m_df %>% ggplot(aes(x= value)) + 
     geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+
 m_df %>% ggplot(aes(x = value)) +
   geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
   facet_wrap(vars(variable),scales = "free", ncol = 4)
+
 ```
 
 
 
 ```{r}
+
 rcore <- rcorr(as.matrix(trainingTeam_df %>% dplyr::select(where(is.numeric))))
 coeff <- rcore$r
-corrplot(coeff, tl.cex = .7 , method = 'number')
+corrplot(coeff, tl.cex = .7 , method = 'pie')
+
 ```
 
 
+
+
+
+### DATA PREPARATION 
+
+The use of the era_cat variable allows us to group the data set into 3 categories that variables that approach normal distribution. 
+
+Since segmenting the data set using the era_cat variable creates 3 categories of variables that approach the normal distribution, we will focus our data preparation step on missing values. The documentation for MICE package recommends that a 5% threshold should be observed for safely imputing missing values. Based on this rule of thumb we will drop the 'TEAM_BASERUN_CS' and the 'TEAM_BATTING_HBP' variables.
+
+The remaining variables with missing data ('TEAM_BATTING_BB','TEAM_BATTING_SO' and 'TEAM_BASERUN_SB') will be impuned using the MICE package. Several methods can be used but for simplicity we selected m=5 the default method.
+
+
 ```{r}
+
+trainingTeam_df <- trainingTeam_df %>% dplyr::select(-c(TEAM_BASERUN_CS,TEAM_BATTING_HBP))
+testingTeam_df <- testingTeam_df %>% dplyr::select(-c(TEAM_BASERUN_CS,TEAM_BATTING_HBP))
+
+```
+
+
+
+```{r}
+
 imputeDf <- mice(trainingTeam_df, m = 5, maxit = 50, seed = 123, printFlag = F)
 imputeDf$meth
 trainingTeam_df <- complete(imputeDf)
 m_imputed <- melt(trainingTeam_df)
 densityplot(imputeDf)
+
+```
+
+
+
+### Build Model
+
+The first model includes all the variables from the original data set with the exception of the yearID. It could be argued that year might have an impact on the numbers, however we are accounting for year with the era_cat variable. The initial model has an $AdjR^2 = 0.8078$, and the model selected by stepAIC includes the same variables and has the same $AdjR^2=8078$.
+
+
+```{r}
+
+lmA1 <- lm(TARGET_WINS ~ . -yearID, data = trainingTeam_df, by=era_cat)
+summary(lmA1)
+
+lmA1.step <- stepAIC(lmA1, trace = FALSE, by=era_cat)
+summary(lmA1.step)
+
+```
+
+
+The TEAM_BATTING_3B variable was dropped due to a low p-values, giving us the final model with an $AdjR^2=0.8078$. 
+
+```{r}
+
+lmA1.final <- update(lmA1.step, . ~ . -TEAM_BATTING_3B)
+summary(lmA1.final)
+
 ```
 
 
 
 
-```{r}
-lmA1 <- lm(TARGET_WINS ~ . -TEAM_BASERUN_SB - TEAM_BATTING_H - TEAM_FIELDING_E, data = trainingTeam_df)
-lmA1Sum <- summary(lmA1)
-lmA1Sum
-```
+There are a number of issues with the model diagnostics. The Linearity, and QQ plots show deviation from the straight line at the boundaries. In addition, the reference line for the Homogeneity of Variance graph is not flat. This indicates that residual variance is not consistent across the model values. Further exploration could be conducted to see if there are smaller date ranges and prediction ranges that generate a model that better aligns with the linear regression assumptions. 
 
 
 ```{r}
-lmA1.step <- stepAIC(lmA1, trace = FALSE)
-lmA1Sum.step <- summary(lmA1.step)
-lmA1Sum.step
+
+check_model(lmA1.final, check=c('ncv','qq','homogeneity','outliers'))
+
 ```
 
 
 
-```{r}
-check_model(lmA1.step, check = c("vif","normality","linearity","homogeneity"))
-```
+### PREDICT 
 
-
+The next step is to use the selected model to predict the testing data set. The Yardstick package was used to calculate model performance, including the $R^2$. With an $R^2=0.8318$ the performance on the testing data set is consistent with the model summary. In the Residual vs. TARGET_WINS graph, there appears to be wins range between 60 and 110 that generates more accurate forecasts. However, it should be noted that the residuals appear to drift downwards. TARGET_WINS less than the mean are overestimated and TARGET_WINS greater than the mean is over estimated. 
 
 
 ```{r}
+
 imputeDf <- mice(testingTeam_df, m = 5, maxit = 50, seed = 123, printFlag = F)
 imputeDf$meth
 testingTeam_df <- complete(imputeDf)
 m_imputed <- melt(testingTeam_df)
 densityplot(imputeDf)
+
+
 ```
 
 
 
-
 ```{r}
-lmA1Pred.step <- lmA1.step %>% predict(testingTeam_df)
+
+lmA1Pred.final <- lmA1.final %>% predict(testingTeam_df)
+
 ```
 
 
 
-
-
 ```{r}
+
+
 multi_metric <- metric_set(mape, smape, mase, mpe, rmse, rsq)
-m <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmA1Pred.step)
+m <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmA1Pred.final)
+
+kable(m, digits = 4, format = "html", row.names = T) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = F,
+    position = "center"
+  )
+
 ```
 
 
 
 
+```{r}
+
+n <- nrow(testingTeam_df)
+x <- testingTeam_df$TARGET_WINS
+e <- lmA1Pred.final - testingTeam_df$TARGET_WINS 
+
+
+plot(x, e,  
+     xlab = "wins", 
+     ylab = "residuals",
+     bg = "steelblue", 
+     col = "darkgray", cex = 1.5, pch = 21, frame = FALSE)
+abline(h = 0, lwd = 2)
+for (i in 1 : n) 
+  lines(c(x[i], x[i]), c(e[i], 0), col = "red" , lwd = 1)
+
+
+```
 
 
 
+## Appendix B: Pythagorean Model
 
-## Appendix B:
+Bill James developed the Pythagorean winning percentage. The concept strives to calculate the number of games a team should win based on the total offense and the number of runs allowed. Since this model includes total runs scored vs. total runs allowed the expectation is that this model will be a good predictor of a team's wins in a given season. 
 
+$Win Percentage = (Runs Scored)^2 / [ (Runs Scored)^2 + (Runs Allowed)^2]$
 
 
 ```{r}
+
 random_sample <- createDataPartition(teamDF$TARGET_WINS, p = 0.8, list = FALSE)
+
 trainingTeam_df <- teamDF[random_sample, ]
 testingTeam_df <- teamDF[-random_sample, ]
+
 ```
 
 
 
 
+As we expected, the Pythagorean model performs well $Adj R^2$ = 0.9112. However, this linear model differs slightly from the formal definition since it includes an intercept of 5.21 and a coefficient for the Pythagorean factor of 151.39. The formal definition of the model would have an intercept of 0 and a coefficient of 162. 
 
 ```{r}
+
 lmp <- lm(TARGET_WINS ~ pythPercent, data = trainingTeam_df)
 summary(lmp)
+
+
 ```
 
 
+
+The diagnostic plots show residuals that are normally distributed with a linear relationship to the fitted values. The homogeneity of variance is curved, indicating that the variance of residuals is not consistent. 
+
 ```{r}
-check_model(lmp, check = c("vif","normality","linearity","homogeneity"))
+
+check_model(lmp, check=c('ncv','qq','homogeneity','outliers'))
+
 ```
 
 
+The next step is to use the Pythagorean Model to predict the testing data set. The Yardstick package was used to calculate model performance, including the $R^2$.  With an $R^2=0.9131$ the performance on the testing data set is consistent with the model summary. In the Residual vs. TARGET_WINS graph there appears to be a wins range between 50 and 130 that generates more accurate forecasts.  
+
 ```{r}
+
+
 lmpPred <- lmp %>% predict(testingTeam_df)
+hist(lmpPred)
+
+
 ```
 
 
 
 ```{r}
+
 m1 <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmpPred)
+
+kable(m1, digits = 4, format = "html", row.names = T) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover"),
+    full_width = F,
+    position = "center"
+  )
+
 ```
+
+
+ 
+
+```{r}
+
+n <- nrow(testingTeam_df)
+x <- testingTeam_df$TARGET_WINS
+e <- lmpPred - testingTeam_df$TARGET_WINS 
+
+
+plot(x, e,  
+     xlab = "wins", 
+     ylab = "residuals", 
+     bg = "steelblue", 
+     col = "darkgray", cex = 1.5, pch = 21, frame = FALSE)
+abline(h = 0, lwd = 2)
+for (i in 1 : n) 
+  lines(c(x[i], x[i]), c(e[i], 0), col = "red" , lwd = 1)
+
+
+```
+
+
+Unsurprising the Pythagorean Model performs well when it comes to win projections. There is clear relationship between the total yearly run differential and the number of games won. It is a simple model but efficient. 
 
 
 
