@@ -46,7 +46,7 @@ st_css()
    style = 'grid',
    dfSummary.style ='grid',
    freq.silent  = TRUE,
-   headings     = TRUE,
+   headings     = FALSE,
    tmp.img.dir  = "./tmp",
    dfSummary.custom.1 =
      expression(
@@ -73,37 +73,9 @@ source('./hw1/Functions.R', local = knitr::knit_global())
 <b><i>
 Notes / Questions
 
-- added boxplot and density plot; thanks!
-- do we want to use a corr plot with the numbers; I changed it to circles for presentation purposes.
-  - there are a couple of variable with high correlations that we might want to explore
-  - Batting_hr - Pitching_hr = .97 - this is VERY, VERY SUSPICIOUS. Do most baseball games end with similar runs for both teams? Aren't there many one-sided wins?
-  - Batting_hr - Batting_so = .73 - this might be plausible. Some teams swing for the fences instead of trying to get on base; I'm looking at you, Chicago Cubs!
   - what is the cutoff in correlation that will require adjustment - good question. Above 0.9? Most baseball stats measure distinct actions and occurances. 0.9 correlations show a serious data problem or something else is fishy.
-  
   - Review the distributions plots for each attribute focus on non normally distributed attributes - please read the initial attempt below.
-  - Box plots show outliers discuss valid data based on https://www.baseball-reference.com/leagues/majors/bat.shtml
-
-  - Given the number of games in a year I don't believe that 0 is a valid measurement for most of the attributes
-  - use MICE to fill missing values vs Median or Mean
   
-  - <del>add feature TEAM_1B? By Cliff</del>
-  - define range for this stats. By David
-  
-|             - TEAM_BATTING_BB 12.5 ≤ 512.4 ≤ 878.4 ==> No zero values
-|             - TEAM_BATTING_SO 44.2 ≤ 812 ≤ 1641.6 ==> No zero values
-|             - TEAM_BASERUN_SB 3.7 ≤ 97 ≤ 697.2 ==> No zero values
-|             - TEAM_BASERUN_CS 8.1 ≤ 45.2 ≤ 200.9 ==> No zero values
-|             - TEAM_PITCHING_BB 21.7 ≤ 515 ≤ 881.4 ==> No zero values
-
-|             - TEAM_FIELDING_DP 0 ≤ 145 ≤ 228.3 ==> actuall is a zero value
-
-|             - TEAM_PITCHING_H ==> actual distribution is more standard
-  
-  - try to build model around pythagorean winning per
-  - 1: no transformations, 2 - manual transformations, 3- box-cox
-  - zeroes to NA, apply mice after
-  - outliers: check the real data, maybe substitute with median/mean
-
 </i></b>
 
 
@@ -132,10 +104,12 @@ Also of note is the number of missing values from certain variables. Most notabl
 
 ```{r echo=FALSE}
 
+m_df <- trainDf %>% dplyr::select(-c(INDEX))
+
 print(
   dfSummary(trainDf, 
             varnumbers   = TRUE,
-            na.col       = FALSE,
+            na.col       = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
   method = "render"
@@ -242,10 +216,10 @@ evalDf <- flag_na(evalDf, columnNames)
 
 
 
-### drop outliers
+### 2.2 Drop Outliers
 
 
-```{r}
+```{r drop outliers}
 
 columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATTING_HR',
                  'TEAM_BATTING_BB','TEAM_BATTING_SO','TEAM_BASERUN_SB','TEAM_BASERUN_CS',
@@ -258,7 +232,7 @@ droppedDf <- filterOutliers(filterDf, droppedDf, columnNames)
 print(
   dfSummary(droppedDf, 
             varnumbers   = TRUE,
-            na.col       = FALSE,
+            na.col       = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
   method = "render"
@@ -327,7 +301,7 @@ Our current dataset is devoid of any missing data values, and we have excluded t
 print(
   dfSummary(transformed_df, 
             varnumbers   = TRUE,
-            na.col       = FALSE,
+            na.col       = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
   method = "render")
@@ -335,7 +309,7 @@ print(
 ```
 
 
-### 3. Building models
+## 3. Building models
 <b><i>
 Notes / Questions
 
@@ -367,7 +341,7 @@ lm2Sum <- summary(lm2)
 
 
 
-The third model will contain the variables from the cleaned dataset with outliers omitted using historic data from the Lahman's Baseball Database. 
+The third model will contain the variables from the cleaned dataset with outliers omitted using historic data from the Lahman's Baseball Database. In baseballs early history very few games were played thus the calculation used to normalize the statistics to a 162 game season creates outliers. The min and max from the modern era (post 1900) are used to filter outliers.
 
 
 ```{r echo=FALSE}
@@ -638,7 +612,7 @@ The Lahman data set contains several variables with bimodal distributions, inclu
 print(
   dfSummary(teamDF, 
             varnumbers   = TRUE,
-            na.col       = FALSE,
+            na.col       = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
   method = "render")
@@ -707,7 +681,7 @@ The training data set exibits the following characteristics.
 print(
   dfSummary(trainingTeam_df, 
             varnumbers   = TRUE,
-            na.col       = FALSE,
+            na.col       = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
   method = "render")
