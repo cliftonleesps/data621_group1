@@ -31,13 +31,41 @@ library(campfin)
 library(caret)
 library(yardstick)
 library(summarytools)
-knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, results="asis")
+library(sjPlot)
+knitr::opts_chunk$set(echo = F, warning = F, message = F, results="asis")
 set.seed(1234)
 ```
 
 
 ```{r}
+
+st_css()
+
+ st_options(
+   plain.ascii = FALSE,
+   style = 'grid',
+   dfSummary.style ='grid',
+   freq.silent  = TRUE,
+   headings     = TRUE,
+   tmp.img.dir  = "./tmp",
+   dfSummary.custom.1 =
+     expression(
+       paste(
+         "Q1 - Q3 :",
+         round(
+           quantile(column_data, probs = .25, type = 2,
+                    names = FALSE, na.rm = TRUE), digits = 1
+         ), " - ",
+         round(
+           quantile(column_data, probs = .75, type = 2,
+                    names = FALSE, na.rm = TRUE), digits = 1
+         )
+       )
+     )
+ )
+
 source('./hw1/Functions.R', local = knitr::knit_global())
+ 
 ```
 
 
@@ -103,32 +131,11 @@ One interesting piece of information is the min/max of the `TARGET_WINS` variabl
 Also of note is the number of missing values from certain variables. Most notably the `TEAM_BATTING_HBP` (batters hit by pitch variable). With 91% of the data missing we will remove this variable from our dataset because there simply is not enough information to impute a sensible value. The column `TEAM_BASERUN_CS` (caught stealing) had 34% of the missing data, we may consider removing it later. The missing data for these two columns may be due to a change official rules or tactics before the modern era of baseball.
 
 ```{r echo=FALSE}
-st_options(
-  dfSummary.custom.2 = 
-    expression(
-      paste(
-        "Q1 - Q3 :",
-        round(
-          quantile(column_data, probs = .25, type = 2, 
-                   names = FALSE, na.rm = TRUE), digits = 1
-        ), " - ",
-        round(
-          quantile(column_data, probs = .75, type = 2, 
-                   names = FALSE, na.rm = TRUE), digits = 1
-        )
-      )
-    )
-)
-
 
 print(
   dfSummary(trainDf, 
             varnumbers   = TRUE,
             na.col       = FALSE,
-            style        = "grid",
-            plain.ascii  = FALSE,
-            freq.silent  = TRUE,
-            headings     = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
   method = "render"
@@ -142,14 +149,16 @@ Next, we'll visually check for normal distributions and box plots in both the de
 Box plots for these further show a high number of outliers exist outside of the interquartile ranges so their effects should be carefully considered and we may deal with non-unimodal distributions.
 
 ```{r density_boxplot, echo=FALSE, warning=FALSE, message=FALSE, fig.height=8, fig.width=10}
-m_df <- trainDf%>%
-  dplyr::select(-c(INDEX)) %>%
-  melt() 
+
+m_df <- trainDf %>% dplyr::select(-c(INDEX)) %>% melt() 
+
 m_df %>% ggplot(aes(x= value)) + 
     geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
 m_df %>% ggplot(aes(x = value)) +
   geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
   facet_wrap(vars(variable),scales = "free", ncol = 4)
+
 ```
 
 Lastly, the function featurePlot() will show the relationship between independent variables and the target variable `TARGET_WINS`. 
@@ -246,24 +255,33 @@ columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATT
 filterDf <- loadLahmanShortData() %>% filter(yearID >= 1900)
 droppedDf <- filterOutliers(filterDf, droppedDf, columnNames)
 
-printStats(droppedDf)
-#printDensityPlot(droppedDf)
+print(
+  dfSummary(droppedDf, 
+            varnumbers   = TRUE,
+            na.col       = FALSE,
+            graph.magnif = .8,
+            tmp.img.dir  = "/tmp"),
+  method = "render"
+)
+
 
 ```
 
 
 
 To to impute the missing values in the `trainDf` data, the `mice` library is used. To utilize MICE, one must make the assumption that the missing values are missing at random, indicating that the missingness can be explained by variables that have complete information. The MICE algorithm then performs several iterations over the data, as suggested by its name, and generates data to complete the missing values.
-We check what impute method we use for each column. "pmm" is predictive mean matching, replacing missing data with column means.
+We check what impute method we use for each column. `pmm` is predictive mean matching, replacing missing data with column means.
 
 Let's also take a look at the density plots pre and post-imputation to make sure densities look similar. Unfortunately, for `TEAM_BASERUN_SB`, `TEAM_BATTING_SO`, and `TEAM_FIELDING DP` they do not. But in the case of `TEAM_BATTING_SO` our distribution becomes roughly more normal, so it may be beneficial. For the `TEAM_BASERUN_SB` and `TEAM_BASERUN_CS` and `TEAM_FIELDING_DP` we may need to consider alternative methods.
 
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
+
 imputeDf <- mice(droppedDf, m = 5, maxit = 50, seed = 123, printFlag = F)
-imputeDf$meth
+#imputeDf$meth
 cleanDf <- complete(imputeDf)
 m_imputed <- melt(cleanDf)
 densityplot(imputeDf)
+
 ```
 
 ### 2.2 Transform non-normal variables
@@ -305,36 +323,14 @@ Our current dataset is devoid of any missing data values, and we have excluded t
 
 ```{r echo=FALSE}
 
-st_options(
-  dfSummary.custom.2 = 
-    expression(
-      paste(
-        "Q1 - Q3 :",
-        round(
-          quantile(column_data, probs = .25, type = 2, 
-                   names = FALSE, na.rm = TRUE), digits = 1
-        ), " - ",
-        round(
-          quantile(column_data, probs = .75, type = 2, 
-                   names = FALSE, na.rm = TRUE), digits = 1
-        )
-      )
-    )
-)
-
 
 print(
   dfSummary(transformed_df, 
             varnumbers   = TRUE,
             na.col       = FALSE,
-            style        = "grid",
-            plain.ascii  = FALSE,
-            freq.silent  = TRUE,
-            headings     = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
-  method = "render"
-)
+  method = "render")
 
 ```
 
@@ -360,7 +356,7 @@ lm1Sum <- summary(lm1)
 
 ```
 
-The second model will be based on the cleaned dataset without missing values and non-normal distributions. We chose variables TEAM_PITCHING_HR,  TEAM_PITCHING_BB, TEAM_BATTING_2B, TEAM_BATTING_3B, TEAM_FIELDING_E based on the intuition and the understanding of the data.
+The second model will be based on the cleaned dataset without missing values and non-normal distributions. We chose variables `TEAM_PITCHING_HR`,  `TEAM_PITCHING_BB`, `TEAM_BATTING_2B`, `TEAM_BATTING_3B`, `TEAM_FIELDING_E` based on the intuition and the understanding of the data.
 
 ```{r echo=FALSE}
 lm2 <- lm(formula = TARGET_WINS ~  
@@ -377,10 +373,11 @@ The third model will contain the variables from the cleaned dataset with outlier
 ```{r echo=FALSE}
 
 lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedDf, by=na_flag)
-summary(lm3)
 lm3step <- stepAIC(lm3, trace = FALSE)
 lm3sum <- summary(lm3step)
-lm3sum
+tab_model(lm3step)
+
+
 
 ```
 
@@ -634,51 +631,19 @@ Most of the variables in the data set show some level of skewness, with the foll
 The Lahman data set contains several variables with bimodal distributions, including, TEAM_BATTING_HR, TEAM_BATTING_SO, TEAM_BATTING_HR, and TEAM_PITCHING_SO. 
 
 
-```{r}
-
-
-r_num <- nrow(teamDF)
-
-stats <- teamDF %>% describe()
-
-displayDf <- as.data.frame(stats) %>%
-  dplyr::mutate(missing = r_num - n,
-                missing_per = (r_num - n) / r_num *100
-                ) %>%
-  dplyr::select(-c(vars, n, trimmed, mad, range))
-kable(displayDf, digits = 2, format = "html", row.names = T) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover"),
-    full_width = F,
-    position = "center"
-  )
-
-
-```
-
-
-
-
-
-
 
 ```{r}
-
-
 
 
 print(
   dfSummary(teamDF, 
             varnumbers   = TRUE,
             na.col       = FALSE,
-            style        = "grid",
-            plain.ascii  = FALSE,
-            freq.silent  = TRUE,
-            headings     = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
-  method = "render"
-)
+  method = "render")
+
+
 ```
 
 
@@ -738,22 +703,14 @@ The training data set exibits the following characteristics.
 
 ```{r}
 
-r_num <- nrow(trainingTeam_df)
 
-stats <- trainingTeam_df %>% describe()
-
-displayDf <- as.data.frame(stats) %>%
-  dplyr::mutate(missing = r_num - n,
-                missing_per = (r_num - n) / r_num *100
-                ) %>%
-  dplyr::select(-c(vars, n, trimmed, mad, range))
-
-kable(displayDf, digits = 2, format = "html", row.names = T) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover"),
-    full_width = F,
-    position = "center"
-  )
+print(
+  dfSummary(trainingTeam_df, 
+            varnumbers   = TRUE,
+            na.col       = FALSE,
+            graph.magnif = .8,
+            tmp.img.dir  = "/tmp"),
+  method = "render")
 
 ```
 
