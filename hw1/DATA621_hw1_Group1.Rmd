@@ -233,90 +233,23 @@ evalDf <- flag_na(evalDf, columnNames)
 
 
 
- [1] "TARGET_WINS"      "TEAM_BATTING_H"   "TEAM_BATTING_2B"  "TEAM_BATTING_3B"  "TEAM_BATTING_HR"  "TEAM_BATTING_BB" 
- [7] "TEAM_BATTING_SO"  "TEAM_BASERUN_SB"  "TEAM_BASERUN_CS"  "TEAM_PITCHING_H"  "TEAM_PITCHING_HR" "TEAM_PITCHING_BB"
-[13] "TEAM_PITCHING_SO" "TEAM_FIELDING_E"  "TEAM_FIELDING_DP" "TEAM_BATTING_1B"  "na_flag"    
-
-
 ### drop outliers
 
 
-
 ```{r}
 
-filter_df <- loadLahmanShortData()
-columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATTING_HR')
-#columnNames <- c('TARGET_WINS')
-df <- filterOutliers(filter_df, droppedDf, columnNames)
+columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATTING_HR',
+                 'TEAM_BATTING_BB','TEAM_BATTING_SO','TEAM_BASERUN_SB','TEAM_BASERUN_CS',
+                 'TEAM_PITCHING_H','TEAM_PITCHING_HR','TEAM_PITCHING_BB','TEAM_PITCHING_SO',
+                 'TEAM_FIELDING_E','TEAM_FIELDING_DP','TEAM_BATTING_1B')
 
+filterDf <- loadLahmanShortData() %>% filter(yearID >= 1900)
+droppedNODf <- filterOutliers(filterDf, droppedDf, columnNames)
 
-```
-
-
-
-
-
-
-
-```{r}
-
-print(
-  dfSummary(df1, 
-            varnumbers   = TRUE,
-            na.col       = FALSE,
-            style        = "grid",
-            plain.ascii  = FALSE,
-            freq.silent  = TRUE,
-            headings     = TRUE,
-            graph.magnif = .8,
-            tmp.img.dir  = "/tmp"),
-  method = "viewer"
-)
-
+printStats(droppedNODf)
+printDensityPlot(droppedNODf)
 
 ```
-
-
-
-
-
-
-```{r}
-
-cNames <- names(droppedDf) - c("TEAM_BATTING_SO")
-cNames[!cNames %in% c("TEAM_BATTING_SO","na_flag")]
-
-
-
-
-df1 <- droppedDf[filterFlag,]
-
-
-no_outliers <- subset(data, data$Apperance > (Q1 - 1.5*IQR) & data$Apperance < (Q3 + 1.5*IQR))
-
-no_outliers <- subset(data, !(abs(TEAM_BATTING_H - median(TEAM_BATTING_H)) > 1.5*IQR(TEAM_BATTING_H)))
-
-dim(no_outliers)
-99   3
-
-```
-
-
-
-```{r}
-
-library(dataPreparation)
-
-cNames <-  c("TEAM_BATTING_H","TEAM_BATTING_2B")
-
-df1 <- droppedDf
-df1 <- remove_sd_outlier(df1, cols = cNames , n_sigmas = 3, verbose = TRUE)
-
-
-
-```
-
-
 
 
 
@@ -421,8 +354,10 @@ For the first model, we will select all the variables from the original un-clean
 
 
 ```{r echo=FALSE}
+
 lm1 <- lm(TARGET_WINS ~ ., data = trainDf)
 lm1Sum <- summary(lm1)
+
 ```
 
 The second model will be based on the cleaned dataset without missing values and non-normal distributions. We chose variables TEAM_PITCHING_HR,  TEAM_PITCHING_BB, TEAM_BATTING_2B, TEAM_BATTING_3B, TEAM_FIELDING_E based on the intuition and the understanding of the data.
@@ -433,14 +368,35 @@ lm2 <- lm(formula = TARGET_WINS ~
    TEAM_FIELDING_E, data = cleanDf)
 lm2Sum <- summary(lm2)
 ```
-The third model will contain the variables from the cleaned dataset.
+
+
+
+The third model will contain the variables from the cleaned dataset with outliers omitted using historic data from the Lahman's Baseball Database. 
+
 ```{r echo=FALSE}
-lm3 <- lm(TARGET_WINS ~ ., data=cleanDf)
+
+lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedNODf, by=na_flag)
+summary(lm3)
 lm3step <- stepAIC(lm3, trace = FALSE)
 lm3sum <- summary(lm3step)
+lm3sum
+
 ```
 
+The diagnostic plots show residuals that are normally distributed with a linear relationship to the fitted values. The homogeneity of variance plot is curved, indicating that the variance of residuals is not consistent. 
+
+```{r}
+
+check_model(lm3step, check=c('ncv','qq','homogeneity','outliers'))
+
+```
+
+
+
+
+
 For the fourth model we can run the imputed + features that were engineered (i.e. sqrt), and pick the best model.
+
 ```{r echo=FALSE}
 lm4 <- lm(TARGET_WINS~., data=transformed_df)
 lm4step <- stepAIC(lm4, trace=FALSE)
