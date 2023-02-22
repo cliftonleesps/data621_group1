@@ -1,12 +1,15 @@
 ---
-title: "Homework #1: Moneyball"
-author: "Critical Thinking Group 1: Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver"
-output: 
+title: 'Homework #1: Moneyball'
+author: 'Critical Thinking Group 1: Ben Inbar, Cliff Lee, Daria Dubovskaia, David
+  Simbandumwe, Jeff Parks, Nick Oliver'
+output:
   html_document:
-    toc: true
-    toc_float: true
+    toc: yes
+    toc_float: yes
     theme: united
-editor_options: 
+  pdf_document:
+    toc: yes
+editor_options:
   chunk_output_type: console
 bibliography: references.bib
 ---
@@ -31,6 +34,13 @@ library(summarytools)
 knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 set.seed(1234)
 ```
+
+
+```{r}
+source('./hw1/Functions.R', local = knitr::knit_global())
+```
+
+
 
 <b><i>
 Notes / Questions
@@ -219,6 +229,95 @@ droppedDf <- flag_na(droppedDf, columnNames)
 columnNames <- names(evalDf)
 evalDf <- flag_na(evalDf, columnNames)
 ```
+
+
+
+
+ [1] "TARGET_WINS"      "TEAM_BATTING_H"   "TEAM_BATTING_2B"  "TEAM_BATTING_3B"  "TEAM_BATTING_HR"  "TEAM_BATTING_BB" 
+ [7] "TEAM_BATTING_SO"  "TEAM_BASERUN_SB"  "TEAM_BASERUN_CS"  "TEAM_PITCHING_H"  "TEAM_PITCHING_HR" "TEAM_PITCHING_BB"
+[13] "TEAM_PITCHING_SO" "TEAM_FIELDING_E"  "TEAM_FIELDING_DP" "TEAM_BATTING_1B"  "na_flag"    
+
+
+### drop outliers
+
+
+
+```{r}
+
+filter_df <- loadLahmanShortData()
+columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATTING_HR')
+#columnNames <- c('TARGET_WINS')
+df <- filterOutliers(filter_df, droppedDf, columnNames)
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+print(
+  dfSummary(df1, 
+            varnumbers   = TRUE,
+            na.col       = FALSE,
+            style        = "grid",
+            plain.ascii  = FALSE,
+            freq.silent  = TRUE,
+            headings     = TRUE,
+            graph.magnif = .8,
+            tmp.img.dir  = "/tmp"),
+  method = "viewer"
+)
+
+
+```
+
+
+
+
+
+
+```{r}
+
+cNames <- names(droppedDf) - c("TEAM_BATTING_SO")
+cNames[!cNames %in% c("TEAM_BATTING_SO","na_flag")]
+
+
+
+
+df1 <- droppedDf[filterFlag,]
+
+
+no_outliers <- subset(data, data$Apperance > (Q1 - 1.5*IQR) & data$Apperance < (Q3 + 1.5*IQR))
+
+no_outliers <- subset(data, !(abs(TEAM_BATTING_H - median(TEAM_BATTING_H)) > 1.5*IQR(TEAM_BATTING_H)))
+
+dim(no_outliers)
+99   3
+
+```
+
+
+
+```{r}
+
+library(dataPreparation)
+
+cNames <-  c("TEAM_BATTING_H","TEAM_BATTING_2B")
+
+df1 <- droppedDf
+df1 <- remove_sd_outlier(df1, cols = cNames , n_sigmas = 3, verbose = TRUE)
+
+
+
+```
+
+
+
 
 
 To to impute the missing values in the `trainDf` data, the `mice` library is used. To utilize MICE, one must make the assumption that the missing values are missing at random, indicating that the missingness can be explained by variables that have complete information. The MICE algorithm then performs several iterations over the data, as suggested by its name, and generates data to complete the missing values.
@@ -473,6 +572,7 @@ https://www.seanlahman.com/baseball-archive/statistics/
 
 ```{r}
 
+
 teamDF <- evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/Teams.csv")
 
 teamDF <- teamDF %>% dplyr::select('yearID','lgID','teamID','franchID','divID','Rank','G','W','L',
@@ -506,6 +606,7 @@ teamDF$TEAM_FIELDING_DP <- teamDF$gFactor * teamDF$DP
 # Pythagorean winning percentage
 #  (runs scored ^ 2) / [(runs scored ^ 2) + (runs allowed ^ 2)]
 teamDF$pythPercent <- (teamDF$R^2) / ((teamDF$R^2) + (teamDF$RA^2))
+
 
 
 
@@ -592,6 +693,33 @@ kable(displayDf, digits = 2, format = "html", row.names = T) %>%
 
 
 ```
+
+
+
+
+
+
+
+```{r}
+
+
+
+
+print(
+  dfSummary(teamDF, 
+            varnumbers   = TRUE,
+            na.col       = FALSE,
+            style        = "grid",
+            plain.ascii  = FALSE,
+            freq.silent  = TRUE,
+            headings     = TRUE,
+            graph.magnif = .8,
+            tmp.img.dir  = "/tmp"),
+  method = "viewer"
+)
+```
+
+
 
 
 
