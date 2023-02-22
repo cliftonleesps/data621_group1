@@ -31,7 +31,7 @@ library(campfin)
 library(caret)
 library(yardstick)
 library(summarytools)
-knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, results="asis")
 set.seed(1234)
 ```
 
@@ -131,7 +131,7 @@ print(
             headings     = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
-  method = "viewer"
+  method = "render"
 )
 
 ```
@@ -333,7 +333,7 @@ print(
             headings     = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
-  method = "viewer"
+  method = "render"
 )
 
 ```
@@ -433,18 +433,23 @@ Next, we apply the models to the evaluation dataset to make predictions. However
 evalImputeDf <- mice(evalDf, m = 5, maxit = 50, seed = 123, printFlag = F)
 evalImputeDf <- complete(evalImputeDf)
 
+evalDroppedDf <- evalImputeDf %>% mutate(TEAM_BATTING_1B = TEAM_BATTING_H - TEAM_BATTING_2B - TEAM_BATTING_3B - TEAM_BATTING_HR)
+
 transformed_eval <- evalImputeDf |> mutate_each(funs(sqrt),
                    batting_hr_sqrt = TEAM_BATTING_HR,
                    batting_so_sqrt = TEAM_BATTING_SO,
                    baserun_cs_sqrt = TEAM_BASERUN_CS,
                    pitching_hr_sqrt = TEAM_PITCHING_HR)
+
+
+
 ```
 **CHANGE SINCE THE MODELS WILL BE DIFFERENT**
 The table below contains the predicted `TARGET_WINS` for each model. Upon initial examination, it is noticeable that the first model is generating predictions with negative values. This is not a realistic outcome as it is impossible to have a negative number of wins. Therefore, this model is not particularly valuable. However, the second and third models, which utilize cleaned and imputed data, do not encounter this problem of producing large negative predictions. Generally, both the AIC-generated model and the second model are yielding comparable results.
 ```{r echo=FALSE}
 lm1Pred <- lm1 %>% predict(evalImputeDf)
 lm2Pred <- lm2 %>% predict(evalImputeDf)
-aicPred <- lm3step %>% predict(evalImputeDf)
+aicPred <- lm3step %>% predict(evalDroppedDf)
 aicPred4 <- lm4step %>% predict(transformed_eval)
 ```
 
@@ -672,7 +677,7 @@ print(
             headings     = TRUE,
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
-  method = "viewer"
+  method = "render"
 )
 ```
 
