@@ -116,9 +116,6 @@ filterOutliers <- function(filter_df, df, columnNames) {
 
   filter_df <- select_if(filter_df, is.numeric)
 
-  #columnNames <- intersect(columnNames,names(filter_df))
-  #columnNames <- intersect(columnNames, names(df))
-
   min_lst <- round(sapply(filter_df, min, na.rm = TRUE),0)
   max_lst <- round(sapply(filter_df, max, na.rm = TRUE),0)
 
@@ -127,7 +124,6 @@ filterOutliers <- function(filter_df, df, columnNames) {
 
   for (i in columnNames) {
     tryCatch(
-      #df <- df[df[i] >= min_lst[[i]] & df[i] <= max_lst[[i]] ,]
       df$omit[df[i] < min_lst[[i]] | df[i] > max_lst[[i]]] <- TRUE
       ,
 
@@ -136,6 +132,7 @@ filterOutliers <- function(filter_df, df, columnNames) {
   }
 
   df <- df %>% dplyr::filter(!omit)
+  df <- df %>% dplyr::select(-c(omit))
   return (df)
 }
 
