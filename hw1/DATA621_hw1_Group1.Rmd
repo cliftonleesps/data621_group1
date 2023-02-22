@@ -510,43 +510,7 @@ https://www.seanlahman.com/baseball-archive/statistics/
 
 ```{r}
 
-# 
-# teamDF <- evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/Teams.csv")
-# 
-# teamDF <- teamDF %>% dplyr::select('yearID','lgID','teamID','franchID','divID','Rank','G','W','L',
-#                          'R','AB','H','X2B','X3B','HR','BB','SO','SB','CS','HBP','SF','RA','ER','ERA',
-#                          'CG','SHO','SV','IPouts','HA','HRA','BBA','SOA','E','DP','FP','name')
-# 
-# 
-# 
-# 
-# # normalize data 162 games
-# teamDF$gFactor <-  162 / (teamDF$W + teamDF$L)
-# 
-# teamDF$TARGET_WINS <-  teamDF$gFactor * teamDF$W
-# teamDF$TEAM_BATTING_H <- teamDF$gFactor * teamDF$H
-# teamDF$TEAM_BATTING_2B  <- teamDF$gFactor * teamDF$X2B
-# teamDF$TEAM_BATTING_3B  <- teamDF$gFactor * teamDF$X3B
-# teamDF$TEAM_BATTING_HR  <- teamDF$gFactor * teamDF$HR
-# teamDF$TEAM_BATTING_BB  <- teamDF$gFactor * teamDF$BB
-# teamDF$TEAM_BATTING_SO  <- teamDF$gFactor * teamDF$SO
-# teamDF$TEAM_BASERUN_SB  <- teamDF$gFactor * teamDF$SB
-# teamDF$TEAM_BASERUN_CS  <- teamDF$gFactor * teamDF$CS
-# teamDF$TEAM_BATTING_HBP <- teamDF$gFactor * teamDF$HBP
-# teamDF$TEAM_PITCHING_H  <- teamDF$gFactor * teamDF$HA
-# teamDF$TEAM_PITCHING_HR <- teamDF$gFactor * teamDF$HRA
-# teamDF$TEAM_PITCHING_BB <- teamDF$gFactor * teamDF$BBA
-# teamDF$TEAM_PITCHING_SO <- teamDF$gFactor * teamDF$SOA
-# teamDF$TEAM_FIELDING_E  <- teamDF$gFactor * teamDF$E
-# teamDF$TEAM_FIELDING_DP <- teamDF$gFactor * teamDF$DP 
-# 
-# 
-# # Pythagorean winning percentage
-# #  (runs scored ^ 2) / [(runs scored ^ 2) + (runs allowed ^ 2)]
-# teamDF$pythPercent <- (teamDF$R^2) / ((teamDF$R^2) + (teamDF$RA^2))
-
 teamDF <- loadLahmanData()
-
 
 ```
 
@@ -573,24 +537,8 @@ Although we could have chosen any number of the time periods above, exploring th
 Thus using 1900 as the beginning of the modern era and 1969 as an additional breakpoint, the dataset can be divided into three segments. The density profiles for the predictor variables approach a normal distribution when grouped by the three segments we identified. To support data exploration, we added a era_cat field to the data set.
 
 
-```{r}
-
-teamDF <- teamDF %>% mutate(era_cat = case_when(yearID >= 1969 ~ '1969+',
-                           yearID >= 1900 & yearID < 1969 ~ '1900-1969',
-                           yearID < 1900 ~ '1900-'))
-
-```
-
-
 
 ```{r}
-
-# teamAdjDF <- teamDF %>% dplyr::select("yearID","era_cat","TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B",
-#                 "TEAM_BATTING_3B",
-#                 "TEAM_BATTING_HR","TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB",
-#                 "TEAM_BASERUN_CS","TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR",
-#                 "TEAM_PITCHING_BB", "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP")
-
 
 teamAdjDF <- loadLahmanShortData()
 
@@ -634,11 +582,7 @@ print(
 
 ```{r}
 
-m_df <- teamDF[random_sample, ]  %>% 
-        dplyr::select("TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B","TEAM_BATTING_3B",
-                "TEAM_BATTING_HR","TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB",
-                "TEAM_BASERUN_CS","TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR",
-                "TEAM_PITCHING_BB", "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP") %>% melt() 
+m_df <- teamAdjDF[random_sample, ] %>% melt() 
 
 m_df %>% ggplot(aes(x= value)) + 
       geom_density(color='#023020', fill='gray') + 
@@ -647,6 +591,7 @@ m_df %>% ggplot(aes(x= value)) +
       labs(
           title = 'Variable Density Plots'
       )
+
 ```
 
 
@@ -656,13 +601,8 @@ When we group the statistics by the three categories presented earliers, we see 
 
 ```{r}
 
-df0 <- teamDF[random_sample, ] %>% filter(era_cat == '1969+')
 
-m_df <- df0 %>% 
-        dplyr::select("TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B","TEAM_BATTING_3B",
-                "TEAM_BATTING_HR","TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB",
-                "TEAM_BASERUN_CS","TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR",
-                "TEAM_PITCHING_BB", "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP") %>% melt() 
+m_df <- teamAdjDF[random_sample, ] %>% filter(era_cat == '1969+') %>% melt() 
 
 m_df %>% ggplot(aes(x= value)) + 
       geom_density(color='#023020', fill='gray') + 
@@ -671,7 +611,6 @@ m_df %>% ggplot(aes(x= value)) +
       labs(
           title = 'Variable Density Plots (1969+)'
       )
-  
 
 
 ```
