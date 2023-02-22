@@ -320,6 +320,9 @@ Notes / Questions
 
 At this juncture, with a thorough comprehension of our dataset and having completed the data cleaning process, we can initiate the construction of our multiple linear regression models. We will build four separate linear models and compare their performance. 
 
+
+### 3.1 Model 1: Baseline
+
 For the first model, we will select all the variables from the original un-cleaned dataset. We may use this model as a base model to compare with.
 
 
@@ -329,6 +332,9 @@ lm1 <- lm(TARGET_WINS ~ ., data = trainDf)
 lm1Sum <- summary(lm1)
 
 ```
+
+
+### 3.2 Model 2: Removed N/A Values
 
 The second model will be based on the cleaned dataset without missing values and non-normal distributions. We chose variables `TEAM_PITCHING_HR`,  `TEAM_PITCHING_BB`, `TEAM_BATTING_2B`, `TEAM_BATTING_3B`, `TEAM_FIELDING_E` based on the intuition and the understanding of the data.
 
@@ -340,6 +346,7 @@ lm2Sum <- summary(lm2)
 ```
 
 
+### 3.3 Model 3: Removed Outliers
 
 The third model will contain the variables from the cleaned dataset with outliers omitted using historic data from the Lahman's Baseball Database. In baseballs early history very few games were played thus the calculation used to normalize the statistics to a 162 game season creates outliers. The min and max from the modern era (post 1900) are used to filter outliers.
 
@@ -350,8 +357,6 @@ lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedDf, by=na_flag)
 lm3step <- stepAIC(lm3, trace = FALSE)
 lm3sum <- summary(lm3step)
 tab_model(lm3step)
-
-
 
 ```
 
@@ -365,7 +370,7 @@ check_model(lm3step, check=c('ncv','qq','homogeneity','outliers'))
 
 
 
-
+### 3.4 Model 4: Variable Transformation
 
 For the fourth model we can run the imputed + features that were engineered (i.e. sqrt), and pick the best model.
 
@@ -475,7 +480,7 @@ check_model(lm3step, check = c("vif","normality","linearity","homogeneity"))
 check_model(lm4step, check = c("vif","normality","linearity","homogeneity"))
 ```
 
-## Conclusion
+## 5. Conclusion
 
 
 
@@ -505,42 +510,42 @@ https://www.seanlahman.com/baseball-archive/statistics/
 
 ```{r}
 
+# 
+# teamDF <- evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/Teams.csv")
+# 
+# teamDF <- teamDF %>% dplyr::select('yearID','lgID','teamID','franchID','divID','Rank','G','W','L',
+#                          'R','AB','H','X2B','X3B','HR','BB','SO','SB','CS','HBP','SF','RA','ER','ERA',
+#                          'CG','SHO','SV','IPouts','HA','HRA','BBA','SOA','E','DP','FP','name')
+# 
+# 
+# 
+# 
+# # normalize data 162 games
+# teamDF$gFactor <-  162 / (teamDF$W + teamDF$L)
+# 
+# teamDF$TARGET_WINS <-  teamDF$gFactor * teamDF$W
+# teamDF$TEAM_BATTING_H <- teamDF$gFactor * teamDF$H
+# teamDF$TEAM_BATTING_2B  <- teamDF$gFactor * teamDF$X2B
+# teamDF$TEAM_BATTING_3B  <- teamDF$gFactor * teamDF$X3B
+# teamDF$TEAM_BATTING_HR  <- teamDF$gFactor * teamDF$HR
+# teamDF$TEAM_BATTING_BB  <- teamDF$gFactor * teamDF$BB
+# teamDF$TEAM_BATTING_SO  <- teamDF$gFactor * teamDF$SO
+# teamDF$TEAM_BASERUN_SB  <- teamDF$gFactor * teamDF$SB
+# teamDF$TEAM_BASERUN_CS  <- teamDF$gFactor * teamDF$CS
+# teamDF$TEAM_BATTING_HBP <- teamDF$gFactor * teamDF$HBP
+# teamDF$TEAM_PITCHING_H  <- teamDF$gFactor * teamDF$HA
+# teamDF$TEAM_PITCHING_HR <- teamDF$gFactor * teamDF$HRA
+# teamDF$TEAM_PITCHING_BB <- teamDF$gFactor * teamDF$BBA
+# teamDF$TEAM_PITCHING_SO <- teamDF$gFactor * teamDF$SOA
+# teamDF$TEAM_FIELDING_E  <- teamDF$gFactor * teamDF$E
+# teamDF$TEAM_FIELDING_DP <- teamDF$gFactor * teamDF$DP 
+# 
+# 
+# # Pythagorean winning percentage
+# #  (runs scored ^ 2) / [(runs scored ^ 2) + (runs allowed ^ 2)]
+# teamDF$pythPercent <- (teamDF$R^2) / ((teamDF$R^2) + (teamDF$RA^2))
 
-teamDF <- evalDf <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw1/Teams.csv")
-
-teamDF <- teamDF %>% dplyr::select('yearID','lgID','teamID','franchID','divID','Rank','G','W','L',
-                         'R','AB','H','X2B','X3B','HR','BB','SO','SB','CS','HBP','SF','RA','ER','ERA',
-                         'CG','SHO','SV','IPouts','HA','HRA','BBA','SOA','E','DP','FP','name')
-
-
-
-
-# normalize data 162 games
-teamDF$gFactor <-  162 / (teamDF$W + teamDF$L)
-
-teamDF$TARGET_WINS <-  teamDF$gFactor * teamDF$W
-teamDF$TEAM_BATTING_H <- teamDF$gFactor * teamDF$H
-teamDF$TEAM_BATTING_2B  <- teamDF$gFactor * teamDF$X2B
-teamDF$TEAM_BATTING_3B  <- teamDF$gFactor * teamDF$X3B
-teamDF$TEAM_BATTING_HR  <- teamDF$gFactor * teamDF$HR
-teamDF$TEAM_BATTING_BB  <- teamDF$gFactor * teamDF$BB
-teamDF$TEAM_BATTING_SO  <- teamDF$gFactor * teamDF$SO
-teamDF$TEAM_BASERUN_SB  <- teamDF$gFactor * teamDF$SB
-teamDF$TEAM_BASERUN_CS  <- teamDF$gFactor * teamDF$CS
-teamDF$TEAM_BATTING_HBP <- teamDF$gFactor * teamDF$HBP
-teamDF$TEAM_PITCHING_H  <- teamDF$gFactor * teamDF$HA
-teamDF$TEAM_PITCHING_HR <- teamDF$gFactor * teamDF$HRA
-teamDF$TEAM_PITCHING_BB <- teamDF$gFactor * teamDF$BBA
-teamDF$TEAM_PITCHING_SO <- teamDF$gFactor * teamDF$SOA
-teamDF$TEAM_FIELDING_E  <- teamDF$gFactor * teamDF$E
-teamDF$TEAM_FIELDING_DP <- teamDF$gFactor * teamDF$DP 
-
-
-# Pythagorean winning percentage
-#  (runs scored ^ 2) / [(runs scored ^ 2) + (runs allowed ^ 2)]
-teamDF$pythPercent <- (teamDF$R^2) / ((teamDF$R^2) + (teamDF$RA^2))
-
-
+teamDF <- loadLahmanData()
 
 
 ```
@@ -580,12 +585,14 @@ teamDF <- teamDF %>% mutate(era_cat = case_when(yearID >= 1969 ~ '1969+',
 
 ```{r}
 
-teamAdjDF <- teamDF %>% dplyr::select("yearID","era_cat","TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B",
-                "TEAM_BATTING_3B",
-                "TEAM_BATTING_HR","TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB",
-                "TEAM_BASERUN_CS","TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR",
-                "TEAM_PITCHING_BB", "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP")
+# teamAdjDF <- teamDF %>% dplyr::select("yearID","era_cat","TARGET_WINS","TEAM_BATTING_H","TEAM_BATTING_2B",
+#                 "TEAM_BATTING_3B",
+#                 "TEAM_BATTING_HR","TEAM_BATTING_BB","TEAM_BATTING_SO","TEAM_BASERUN_SB",
+#                 "TEAM_BASERUN_CS","TEAM_BATTING_HBP","TEAM_PITCHING_H","TEAM_PITCHING_HR",
+#                 "TEAM_PITCHING_BB", "TEAM_PITCHING_SO","TEAM_FIELDING_E","TEAM_FIELDING_DP")
 
+
+teamAdjDF <- loadLahmanShortData()
 
 random_sample <- createDataPartition(teamAdjDF$TARGET_WINS,p = 0.8, list = FALSE)
 
