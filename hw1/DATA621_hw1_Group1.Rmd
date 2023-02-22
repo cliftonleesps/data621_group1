@@ -244,10 +244,10 @@ columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATT
                  'TEAM_FIELDING_E','TEAM_FIELDING_DP','TEAM_BATTING_1B')
 
 filterDf <- loadLahmanShortData() %>% filter(yearID >= 1900)
-droppedNODf <- filterOutliers(filterDf, droppedDf, columnNames)
+droppedDf <- filterOutliers(filterDf, droppedDf, columnNames)
 
-printStats(droppedNODf)
-printDensityPlot(droppedNODf)
+printStats(droppedDf)
+#printDensityPlot(droppedDf)
 
 ```
 
@@ -373,9 +373,10 @@ lm2Sum <- summary(lm2)
 
 The third model will contain the variables from the cleaned dataset with outliers omitted using historic data from the Lahman's Baseball Database. 
 
+
 ```{r echo=FALSE}
 
-lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedNODf, by=na_flag)
+lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedDf, by=na_flag)
 summary(lm3)
 lm3step <- stepAIC(lm3, trace = FALSE)
 lm3sum <- summary(lm3step)
