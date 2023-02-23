@@ -32,7 +32,8 @@ library(caret)
 library(yardstick)
 library(summarytools)
 library(sjPlot)
-knitr::opts_chunk$set(echo = F, warning = F, message = F, results="asis")
+library(car)
+knitr::opts_chunk$set(echo = F, warning = F, message = F, eval = T , results="asis")
 set.seed(1234)
 ```
 
@@ -348,8 +349,9 @@ lm2Sum <- summary(lm2)
 
 ### 3.3 Model 3: Removed Outliers
 
-The third model will contain the variables from the cleaned dataset with outliers omitted using historic data from the Lahman's Baseball Database. In baseballs early history very few games were played thus the calculation used to normalize the statistics to a 162 game season creates outliers. The min and max from the modern era (post 1900) are used to filter outliers.
+The third model will use the cleaned dataset with outliers omitted. To identify outliers, we used historical data from the Lahman's Baseball Database. In baseball's early history,  few games were played in a season (less than 20); thus, the calculation used to normalize the statistics to a 162-game season tends to create outliers. We used the min and max from the modern era (post-1900) as a filter to alleviate the issues created by outlier values.
 
+The initial model will include all variables from the cleaned data set with outliers omitted. Stepwise variable selection based on the AIC score is used to filter the model features. The resulting model has a significant p-values for the model and all predictor variables.  
 
 ```{r echo=FALSE}
 
@@ -360,13 +362,104 @@ tab_model(lm3step)
 
 ```
 
-The diagnostic plots show residuals that are normally distributed with a linear relationship to the fitted values. The homogeneity of variance plot is curved, indicating that the variance of residuals is not consistent. 
+
+
+
+The linear modeling assumption are evaluated using a diagnostic plot, the Breusch–Pagan Test for Heteroscedasticity and Variance Inflation Factor (VIF) to assess colinearity.  
+
+The initial review of the diagnostic plots for this model shows some deviation from linear modeling assumptions at the boundaries of the prediction range, but the overall QQ plot is almost a flat line; the residuals are flat and exhibit homoscedasticity of variance in the  65 - 95 fitted value range;  
 
 ```{r}
 
 check_model(lm3step, check=c('ncv','qq','homogeneity','outliers'))
 
 ```
+
+
+
+The Breusch–Pagan Test for Heteroscedasticity assumes the following Null and Alternate hypothesis. 
+
+- H0 - Residuals are distributed with equal variance (i.e., homoscedasticity)
+- H1 - Residuals are distributed with unequal variance (i.e., heteroscedasticity)
+
+For this model iteration, we reject the null hypothesis and conclude that this model violates the homoscedasticity function.   
+
+```{r}
+
+lmtest::bptest(lm3step)
+
+```
+
+
+
+The Variance Inflation Factor (VIF) calculation detects collinearity with the TEAM_PITCHING_BB  and TEAM_BATTING_BB variables. Both variables have a VIF score over 8 and are 0.93 correlated. 
+
+```{r}
+
+vif_values <- vif(lm3step)
+vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
+
+vif_values %>%
+  ggplot(aes(y=vif_values, x=var)) +
+  coord_flip() + 
+  geom_hline(yintercept=5, linetype="dashed", color = "red") +
+  geom_bar(stat = 'identity', width=0.3 ,position=position_dodge()) 
+
+df <- droppedDf[ , vif_values$var] %>% drop_na()
+coeff <- cor(df)
+corrplot(coeff, tl.cex = .7 , diag = FALSE ,type = 'upper' ,method = 'number')
+
+
+```
+
+
+
+For the refined model we will drop TEAM_PITCHING_BB and TEAM_BATTING_BB from the model. The p-value TEAM_BASERUN_CS is not significant therefore it will be dropped from the model as well. This model has a lower $AdjR^2=0.35$ but should align better with the linear regression assumptions.
+
+```{r}
+
+lm3step.final <- update(lm3step, . ~ . -TEAM_PITCHING_BB -TEAM_BATTING_BB -TEAM_BASERUN_CS -TEAM_BATTING_2B)
+tab_model(lm3step.final, show.df = TRUE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
+
+```
+
+
+
+The diagnostic plots for the new model appear to be closer aligned with the linear regression assumptions. For this model iteration, we will again reject the null hypothesis and conclude that this model violates the homoscedasticity function. And finally the Variance Inflation Factor (VIF) calculation does not detects collinearity across the remaining variables. Overall we will reject model 3 because the residuals are not homoscedastic.
+
+
+```{r}
+
+check_model(lm3step.final, check=c('ncv','qq','homogeneity','outliers'))
+
+```
+
+
+```{r}
+
+lmtest::bptest(lm3step.final)
+
+```
+
+
+
+```{r}
+
+vif_values <- vif(lm3step.final)
+vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
+
+vif_values %>%
+  ggplot(aes(y=vif_values, x=var)) +
+  coord_flip() + 
+  geom_hline(yintercept=5, linetype="dashed", color = "red") +
+  geom_bar(stat = 'identity', width=0.3 ,position=position_dodge()) +
+  labs(title = 'Model 4: Variance Inflation Factor')
+
+df <- droppedDf[ , vif_values$var] %>% drop_na()
+coeff <- cor(df)
+corrplot(coeff, tl.cex = .7 , diag = FALSE ,type = 'upper' ,method = 'number')
+```
+
 
 
 
@@ -588,9 +681,7 @@ m_df %>% ggplot(aes(x= value)) +
       geom_density(color='#023020', fill='gray') + 
       facet_wrap(~variable, scales = 'free',  ncol = 4) + 
       theme_bw() +
-      labs(
-          title = 'Variable Density Plots'
-      )
+      labs(title = 'Variable Density Plots')
 
 ```
 
@@ -608,9 +699,7 @@ m_df %>% ggplot(aes(x= value)) +
       geom_density(color='#023020', fill='gray') + 
       facet_wrap(~variable, scales = 'free',  ncol = 4) + 
       theme_bw() +
-      labs(
-          title = 'Variable Density Plots (1969+)'
-      )
+      labs(title = 'Variable Density Plots (1969+)')
 
 
 ```
