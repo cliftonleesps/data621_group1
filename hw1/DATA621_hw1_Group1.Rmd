@@ -358,7 +358,7 @@ The initial model will include all variables from the cleaned data set with outl
 lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedDf, by=na_flag)
 lm3step <- stepAIC(lm3, trace = FALSE)
 lm3sum <- summary(lm3step)
-tab_model(lm3step)
+#tab_model(lm3step, show.df = TRUE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
 
 ```
 
@@ -414,12 +414,12 @@ corrplot(coeff, tl.cex = .7 , diag = FALSE ,type = 'upper' ,method = 'number')
 
 
 
-For the refined model we will drop TEAM_PITCHING_BB and TEAM_BATTING_BB from the model. The p-value TEAM_BASERUN_CS is not significant therefore it will be dropped from the model as well. This model has a lower $AdjR^2=0.35$ but should align better with the linear regression assumptions.
+For the refined model we will drop `TEAM_PITCHING_BB` and `TEAM_BATTING_BB` from the model. The p-value `TEAM_BASERUN_CS` is not significant therefore it will be dropped from the model as well. This model has a lower $AdjR^2=0.35$ but should align better with the linear regression assumptions.
 
 ```{r}
 
 lm3step.final <- update(lm3step, . ~ . -TEAM_PITCHING_BB -TEAM_BATTING_BB -TEAM_BASERUN_CS -TEAM_BATTING_2B)
-tab_model(lm3step.final, show.df = TRUE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
+#tab_model(lm3step.final, show.df = TRUE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
 
 ```
 
@@ -460,6 +460,14 @@ coeff <- cor(df)
 corrplot(coeff, tl.cex = .7 , diag = FALSE ,type = 'upper' ,method = 'number')
 ```
 
+
+
+```{r}
+tab_model(lm3, lm3step, lm3step.final, 
+          dv.labels = c('model 3','model 3 (StepAIC)','model 3 (Final)'),
+          show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
+
+```
 
 
 
