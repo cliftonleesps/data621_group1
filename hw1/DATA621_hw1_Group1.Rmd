@@ -1,7 +1,6 @@
 ---
 title: 'Homework #1: Moneyball'
-author: 'Critical Thinking Group 1: Ben Inbar, Cliff Lee, Daria Dubovskaia, David
-  Simbandumwe, Jeff Parks, Nick Oliver'
+author: 'Critical Thinking Group 1: Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver'
 output:
   html_document:
     toc: yes
@@ -33,12 +32,14 @@ library(yardstick)
 library(summarytools)
 library(sjPlot)
 library(car)
+library(rsample)
+library(olsrr)
 knitr::opts_chunk$set(echo = F, warning = F, message = F, eval = T , results="asis")
 set.seed(1234)
 ```
 
 
-```{r}
+```{r echo=FALSE}
 
 st_css()
 
@@ -69,17 +70,6 @@ source('./hw1/Functions.R', local = knitr::knit_global())
  
 ```
 
-
-
-<b><i>
-Notes / Questions
-
-  - what is the cutoff in correlation that will require adjustment - good question. Above 0.9? Most baseball stats measure distinct actions and occurances. 0.9 correlations show a serious data problem or something else is fishy.
-  - Review the distributions plots for each attribute focus on non normally distributed attributes - please read the initial attempt below.
-  
-</i></b>
-
-
 ## Overview
 The use of historical statistics to predict future outcomes, particularly wins and losses, and identify opportunities for improving team or individual performance, has gained significant attention in professional sports. The aim of this analysis is to develop several models that can predict a baseball team's wins over a season based on team stats such as homeruns, strikeouts, base hits, and more. We will begin by examining the data for any issues, such as missing data, or outliers, and take the necessary measures to clean the data. We will subsequently create and evaluate three different linear models that forecast seasonal wins using the dataset, which includes both training and evaluation data. We will train the models using the main training data and then evaluate their performance against the evaluation data to determine their effectiveness. Finally, we will choose the best model that balances accuracy and simplicity for predicting seasonal wins.
 
@@ -103,10 +93,7 @@ One interesting piece of information is the min/max of the `TARGET_WINS` variabl
 
 Also of note is the number of missing values from certain variables. Most notably the `TEAM_BATTING_HBP` (batters hit by pitch variable). With 91% of the data missing we will remove this variable from our dataset because there simply is not enough information to impute a sensible value. The column `TEAM_BASERUN_CS` (caught stealing) had 34% of the missing data, we may consider removing it later. The missing data for these two columns may be due to a change official rules or tactics before the modern era of baseball.
 
-```{r echo=FALSE}
-
-m_df <- trainDf %>% dplyr::select(-c(INDEX))
-
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 print(
   dfSummary(trainDf, 
             varnumbers   = TRUE,
@@ -124,7 +111,6 @@ Next, we'll visually check for normal distributions and box plots in both the de
 Box plots for these further show a high number of outliers exist outside of the interquartile ranges so their effects should be carefully considered and we may deal with non-unimodal distributions.
 
 ```{r density_boxplot, echo=FALSE, warning=FALSE, message=FALSE, fig.height=8, fig.width=10}
-
 m_df <- trainDf %>% dplyr::select(-c(INDEX)) %>% melt() 
 
 m_df %>% ggplot(aes(x= value)) + 
@@ -186,8 +172,6 @@ gg_miss_var(trainDf)
 Notes / Questions
 
 - BASE_CS is missing 33% of its values is it an issue to fill that many values
-- added the na_flag to the data set
-- do we want to calculate singles?
 - should we include Hits and Singles, Doubles, Triples, HR - this is the same data captured differently
 - Slugging Percentage is an interesting measure that we could add https://en.wikipedia.org/wiki/Slugging_percentage @enwiki:1123388426
 - Here are some advanced stats that might be interesting https://www.mlb.com/glossary/advanced-stats
@@ -214,13 +198,25 @@ columnNames <- names(evalDf)
 evalDf <- flag_na(evalDf, columnNames)
 ```
 
+To to impute the missing values in the `trainDf` data, the `mice` library is used. To utilize MICE, one must make the assumption that the missing values are missing at random, indicating that the missingness can be explained by variables that have complete information. The MICE algorithm then performs several iterations over the data, as suggested by its name, and generates data to complete the missing values.
+We check what impute method we use for each column. `pmm` is predictive mean matching, replacing missing data with column means.
 
+Let's also take a look at the density plots pre and post-imputation to make sure densities look similar. Unfortunately, for `TEAM_BASERUN_SB`, `TEAM_BATTING_SO`, and `TEAM_FIELDING DP` they do not. But in the case of `TEAM_BATTING_SO` our distribution becomes roughly more normal, so it may be beneficial. For the `TEAM_BASERUN_SB` and `TEAM_BASERUN_CS` and `TEAM_FIELDING_DP` we may need to consider alternative methods.
 
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+imputeDf <- mice(droppedDf, m = 5, maxit = 50, seed = 123, printFlag = F)
+cleanDf <- complete(imputeDf)
+m_imputed <- melt(cleanDf)
+densityplot(imputeDf)
+
+```
 
 ### 2.2 Drop Outliers
+To identify outliers, we used historical data from the Lahman's Baseball Database. In baseball's early history,  few games were played in a season (less than 20); thus, the calculation used to normalize the statistics to a 162-game season tends to create outliers. We used the min and max from the modern era (post-1900) as a filter to alleviate the issues created by outlier values.
 
+**ADD MORE TEXT WITH EXPLANATIONS ABOUT FUNCTIONS USED TO WORK WITH OUTLIERS**
 
-```{r drop outliers}
+```{r drop outliers, echo=FALSE, warning=FALSE, message=FALSE}
 
 columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATTING_HR',
                  'TEAM_BATTING_BB','TEAM_BATTING_SO','TEAM_BASERUN_SB','TEAM_BASERUN_CS',
@@ -228,8 +224,7 @@ columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATT
                  'TEAM_FIELDING_E','TEAM_FIELDING_DP','TEAM_BATTING_1B')
 
 filterDf <- loadLahmanShortData() %>% filter(yearID >= 1900)
-droppedDf <- filterOutliers(filterDf, droppedDf, columnNames)
-
+droppedDf <- filterOutliers(filterDf, cleanDf, columnNames)
 print(
   dfSummary(droppedDf, 
             varnumbers   = TRUE,
@@ -239,23 +234,14 @@ print(
   method = "render"
 )
 
+m_df <- droppedDf %>% melt() 
 
-```
+m_df %>% ggplot(aes(x= value)) + 
+    geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
 
-
-
-To to impute the missing values in the `trainDf` data, the `mice` library is used. To utilize MICE, one must make the assumption that the missing values are missing at random, indicating that the missingness can be explained by variables that have complete information. The MICE algorithm then performs several iterations over the data, as suggested by its name, and generates data to complete the missing values.
-We check what impute method we use for each column. `pmm` is predictive mean matching, replacing missing data with column means.
-
-Let's also take a look at the density plots pre and post-imputation to make sure densities look similar. Unfortunately, for `TEAM_BASERUN_SB`, `TEAM_BATTING_SO`, and `TEAM_FIELDING DP` they do not. But in the case of `TEAM_BATTING_SO` our distribution becomes roughly more normal, so it may be beneficial. For the `TEAM_BASERUN_SB` and `TEAM_BASERUN_CS` and `TEAM_FIELDING_DP` we may need to consider alternative methods.
-
-```{r echo=FALSE, warning=FALSE, message=FALSE}
-
-imputeDf <- mice(droppedDf, m = 5, maxit = 50, seed = 123, printFlag = F)
-#imputeDf$meth
-cleanDf <- complete(imputeDf)
-m_imputed <- melt(cleanDf)
-densityplot(imputeDf)
+m_df %>% ggplot(aes(x = value)) +
+  geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
+  facet_wrap(vars(variable),scales = "free", ncol = 4)
 
 ```
 
@@ -281,24 +267,12 @@ visualize_transformed <- transformed_df |> melt()
 visualize_transformed %>% ggplot(aes(x= value)) + 
     geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
     theme(strip.text.x = element_text(size = 6, angle = 0))
-
-# May need to try Boxcox after fitting the model. What we can do is remove large low density ranges for some variables.
-transformed_df <- transformed_df |> subset(TEAM_PITCHING_H < 5000, TEAM_PITCHING_BB < 1100) #TEAM_PITCHING_BB < 1100, TEAM_PITCHING_SO < 2500, TEAM_FIELDING_E < 500)
-
-visualize_transformed <- transformed_df |> melt()
-
-visualize_transformed |> ggplot(aes(x= value)) + 
-    geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
-    theme(strip.text.x = element_text(size = 6, angle = 0))
-
 ```
 
 
-Our current dataset is devoid of any missing data values, and we have excluded the irrelevant `INDEX` and the `TEAM_BATTING_HBP` variables, which had 91% missing values. As shown in the table below, no missing data values exist anymore, and we can analyze how the summary statistics may have altered with the imputed data.
+Our current dataset is devoid of any missing data values,the irrelevant `INDEX` and the `TEAM_BATTING_HBP` variables, the outliers. As shown in the table below, no missing data values exist anymore, and we can analyze how the summary statistics may have altered with the imputed data.
 
-```{r echo=FALSE}
-
-
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 print(
   dfSummary(transformed_df, 
             varnumbers   = TRUE,
@@ -309,73 +283,80 @@ print(
 
 ```
 
-
 ## 3. Building models
 <b><i>
 Notes / Questions
 
 - we could try building a model that does not include any of the outlier variables values
-- there is also saber metrics model that Pythagorean Winning Percentage taht is supposed to preduct wins https://www.mlb.com/glossary/advanced-stats/pythagorean-winning-percentage
+- there is also saber metrics model that Pythagorean Winning Percentage that is supposed to predict wins https://www.mlb.com/glossary/advanced-stats/pythagorean-winning-percentage
 
 </i></b>
 
 At this juncture, with a thorough comprehension of our dataset and having completed the data cleaning process, we can initiate the construction of our multiple linear regression models. We will build four separate linear models and compare their performance. 
-
+To build the models, we will use 4 data frames: original training dataset (trainDf), dataset without missing values (cleanDf), dataset with no outliers and no NA's (droppedDf), dataset with transformations, without NA's (transformedDf).
+First, we decided to split our datasets into a training and testing sets (80% training, 20% testing). Then, using our training dataset, we will run our models and check them using testing data.
 
 ### 3.1 Model 1: Baseline
 
-For the first model, we will select all the variables from the original un-cleaned dataset. We may use this model as a base model to compare with.
-
+For the first multiple linear regression model, we will select all the variables from the original un-cleaned dataset except for `INDEX` (just a row index) and `TEAM_BATTING_HBP` (91% of missing data). We may use this model as a base model to compare with. The results: F-statistic is 82.1, adjusted R-squared 0.433, out of the 15 variables, 6 have statistically significant p-values. The adjusted R2 indicates that only 43% of the variance in the response variable can be explained by the predictor variables. The F-statistic is low and the model’s p-value are not statistically significant. We should look at other models.
 
 ```{r echo=FALSE}
-
-lm1 <- lm(TARGET_WINS ~ ., data = trainDf)
+trainDf_1 <- trainDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_HBP))
+lm1 <- lm(TARGET_WINS ~ . , data = trainDf_1)
 lm1Sum <- summary(lm1)
+tab_model(lm1Sum, show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, show.ci=FALSE, show.stat=TRUE, digits.p=4)
+```
 
+The linear modeling assumption are evaluated using a diagnostic plot, the Breusch–Pagan Test for Heteroscedasticity and Variance Inflation Factor (VIF) to assess colinearity.  
+
+The initial review of the diagnostic plots for this model shows some deviation from linear modeling assumptions. In the Q-Q plot, we see some deviations from the normal distribution at the ends. The residuals-fitted and standardzied residuals-fitted plots show a curve in the main cluster, which indicates that we do not have constant variance. 
+
+```{r}
+check_model(lm1, check=c('ncv','qq','homogeneity','outliers'))
 ```
 
 
 ### 3.2 Model 2: Removed N/A Values
-
-The second model will be based on the cleaned dataset without missing values and non-normal distributions. We chose variables `TEAM_PITCHING_HR`,  `TEAM_PITCHING_BB`, `TEAM_BATTING_2B`, `TEAM_BATTING_3B`, `TEAM_FIELDING_E` based on the intuition and the understanding of the data.
+The second model will be based on the cleaned dataset without missing values. We chose variables `TEAM_PITCHING_BB`, `TEAM_BATTING_2B`, `TEAM_BATTING_3B`, `TEAM_FIELDING_E`, `TEAM_PITCHING_H`, `TEAM_BATTING_HR`, `TEAM_BATTING_H` based on the intuition and the understanding of the data. The results: F-statistic is 119.9, adjusted R-squared 0.268, out of the 7 variables, 7 have statistically significant p-values. The adjusted R2 indicates that only 25% of the variance in the response variable can be explained by the predictor variables, which is less than in the original model. The F-statistic is high and the p-value of the model is close to zero, and the model's diagnostic checks are satisfactory, this suggests that we would dismiss the null hypothesis, which assumes that there is no correlation between the explanatory and response variables.
 
 ```{r echo=FALSE}
-lm2 <- lm(formula = TARGET_WINS ~  
-    TEAM_PITCHING_HR + TEAM_PITCHING_BB  + TEAM_BATTING_2B + TEAM_BATTING_3B +
-   TEAM_FIELDING_E, data = cleanDf)
+lm2 <- lm(formula = TARGET_WINS ~ TEAM_PITCHING_BB  + TEAM_BATTING_2B + TEAM_BATTING_3B +
+   TEAM_FIELDING_E + TEAM_PITCHING_H + TEAM_BATTING_HR + TEAM_BATTING_H, data = cleanDf)
 lm2Sum <- summary(lm2)
+tab_model(lm2Sum, show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, show.ci=FALSE, show.stat=TRUE, digits.p=4)
 ```
 
+The initial review of the diagnostic plots for this model shows some deviation from linear modeling assumptions. The Q-Q plot shows the normal distribution but the residuals-fitted and standardzied residuals-fitted plots  don't have contant variance for the fitted values below 60 and above 95.
+
+```{r}
+check_model(lm2, check=c('ncv','qq','homogeneity','outliers'))
+```
 
 ### 3.3 Model 3: Removed Outliers
 
-The third model will use the cleaned dataset with outliers omitted. To identify outliers, we used historical data from the Lahman's Baseball Database. In baseball's early history,  few games were played in a season (less than 20); thus, the calculation used to normalize the statistics to a 162-game season tends to create outliers. We used the min and max from the modern era (post-1900) as a filter to alleviate the issues created by outlier values.
+The third model will use the cleaned dataset with outliers  omitted. Stepwise variable selection based on the AIC score is used to filter the optimal set of features. The resulting model has a significant p-values for the model and all predictor variables. The results: F-statistic is 117.3, adjusted R-squared 0.417. The adjusted R2 indicates that 41% of the variance in the response variable can be explained by the predictor variables. The F-statistic is high and the p-value of the model is close to zero, so we would dismiss the null hypothesis, which assumes that there is no correlation between the explanatory and response variables.
+**DAVID, WHY TEAM_BATTING_H WAS REMOVED? COULD YOU PLEASE ADD A SENTENCE EXPLAINING THE CHOICE?**
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 
-The initial model will include all variables from the cleaned data set with outliers omitted. Stepwise variable selection based on the AIC score is used to filter the model features. The resulting model has a significant p-values for the model and all predictor variables.  
-
-```{r echo=FALSE}
-
-lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedDf, by=na_flag)
+lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H -na_flag, data=droppedDf)
 lm3step <- stepAIC(lm3, trace = FALSE)
 lm3sum <- summary(lm3step)
+tab_model(lm3step, show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, show.ci=FALSE, show.stat=TRUE, digits.p=4)
+
+```
+
+**WAS BEFORE FROM DAVID*
+```{r echo=FALSE, eval=FALSE}
+#lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedDf, by=na_flag)
+#lm3step <- stepAIC(lm3, trace = FALSE)
+#lm3sum <- summary(lm3step)
 #tab_model(lm3step, show.df = TRUE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
-
 ```
 
-
-
-
-The linear modeling assumption are evaluated using a diagnostic plot, the Breusch–Pagan Test for Heteroscedasticity and Variance Inflation Factor (VIF) to assess colinearity.  
-
-The initial review of the diagnostic plots for this model shows some deviation from linear modeling assumptions at the boundaries of the prediction range, but the overall QQ plot is almost a flat line; the residuals are flat and exhibit homoscedasticity of variance in the  65 - 95 fitted value range;  
-
-```{r}
-
+The initial review of the diagnostic plots for this model shows some deviation from linear modeling assumptions at the boundaries of the prediction range, but the overall QQ plot is almost a flat line; the residuals are flat and exhibit homoscedasticity of variance in the  65 - 95 fitted value range.
+```{r echo=FALSE}
 check_model(lm3step, check=c('ncv','qq','homogeneity','outliers'))
-
 ```
-
-
 
 The Breusch–Pagan Test for Heteroscedasticity assumes the following Null and Alternate hypothesis. 
 
@@ -384,17 +365,13 @@ The Breusch–Pagan Test for Heteroscedasticity assumes the following Null and A
 
 For this model iteration, we reject the null hypothesis and conclude that this model violates the homoscedasticity function.   
 
-```{r}
-
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 lmtest::bptest(lm3step)
-
 ```
 
+The Variance Inflation Factor (VIF) calculation detects collinearity with the `TEAM_PITCHING_BB`  and `TEAM_BATTING_BB` variables. Both variables have a VIF score over 5 and are 0.93 correlated. Also, variables TEAM_PITCHING_SO, TEAM_BATTING_SO, TEAM_PITCHING_H, TEAM_BATTING_2B have VIF over 5.
 
-
-The Variance Inflation Factor (VIF) calculation detects collinearity with the TEAM_PITCHING_BB  and TEAM_BATTING_BB variables. Both variables have a VIF score over 8 and are 0.93 correlated. 
-
-```{r}
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 
 vif_values <- vif(lm3step)
 vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
@@ -409,90 +386,72 @@ df <- droppedDf[ , vif_values$var] %>% drop_na()
 coeff <- cor(df)
 corrplot(coeff, tl.cex = .7 , diag = FALSE ,type = 'upper' ,method = 'number')
 
-
 ```
 
+For the refined model we will drop `TEAM_PITCHING_BB`, `TEAM_BATTING_BB`, and `TEAM_PITCHING_SO` from the model. This model has a lower adjusted R2 of 0.37 but together with high F-statistic of 163.9, statistically significant p-values should align better with the linear regression assumptions.
 
-
-For the refined model we will drop `TEAM_PITCHING_BB` and `TEAM_BATTING_BB` from the model. The p-value `TEAM_BASERUN_CS` is not significant therefore it will be dropped from the model as well. This model has a lower $AdjR^2=0.35$ but should align better with the linear regression assumptions.
-
-```{r}
-
-lm3step.final <- update(lm3step, . ~ . -TEAM_PITCHING_BB -TEAM_BATTING_BB -TEAM_BASERUN_CS -TEAM_BATTING_2B)
-#tab_model(lm3step.final, show.df = TRUE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+lm3step.final <- update(lm3step, . ~ . -TEAM_PITCHING_BB -TEAM_BATTING_BB -TEAM_PITCHING_SO - -TEAM_BATTING_SO -TEAM_PITCHING_H -TEAM_BATTING_2B)
+lm3finalsum <- summary(lm3step.final)
+tab_model(lm3step.final, show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, show.ci=FALSE, show.stat=TRUE, digits.p=4)
 
 ```
-
-
 
 The diagnostic plots for the new model appear to be closer aligned with the linear regression assumptions. For this model iteration, we will again reject the null hypothesis and conclude that this model violates the homoscedasticity function. And finally the Variance Inflation Factor (VIF) calculation does not detects collinearity across the remaining variables. Overall we will reject model 3 because the residuals are not homoscedastic.
 
-
-```{r}
-
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 check_model(lm3step.final, check=c('ncv','qq','homogeneity','outliers'))
-
 ```
 
-
-```{r}
-
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 lmtest::bptest(lm3step.final)
-
 ```
-
-
-
-```{r}
-
-vif_values <- vif(lm3step.final)
-vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
-
-vif_values %>%
-  ggplot(aes(y=vif_values, x=var)) +
-  coord_flip() + 
-  geom_hline(yintercept=5, linetype="dashed", color = "red") +
-  geom_bar(stat = 'identity', width=0.3 ,position=position_dodge()) +
-  labs(title = 'Model 4: Variance Inflation Factor')
-
-df <- droppedDf[ , vif_values$var] %>% drop_na()
-coeff <- cor(df)
-corrplot(coeff, tl.cex = .7 , diag = FALSE ,type = 'upper' ,method = 'number')
-```
-
-
-
-```{r}
+The model with stepAIC seems the nest out of 3 as all p-values are significant, high F-statistic of 94.48, adjusted R-squared is  0.4185.
+```{r echo=FALSE, warning=FALSE, message=FALSE}
 tab_model(lm3, lm3step, lm3step.final, 
           dv.labels = c('model 3','model 3 (StepAIC)','model 3 (Final)'),
-          show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
+          show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, show.ci=FALSE, show.stat=TRUE, digits.p=4)
 
 ```
-
-
 
 ### 3.4 Model 4: Variable Transformation
 
-For the fourth model we can run the imputed + features that were engineered (i.e. sqrt), and pick the best model.
-
+For the fourth model we will use the data with no values missing, with some features transformed and without outliers.
+The stepwise variable selection based on the AIC score is used again. The resulting model has a significant p-values for the model and all predictor variables. The results: F-statistic is 98.67, adjusted R-squared 0.371. The F-statistic is high and the p-value of the model is close to zero, so we would dismiss the null hypothesis, which assumes that there is no correlation between the explanatory and response variables.
 ```{r echo=FALSE}
-lm4 <- lm(TARGET_WINS~., data=transformed_df)
+lm4 <- lm(TARGET_WINS~. -TEAM_PITCHING_HR -TEAM_BATTING_SO -TEAM_BASERUN_CS -TEAM_BATTING_HR -TEAM_PITCHING_BB -TEAM_PITCHING_H -pitching_hr_sqrt -na_flag, data=transformed_df)
 lm4step <- stepAIC(lm4, trace=FALSE)
 lm4sum <- summary(lm4step)
-
+tab_model(lm4step, show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, show.ci=FALSE, show.stat=TRUE, digits.p=4)
+```
+The review of the diagnostic plots shows that the overall QQ plot is almost a flat line; the residuals are flat and exhibit homoscedasticity of variance in the  60 - 100 fitted value range.
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+check_model(lm4step, check=c('ncv','qq','homogeneity','outliers'))
 ```
 
-Below are the results $R^2$, residual standard error, and F-statistics of each model. Surprisingly the non-cleaned, non-imputed raw training data had the best fitting statistics. 
+## 4. Selecting Models
+<b><i>
+Notes / Questions
 
+- there are NA's in the predsDf tables with the predictions for every model. Don't know why
+
+</i></b>
+
+The table presents an analysis of the performance metrics for each model on the training dataset. The results suggest that the model's performance slightly improved after incorporating transformations and selecting significant parameters. Below are the results $R^2$, residual standard error, and F-statistics of each model. It happened that the non-cleaned, non-imputed raw training data had the best fitting statistics. Though model 1 doesn't meet assumption requirements. Moel 3 looks like the best fit.
+The F-statistic for models 2-3 was large, they all had significant p-values.
+During the exploratory data analysis, it was noted that some of the predictor variables had correlations with each other, which is expected in baseball. However, this high correlation between variables could result in multicollinearity, causing unstable regression fits. To mitigate this issue, we employed the Variable Inflation Factor (VIF) method in the previous section to identify better models by selecting variables with VIF values less than 5.
+The residuals plots from the part 3 showed that models 1-3 almost follow the normal distribution and almost constant variance.  
+
+**ADD WORDS ABOUT MSE**
 ```{r echo=FALSE}
 plot(compare_performance(lm1,lm2,lm3step,lm4step, rank=T))
 ```
 
 ```{r echo=FALSE}
-r <- c(lm1Sum$r.squared, lm2Sum$r.squared, lm3sum$r.squared)
-rsse <- c(lm1Sum$sigma, lm2Sum$sigma, lm3sum$sigma)
-adjusted.r <- c(lm1Sum$adj.r.squared, lm2Sum$adj.r.squared, lm3sum$adj.r.squared)
-modelDf <- data.frame(r,rsse,adjusted.r)
+r <- c(lm1Sum$r.squared, lm2Sum$r.squared, lm3sum$r.squared, lm4sum$r.squared)
+mse <- c(lm1Sum$sigma, lm2Sum$sigma, lm3sum$sigma, lm4sum$sigma)
+adjusted.r <- c(lm1Sum$adj.r.squared, lm2Sum$adj.r.squared, lm3sum$adj.r.squared, lm4sum$adj.r.squared)
+modelDf <- data.frame(r,mse,adjusted.r)
 kable(modelDf, caption = "Money Ball Dataset", digits = 2, format = "html", row.names = F) %>%
   kable_styling(
     bootstrap_options = c("striped", "hover"),
@@ -501,39 +460,37 @@ kable(modelDf, caption = "Money Ball Dataset", digits = 2, format = "html", row.
   )
 ```
 
-
-## 4. Selecting Models
-
-Next, we apply the models to the evaluation dataset to make predictions. However, to ensure that the models 2-4 work properly, we will fill in the missing values in the evaluation data set using the same imputation method - mice, for model 4 we will also make necessary transformations. 
+Next, we apply the models to the evaluation dataset to make predictions. However, to ensure that the models 2-4 work properly, we will fill in the missing values in the evaluation data set using the same imputation method - mice, drop columns `INDEX`, `TEAM_BATTING_HBP`, for model 3 outliers were removed, for model 4 we will also make necessary transformations. 
 
 ```{r echo=FALSE}
-evalImputeDf <- mice(evalDf, m = 5, maxit = 50, seed = 123, printFlag = F)
-evalImputeDf <- complete(evalImputeDf)
+#removed columns
+evalDroppedDf <- evalDf %>% dplyr::select(-c(INDEX, TEAM_BATTING_HBP))
+evalDroppedDf <- evalDroppedDf %>% mutate(TEAM_BATTING_1B = TEAM_BATTING_H - TEAM_BATTING_2B - TEAM_BATTING_3B - TEAM_BATTING_HR)
 
-evalDroppedDf <- evalImputeDf %>% mutate(TEAM_BATTING_1B = TEAM_BATTING_H - TEAM_BATTING_2B - TEAM_BATTING_3B - TEAM_BATTING_HR)
+#no NA's
+evalcleanDf <- mice(evalDroppedDf, m = 5, maxit = 50, seed = 123, printFlag = F)
+evalcleanDf <- complete(evalcleanDf)
 
-transformed_eval <- evalImputeDf |> mutate_each(funs(sqrt),
+#with transformations
+transformed_eval <- evalcleanDf |> mutate_each(funs(sqrt),
                    batting_hr_sqrt = TEAM_BATTING_HR,
                    batting_so_sqrt = TEAM_BATTING_SO,
                    baserun_cs_sqrt = TEAM_BASERUN_CS,
                    pitching_hr_sqrt = TEAM_PITCHING_HR)
 
-
-
-```
-**CHANGE SINCE THE MODELS WILL BE DIFFERENT**
-The table below contains the predicted `TARGET_WINS` for each model. Upon initial examination, it is noticeable that the first model is generating predictions with negative values. This is not a realistic outcome as it is impossible to have a negative number of wins. Therefore, this model is not particularly valuable. However, the second and third models, which utilize cleaned and imputed data, do not encounter this problem of producing large negative predictions. Generally, both the AIC-generated model and the second model are yielding comparable results.
-```{r echo=FALSE}
-lm1Pred <- lm1 %>% predict(evalImputeDf)
-lm2Pred <- lm2 %>% predict(evalImputeDf)
-aicPred <- lm3step %>% predict(evalDroppedDf)
-aicPred4 <- lm4step %>% predict(transformed_eval)
 ```
 
 ```{r echo=FALSE}
-predsDf <- evalImputeDf %>% 
-  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred, aic4 = aicPred4) %>%
-  dplyr::select(c(lm1, lm2, aic, aic4))
+lm1Pred <- lm1 %>% predict(evalcleanDf)
+lm2Pred <- lm2 %>% predict(evalcleanDf)
+aiclm3 <- lm3step %>% predict(evalcleanDf)
+aiclm4 <- lm4step %>% predict(transformed_eval)
+```
+The table presents the predicted values of `TARGET_WINS` for each model. First thing to notice is that the first model predicts negative number of wins, which is unrealistic. Though we won't concentrate on this model. The third and fourth AIC-generated models (no outliers and transformed values) have similar outcomes, and both are performing well. The second model also produces similar results but there was an issue with model assumptions.
+```{r echo=FALSE}
+predsDf <- evalDf %>% 
+  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic3 = aiclm3, aic4 = aiclm4) %>%
+  dplyr::select(c(lm1, lm2, aic3, aic4))
   kable(head(predsDf, 15), caption = "Money Ball Dataset", digits = 2, format = "html", row.names = F) %>%
   kable_styling(
     bootstrap_options = c("striped", "hover"),
@@ -542,64 +499,37 @@ predsDf <- evalImputeDf %>%
   )
 ```
 
-
 We can also see when plotting the predictions that there doesn't seem to be much obvious difference between the models aside from the clearly outrageous outliers generated by the first model, and the 4th model showing a slightly tighter range in wins.
 
+
+**TEXT IS NEEDED HERE**
 ```{r echo=FALSE}
-xT <- evalImputeDf %>% 
-  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic = aicPred, aic4 = aicPred4)
+xT <- evalcleanDf %>% 
+  mutate(lm1 = lm1Pred, lm2 = lm2Pred, aic3 = aiclm3, aic4 = aiclm4)
 par(mfrow=c(2,2))
 plot(1:nrow(xT), xT$lm1, xlab="LM1", ylab="Wins", title="LM1")
 plot(1:nrow(xT), xT$lm2, xlab="LM2", ylab="Wins", title="LM2")
-plot(1:nrow(xT), xT$aic, xlab="AIC", ylab="Wins", title="AIC")
-plot(1:nrow(xT), xT$aic4, xlab="AIC4", ylab="Wins", title="AIC4")
+plot(1:nrow(xT), xT$aic, xlab="AIC LM3", ylab="Wins", title="AIC LM3")
+plot(1:nrow(xT), xT$aic4, xlab="AIC LM4", ylab="Wins", title="AIC LM4")
 ```
 
-We can the graphs below to check the validity of our models. All models suffer from a lack of linearity which indicates that a linear regression model may not be the greatest technique for predicting values from this data with the given variables. The models that included all the most variables (model 1, model 3, model 4), suffer from co-linearity issues.
-
-**Model 1**
-
-```{r echo=FALSE}
-check_model(lm1, check = c("vif","normality","linearity","homogeneity"))
-```
-
-**Model 2**
-
-```{r echo=FALSE}
-check_model(lm2, check = c("vif","normality","linearity","homogeneity"))
-```
-
-**Model 3**
-
-```{r echo=FALSE}
-check_model(lm3step, check = c("vif","normality","linearity","homogeneity"))
-```
-
-**Model 4**
-
-```{r echo=FALSE}
-check_model(lm4step, check = c("vif","normality","linearity","homogeneity"))
-```
 
 ## 5. Conclusion
+In general, we don't much faith in any of the models we produced when it comes to their predictive power. The model 1 that had the highest $R^2$ value was compromised by missing data, leading to highly inaccurate negative predictions, though model 3 has also high $R^2$ and doesn't produce negative results. The second and fourth models demonstrated a weak overall fit, as evidenced by their lower $R^2$ scores. Furthermore, none of the models displayed satisfactory performance when assessed for linearity or homogeneity of variance.
+According to the analysis, Models 1 and 3 performed slightly better than Models 1 and 4 and could be considered as the preferred linear models based on the adjusted R2. However, Model 3 is more statistically significant compared to the others and uses fewer unnecessary variables for making predictions while still maintaining a similar level of adjusted R2. Considering these factors, and its better handling of multicollinearity (with fewer instances of sign-flipping in coefficients), Model 3 would be the recommended choice of model.
 
 
 
-<b><i>
-Notes / Questions
-
-- This is actually a better source to do the research :) https://www.seanlahman.com/baseball-archive/statistics/
-
-</i></b>
+## References
 
 
 
-Overall none of the models that I was able to generate instill much confidence in their ability to predict. The model with the best fit according to the $R^2$ statistic was filled with missing data that caused clearly incorrect negative predictions.
-
-The second and third models both had significantly lower $R^2$ scores which indicated a poor fit overall. In addition, none of the models performed well when checked for linearity or homogeneity of variance. While the second model did not suffer from colinearity issues the other two models did.
+## Appendix A: R code
 
 
-## Appendix A: Lahman’s Baseball Database
+
+
+## Appendix B: Lahman’s Baseball Database
 
 Despite significant efforts to compensate for poor data quality, the resulting models are poor predictors of win totals. Moreover, the poor data quality is inconsistent with the overall state of baseball statistics. When it comes to the major sports, baseball has the most mature statistics available. Therefore finding better data is the best course of action for developing a better predictive model. 
 
@@ -607,14 +537,9 @@ We were able to locate a cleaner version of the same data set provided in the cl
 
 https://www.seanlahman.com/baseball-archive/statistics/
 
-
-
 ```{r}
-
 teamDF <- loadLahmanData()
-
 ```
-
 
 A significant advantage of Lahman's data set over the data set provided in class is that it includes information about the year and the team. This data is valuable when considering how baseball has changed over the years. The modern era in baseball is often delineated by the turn of the century. However, when looking at the past 120 years of baseball history, it is easy to pinpoint rule changes, evolutions in playing strategy, and league structure that have fundamentally impacted the game.  
 
@@ -637,22 +562,14 @@ Although we could have chosen any number of the time periods above, exploring th
 
 Thus using 1900 as the beginning of the modern era and 1969 as an additional breakpoint, the dataset can be divided into three segments. The density profiles for the predictor variables approach a normal distribution when grouped by the three segments we identified. To support data exploration, we added a era_cat field to the data set.
 
-
-
 ```{r}
-
 teamAdjDF <- loadLahmanShortData()
 
 random_sample <- createDataPartition(teamAdjDF$TARGET_WINS,p = 0.8, list = FALSE)
 
 trainingTeam_df <- teamAdjDF[random_sample, ]
 testingTeam_df <- teamAdjDF[-random_sample, ]
-
-
 ```
-
-
-
 
 In general the Lahman's data set contains fewer data gaps and the variables are more consistently distributed. There are some missing values in the data set including the Caught Stealing (CS/TEAM_BASERUN_CS) variable is missing 27.9%; the Batters Hit by Pitch (HBP/TEAM_BATTING_HBP) variable is missing 38.8%; and the Sacrifice Flies (SF) variable is missing 51.6% of the values. 
 
@@ -660,11 +577,7 @@ Most of the variables in the data set show some level of skewness, with the foll
 
 The Lahman data set contains several variables with bimodal distributions, including, TEAM_BATTING_HR, TEAM_BATTING_SO, TEAM_BATTING_HR, and TEAM_PITCHING_SO. 
 
-
-
 ```{r}
-
-
 print(
   dfSummary(teamDF, 
             varnumbers   = TRUE,
@@ -672,17 +585,9 @@ print(
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
   method = "render")
-
-
 ```
 
-
-
-
-
-
 ```{r}
-
 m_df <- teamAdjDF[random_sample, ] %>% melt() 
 
 m_df %>% ggplot(aes(x= value)) + 
@@ -690,17 +595,10 @@ m_df %>% ggplot(aes(x= value)) +
       facet_wrap(~variable, scales = 'free',  ncol = 4) + 
       theme_bw() +
       labs(title = 'Variable Density Plots')
-
 ```
-
-
-
-
 When we group the statistics by the three categories presented earliers, we see a much cleaner density plot across all variables. There are few signs of bimodal distributions, and the skewness of individual variables is reduced greatly.
 
 ```{r}
-
-
 m_df <- teamAdjDF[random_sample, ] %>% filter(era_cat == '1969+') %>% melt() 
 
 m_df %>% ggplot(aes(x= value)) + 
@@ -708,19 +606,10 @@ m_df %>% ggplot(aes(x= value)) +
       facet_wrap(~variable, scales = 'free',  ncol = 4) + 
       theme_bw() +
       labs(title = 'Variable Density Plots (1969+)')
-
-
 ```
 
-
-
-
 The training data set exibits the following characteristics.
-
-
 ```{r}
-
-
 print(
   dfSummary(trainingTeam_df, 
             varnumbers   = TRUE,
@@ -728,14 +617,9 @@ print(
             graph.magnif = .8,
             tmp.img.dir  = "/tmp"),
   method = "render")
-
 ```
 
-
-
-
 ```{r}
-
 m_df <- trainingTeam_df %>% melt() 
 
 m_df %>% ggplot(aes(x= value)) + 
@@ -745,121 +629,74 @@ m_df %>% ggplot(aes(x= value)) +
 m_df %>% ggplot(aes(x = value)) +
   geom_boxplot(outlier.color = 'red', outlier.shape = 1) +
   facet_wrap(vars(variable),scales = "free", ncol = 4)
-
 ```
 
-
-
 ```{r}
-
 rcore <- rcorr(as.matrix(trainingTeam_df %>% dplyr::select(where(is.numeric))))
 coeff <- rcore$r
 corrplot(coeff, tl.cex = .7 , method = 'pie')
-
 ```
 
-
-
-
-
-### DATA PREPARATION 
+**DATA PREPARATION**
 
 The use of the era_cat variable allows us to group the data set into 3 categories that variables that approach normal distribution. 
 
 Since segmenting the data set using the era_cat variable creates 3 categories of variables that approach the normal distribution, we will focus our data preparation step on missing values. The documentation for MICE package recommends that a 5% threshold should be observed for safely imputing missing values. Based on this rule of thumb we will drop the 'TEAM_BASERUN_CS' and the 'TEAM_BATTING_HBP' variables.
 
 The remaining variables with missing data ('TEAM_BATTING_BB','TEAM_BATTING_SO' and 'TEAM_BASERUN_SB') will be impuned using the MICE package. Several methods can be used but for simplicity we selected m=5 the default method.
-
-
 ```{r}
-
 trainingTeam_df <- trainingTeam_df %>% dplyr::select(-c(TEAM_BASERUN_CS,TEAM_BATTING_HBP))
 testingTeam_df <- testingTeam_df %>% dplyr::select(-c(TEAM_BASERUN_CS,TEAM_BATTING_HBP))
-
 ```
 
-
-
 ```{r}
-
 imputeDf <- mice(trainingTeam_df, m = 5, maxit = 50, seed = 123, printFlag = F)
 imputeDf$meth
 trainingTeam_df <- complete(imputeDf)
 m_imputed <- melt(trainingTeam_df)
 densityplot(imputeDf)
-
 ```
 
-
-
-### Build Model
+**Build Model**
 
 The first model includes all the variables from the original data set with the exception of the yearID. It could be argued that year might have an impact on the numbers, however we are accounting for year with the era_cat variable. The initial model has an $AdjR^2 = 0.8078$, and the model selected by stepAIC includes the same variables and has the same $AdjR^2=8078$.
-
-
 ```{r}
-
-lmA1 <- lm(TARGET_WINS ~ . -yearID, data = trainingTeam_df, by=era_cat)
+lmA1 <- lm(TARGET_WINS ~ . -yearID, data = trainingTeam_df) #by=era_cat)
 summary(lmA1)
 
 lmA1.step <- stepAIC(lmA1, trace = FALSE, by=era_cat)
 summary(lmA1.step)
-
 ```
 
-
-The TEAM_BATTING_3B variable was dropped due to a low p-values, giving us the final model with an $AdjR^2=0.8078$. 
+The `TEAM_BATTING_3B` variable was dropped due to a low p-values, giving us the final model with an $AdjR^2=0.8078$. 
 
 ```{r}
-
 lmA1.final <- update(lmA1.step, . ~ . -TEAM_BATTING_3B)
 summary(lmA1.final)
-
 ```
-
-
-
 
 There are a number of issues with the model diagnostics. The Linearity, and QQ plots show deviation from the straight line at the boundaries. In addition, the reference line for the Homogeneity of Variance graph is not flat. This indicates that residual variance is not consistent across the model values. Further exploration could be conducted to see if there are smaller date ranges and prediction ranges that generate a model that better aligns with the linear regression assumptions. 
 
-
 ```{r}
-
 check_model(lmA1.final, check=c('ncv','qq','homogeneity','outliers'))
-
 ```
 
-
-
-### PREDICT 
+**PREDICT** 
 
 The next step is to use the selected model to predict the testing data set. The Yardstick package was used to calculate model performance, including the $R^2$. With an $R^2=0.8318$ the performance on the testing data set is consistent with the model summary. In the Residual vs. TARGET_WINS graph, there appears to be wins range between 60 and 110 that generates more accurate forecasts. However, it should be noted that the residuals appear to drift downwards. TARGET_WINS less than the mean are overestimated and TARGET_WINS greater than the mean is over estimated. 
-
-
 ```{r}
-
 imputeDf <- mice(testingTeam_df, m = 5, maxit = 50, seed = 123, printFlag = F)
 imputeDf$meth
 testingTeam_df <- complete(imputeDf)
 m_imputed <- melt(testingTeam_df)
 densityplot(imputeDf)
-
-
 ```
 
-
-
 ```{r}
-
 lmA1Pred.final <- lmA1.final %>% predict(testingTeam_df)
-
 ```
 
-
-
 ```{r}
-
-
 multi_metric <- metric_set(mape, smape, mase, mpe, rmse, rsq)
 m <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmA1Pred.final)
 
@@ -869,14 +706,10 @@ kable(m, digits = 4, format = "html", row.names = T) %>%
     full_width = F,
     position = "center"
   )
-
 ```
 
 
-
-
 ```{r}
-
 n <- nrow(testingTeam_df)
 x <- testingTeam_df$TARGET_WINS
 e <- lmA1Pred.final - testingTeam_df$TARGET_WINS 
@@ -890,13 +723,9 @@ plot(x, e,
 abline(h = 0, lwd = 2)
 for (i in 1 : n) 
   lines(c(x[i], x[i]), c(e[i], 0), col = "red" , lwd = 1)
-
-
 ```
 
-
-
-## Appendix B: Pythagorean Model
+## Appendix c: Pythagorean Model
 
 Bill James developed the Pythagorean winning percentage. The concept strives to calculate the number of games a team should win based on the total offense and the number of runs allowed. Since this model includes total runs scored vs. total runs allowed the expectation is that this model will be a good predictor of a team's wins in a given season. 
 
@@ -904,53 +733,33 @@ $Win Percentage = (Runs Scored)^2 / [ (Runs Scored)^2 + (Runs Allowed)^2]$
 
 
 ```{r}
-
 random_sample <- createDataPartition(teamDF$TARGET_WINS, p = 0.8, list = FALSE)
 
 trainingTeam_df <- teamDF[random_sample, ]
 testingTeam_df <- teamDF[-random_sample, ]
-
 ```
-
-
-
 
 As we expected, the Pythagorean model performs well $Adj R^2$ = 0.9112. However, this linear model differs slightly from the formal definition since it includes an intercept of 5.21 and a coefficient for the Pythagorean factor of 151.39. The formal definition of the model would have an intercept of 0 and a coefficient of 162. 
 
 ```{r}
-
 lmp <- lm(TARGET_WINS ~ pythPercent, data = trainingTeam_df)
 summary(lmp)
-
-
 ```
-
-
 
 The diagnostic plots show residuals that are normally distributed with a linear relationship to the fitted values. The homogeneity of variance is curved, indicating that the variance of residuals is not consistent. 
 
 ```{r}
-
 check_model(lmp, check=c('ncv','qq','homogeneity','outliers'))
-
 ```
-
 
 The next step is to use the Pythagorean Model to predict the testing data set. The Yardstick package was used to calculate model performance, including the $R^2$.  With an $R^2=0.9131$ the performance on the testing data set is consistent with the model summary. In the Residual vs. TARGET_WINS graph there appears to be a wins range between 50 and 130 that generates more accurate forecasts.  
 
 ```{r}
-
-
 lmpPred <- lmp %>% predict(testingTeam_df)
 hist(lmpPred)
-
-
 ```
 
-
-
 ```{r}
-
 m1 <- testingTeam_df %>% multi_metric(truth=testingTeam_df$TARGET_WINS, estimate=lmpPred)
 
 kable(m1, digits = 4, format = "html", row.names = T) %>%
@@ -959,14 +768,9 @@ kable(m1, digits = 4, format = "html", row.names = T) %>%
     full_width = F,
     position = "center"
   )
-
 ```
 
-
- 
-
 ```{r}
-
 n <- nrow(testingTeam_df)
 x <- testingTeam_df$TARGET_WINS
 e <- lmpPred - testingTeam_df$TARGET_WINS 
@@ -980,13 +784,8 @@ plot(x, e,
 abline(h = 0, lwd = 2)
 for (i in 1 : n) 
   lines(c(x[i], x[i]), c(e[i], 0), col = "red" , lwd = 1)
-
-
 ```
-
 
 Unsurprising the Pythagorean Model performs well when it comes to win projections. There is clear relationship between the total yearly run differential and the number of games won. It is a simple model but efficient. 
 
 
-
-## References
