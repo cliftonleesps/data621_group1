@@ -33,7 +33,7 @@ library(summarytools)
 library(sjPlot)
 library(car)
 library(rsample)
-library(olsrr)
+library(olsrr) 
 knitr::opts_chunk$set(echo = F, warning = F, message = F, eval = T , results="asis")
 set.seed(1234)
 ```
@@ -212,19 +212,23 @@ densityplot(imputeDf)
 ```
 
 ### 2.2 Drop Outliers
-To identify outliers, we used historical data from the Lahman's Baseball Database. In baseball's early history,  few games were played in a season (less than 20); thus, the calculation used to normalize the statistics to a 162-game season tends to create outliers. We used the min and max from the modern era (post-1900) as a filter to alleviate the issues created by outlier values.
+To identify outliers, we used historical data from the Lahman's Baseball Database. In baseball's early history,  few games were played in a season (less than 20); thus, the calculation used to normalize the statistics to a 162-game season tends to create outliers. We used the min and max from the modern era (post-1900) as a filter to alleviate the issues created by outlier values. Each statistic listed in the column names was compared to the min and max for the same statistic in the modern era. The row was discarded if the values were below the min or above the max. 
 
-**ADD MORE TEXT WITH EXPLANATIONS ABOUT FUNCTIONS USED TO WORK WITH OUTLIERS**
+
 
 ```{r drop outliers, echo=FALSE, warning=FALSE, message=FALSE}
 
+# list of columns included in in the outlier filtering
 columnNames <- c('TEAM_BATTING_H','TEAM_BATTING_2B','TEAM_BATTING_3B','TEAM_BATTING_HR',
                  'TEAM_BATTING_BB','TEAM_BATTING_SO','TEAM_BASERUN_SB','TEAM_BASERUN_CS',
                  'TEAM_PITCHING_H','TEAM_PITCHING_HR','TEAM_PITCHING_BB','TEAM_PITCHING_SO',
                  'TEAM_FIELDING_E','TEAM_FIELDING_DP','TEAM_BATTING_1B')
 
+# Filter 
 filterDf <- loadLahmanShortData() %>% filter(yearID >= 1900)
 droppedDf <- filterOutliers(filterDf, cleanDf, columnNames)
+
+# print stats for new model
 print(
   dfSummary(droppedDf, 
             varnumbers   = TRUE,
@@ -245,6 +249,7 @@ m_df %>% ggplot(aes(x = value)) +
 
 ```
 
+
 ### 2.2 Transform non-normal variables
 We should also try to transform some variables so that they may fit a more normal distribution, particularly `TEAM_BATTING_HR`, `TEAM_BATTING_SO`, `TEAM_PITCHING_HR`, but also `TEAM_PITCHING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and `TEAM_FIELDING_E`. Square rooting these variables helps, as does removing the skewness by reducing the low density ranges.
 The plots below compare the original distributions of non-normal variables and transformed ones. This is just one of the ways to handle the data that doesn't follow normal distribution. The  other way is to use Box-Cox transformations, we may try it after fitting the model.
@@ -254,6 +259,7 @@ The plots below compare the original distributions of non-normal variables and t
 m_imputed %>% ggplot(aes(x= value)) + 
     geom_density(fill='gray') + facet_wrap(~variable, scales = 'free') +
     theme(strip.text.x = element_text(size = 6, angle = 0))
+
 # Transform some non-normal variables.
 transformed_df <- cleanDf |> mutate_each(funs(sqrt),
                    batting_hr_sqrt = TEAM_BATTING_HR,
@@ -334,26 +340,20 @@ check_model(lm2, check=c('ncv','qq','homogeneity','outliers'))
 
 ### 3.3 Model 3: Removed Outliers
 
-The third model will use the cleaned dataset with outliers  omitted. Stepwise variable selection based on the AIC score is used to filter the optimal set of features. The resulting model has a significant p-values for the model and all predictor variables. The results: F-statistic is 117.3, adjusted R-squared 0.417. The adjusted R2 indicates that 41% of the variance in the response variable can be explained by the predictor variables. The F-statistic is high and the p-value of the model is close to zero, so we would dismiss the null hypothesis, which assumes that there is no correlation between the explanatory and response variables.
-**DAVID, WHY TEAM_BATTING_H WAS REMOVED? COULD YOU PLEASE ADD A SENTENCE EXPLAINING THE CHOICE?**
+The third model will use the cleaned dataset with outliers  omitted. The TEAM_BATTING_H variable was also dropped becuase it captures the same information as EAM_BATTING_1B, EAM_BATTING_2B, EAM_BATTING_3B, EAM_BATTING_HR variables. Stepwise variable selection based on the AIC score is used to filter the optimal set of features. The resulting model has a significant p-values for the model and all predictor variables. The results: F-statistic is 117.3, adjusted R-squared 0.417. The adjusted R2 indicates that 41% of the variance in the response variable can be explained by the predictor variables. The F-statistic is high and the p-value of the model is close to zero, so we would dismiss the null hypothesis, which assumes that there is no correlation between the explanatory and response variables. 
+
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 
-lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H -na_flag, data=droppedDf)
+lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedDf, by=na_flag)
 lm3step <- stepAIC(lm3, trace = FALSE)
 lm3sum <- summary(lm3step)
 tab_model(lm3step, show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, show.ci=FALSE, show.stat=TRUE, digits.p=4)
 
 ```
 
-**WAS BEFORE FROM DAVID*
-```{r echo=FALSE, eval=FALSE}
-#lm3 <- lm(TARGET_WINS ~ . -TEAM_BATTING_H, data=droppedDf, by=na_flag)
-#lm3step <- stepAIC(lm3, trace = FALSE)
-#lm3sum <- summary(lm3step)
-#tab_model(lm3step, show.df = TRUE, show.aic = TRUE, show.fstat=TRUE, show.se = FALSE, digits.p=4)
-```
 
 The initial review of the diagnostic plots for this model shows some deviation from linear modeling assumptions at the boundaries of the prediction range, but the overall QQ plot is almost a flat line; the residuals are flat and exhibit homoscedasticity of variance in the  65 - 95 fitted value range.
+
 ```{r echo=FALSE}
 check_model(lm3step, check=c('ncv','qq','homogeneity','outliers'))
 ```
@@ -388,7 +388,7 @@ corrplot(coeff, tl.cex = .7 , diag = FALSE ,type = 'upper' ,method = 'number')
 
 ```
 
-For the refined model we will drop `TEAM_PITCHING_BB`, `TEAM_BATTING_BB`, and `TEAM_PITCHING_SO` from the model. This model has a lower adjusted R2 of 0.37 but together with high F-statistic of 163.9, statistically significant p-values should align better with the linear regression assumptions.
+For the refined model we will drop `TEAM_PITCHING_BB`, `TEAM_BATTING_BB`, `TEAM_PITCHING_SO` `TEAM_BATTING_SO` `TEAM_PITCHING_H` and `TEAM_BATTING_2B` from the model. This model has a lower adjusted R2 of 0.37 but together with high F-statistic of 163.9, statistically significant p-values should align better with the linear regression assumptions.
 
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 lm3step.final <- update(lm3step, . ~ . -TEAM_PITCHING_BB -TEAM_BATTING_BB -TEAM_PITCHING_SO - -TEAM_BATTING_SO -TEAM_PITCHING_H -TEAM_BATTING_2B)
@@ -403,10 +403,30 @@ The diagnostic plots for the new model appear to be closer aligned with the line
 check_model(lm3step.final, check=c('ncv','qq','homogeneity','outliers'))
 ```
 
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+vif_values <- vif(lm3step.final)
+vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
+
+vif_values %>%
+  ggplot(aes(y=vif_values, x=var)) +
+  coord_flip() + 
+  geom_hline(yintercept=5, linetype="dashed", color = "red") +
+  geom_bar(stat = 'identity', width=0.3 ,position=position_dodge()) 
+
+df <- droppedDf[ , vif_values$var] %>% drop_na()
+coeff <- cor(df)
+corrplot(coeff, tl.cex = .7 , diag = FALSE ,type = 'upper' ,method = 'number')
+
+```
+
+
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 lmtest::bptest(lm3step.final)
 ```
-The model with stepAIC seems the nest out of 3 as all p-values are significant, high F-statistic of 94.48, adjusted R-squared is  0.4185.
+
+
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 tab_model(lm3, lm3step, lm3step.final, 
           dv.labels = c('model 3','model 3 (StepAIC)','model 3 (Final)'),
@@ -661,7 +681,7 @@ densityplot(imputeDf)
 
 The first model includes all the variables from the original data set with the exception of the yearID. It could be argued that year might have an impact on the numbers, however we are accounting for year with the era_cat variable. The initial model has an $AdjR^2 = 0.8078$, and the model selected by stepAIC includes the same variables and has the same $AdjR^2=8078$.
 ```{r}
-lmA1 <- lm(TARGET_WINS ~ . -yearID, data = trainingTeam_df) #by=era_cat)
+lmA1 <- lm(TARGET_WINS ~ . -yearID, data = trainingTeam_df, by=era_cat)
 summary(lmA1)
 
 lmA1.step <- stepAIC(lmA1, trace = FALSE, by=era_cat)
