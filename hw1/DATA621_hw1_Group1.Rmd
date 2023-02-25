@@ -712,7 +712,7 @@ We don't generally place much faith in any of the models for their predictive po
 
 -   None of the models displayed satisfactory performance when assessed for linearity or homogeneity of variance. 
 
-According to the analysis, Models 1 and 3 performed slightly better than Models 1 and 4, and would be the preferred linear models based solely on their adjusted $R^2$.
+According to the analysis, Models 1 and 3 performed slightly better than Models 2 and 4, and would be the preferred linear models based solely on their adjusted $R^2$.
 However, Model 3 is more statistically significant than the others and uses fewer unnecessary variables for making predictions while maintaining a similar level of adjusted $R^2$.
 
 Overall, Model 3 would be the recommended choice based on these factors and its better handling of multicollinearity (with fewer instances of sign-flipping in coefficients.)
