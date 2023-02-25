@@ -46,9 +46,6 @@ knitr::opts_chunk$set(echo = F,
                       fig.height=6, 
                       fig.width=8)
 set.seed(1234)
-
-# one time
-knitr::opts_knit$set(root.dir = "/Users/jeff/Documents/Learning/CUNY/Classes/DATA 621 - Modeling/data621_group1")
 ```
 
 ```{r functions}
