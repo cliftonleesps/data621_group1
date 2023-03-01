@@ -1,0 +1,27 @@
+---
+title: 'Homework #2: Classification Metris'
+subtitle: 'Critical Thinking Group 1'
+author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver'
+date: "2023-03-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(dplyr)
+
+source("classification_functions.R")
+
+data <- read.csv("classification-output-data.csv")
+```
+
+```{r call_functions}
+
+## Verify that you get an accuracy and an error rate that sums to one.
+
+print( accuracy(data) + classification_error_rate(data) == 1)
+
+```
+
