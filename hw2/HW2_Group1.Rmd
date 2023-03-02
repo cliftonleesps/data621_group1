@@ -11,17 +11,25 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(dplyr)
+library(caret)
+
 
 source("classification_functions.R")
 
 data <- read.csv("classification-output-data.csv")
 ```
 
+
 ```{r call_functions}
 
 ## Verify that you get an accuracy and an error rate that sums to one.
 
 print( accuracy(data) + classification_error_rate(data) == 1)
-
+print( accuracy(data))
+print( sensitivity(data))
+print( specificity(data))
 ```
-
+```{r}
+xtab <- table(data$class, data$scored.class)
+confusionMatrix(xtab)
+```
