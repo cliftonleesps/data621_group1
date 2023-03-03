@@ -19,45 +19,41 @@ classify_predictions <- function(df) {
 
 ## 3. Write a function that takes the data set as a dataframe, with actual and predicted
 ## classifications identified, and returns the accuracy of the predictions.
-test_accuracy <- function(df) {
-    m <- classify_predictions(df)
+test_accuracy <- function(m) {
     (m$tp + m$tn) / (m$tp + m$fp + m$tn + m$fn)
 }
 
 ## 4. Write a function that takes the data set as a dataframe, with actual and
 ## predicted classifications identified, and returns the classification error rate of the predictions.
-test_classification_error_rate <- function(df) {
-    m <- classify_predictions(df)
+test_classification_error_rate <- function(m) {
     (m$fp + m$fn) / (m$tp + m$fp + m$tn + m$fn)
 }
 
 ## 5. Write a function that takes the data set as a dataframe, with actual and
 ## predicted classifications identified, and returns the precision of the predictions.
-test_precision <- function(df) {
-    m <- classify_predictions(df)
+test_precision <- function(m) {
     m$tp / (m$tp + m$fp)
 }
 
 ## 6. Write a function that takes the data set as a dataframe, with actual and
 ## predicted classifications identified, and returns the sensitivity of the predictions.
 ## Sensitivity is also known as recall.
-test_sensitivity <- function(df) {
-    m <- classify_predictions(df)
+test_sensitivity <- function(m) {
     (m$tp) / (m$tp + m$fn)
 }
 
 ## 7. Write a function that takes the data set as a dataframe, with actual and predicted
 ## classifications identified, and returns the specificity of the predictions.
-test_specificity <- function(df) {
-    m <- classify_predictions(df)
+test_specificity <- function(m) {
     (m$tn) / (m$tn + m$fp)
 }
 
 ## 8. Write a function that takes the data set as a dataframe, with actual and
 ## predicted classifications identified, and returns the F1 score of the predictions.
 test_f1_score <- function(df) {
-    precision <- precision(df)
-    sensitivity <- sensitivity(df)
+    m <- classify_predictions(df)
+    precision <- precision(m)
+    sensitivity <- sensitivity(m)
 
     (2 * precision * sensitivity) / (precision + sensitivity)
 }
