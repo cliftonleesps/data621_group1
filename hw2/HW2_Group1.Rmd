@@ -2,25 +2,239 @@
 title: 'Homework #2: Classification Metris'
 subtitle: 'Critical Thinking Group 1'
 author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver'
-date: "2023-03-01"
-output: html_document
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+  pdf_document:
+    toc: yes
+editor_options:
+  chunk_output_type: console
+  markdown: 
+    wrap: sentence
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 
+```{r setup, include=FALSE}
 library(tidyverse)
 library(dplyr)
 library(caret)
-
-
+library(skimr)
+library(lemon)
+library(DT)
+library(kableExtra)
+library(forecast)
 source("classification_functions.R")
 
-data <- read.csv("classification-output-data.csv")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+In this homework assignment, we will work through various classification metrics. We will createfunctions in R to carry out the various calculations. We will also investigate some functions in packages that will let you obtain the equivalent results. Finally, we will create graphical output that also can be used to evaluate the output of classification models, such as binary logistic regression.
+
+
+## 1. Download the data
+The classification output data set `classification-output-data.csv` was loaded into the variable `data`. The data set contains 181 observations of 11 variables. This report will focus on three variables: "class" (the true class for each observation), "scored.class" (the predicted class for each observation), and "scored.probability" (the predicted likelihood of success for each observation).
+```{r data}
+data <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw2/classification-output-data.csv")
+```
+
+```{r summary, echo=FALSE}
+DT::datatable(
+      data,
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE) 
 ```
 
 
-```{r call_functions}
+## 2. Raw confusion matrix
+
+The data set has three key columns we will use:
+
+* `class`: the actual class for the observation \
+
+* `scored.class`: the predicted class for the observation (based on a threshold of 0.5) \
+
+* `scored.probability`: the predicted probability of success for the observation
+
+Using the the table() function, we can check the raw confusion matrix for this scored dataset.
+
+The confusion matrix below has rows and columns representing the actual and predicted classes respectively for two types of categories (0 and 1). 
+
+* `119` is the number of observations that are correctly classified as class 0 (`TN`, true negative observations)
+
+* `30` is the number of observations belonging to class 0 that are incorrectly classified as class 1 (`FN`, false negative observations)
+
+* `5` is the number of observations belonging to class 1 but classified incorrectly as class 0 (`FP`, false positive observations)
+
+* `27` is the number of observations that are correctly classified as positive class 1 (`TP`, true positive observations)
+
+**MAYBE make the raw confusion matrix look better**
+
+```{r raw-matrix, echo=FALSE}
+data %>%
+  select(scored.class, class) %>%
+  table()
+```
+
+
+## 3. Accuracy
+The function test_accuracy() takes the data set as a dataframe, with actual and predicted classifications identified, and returns the accuracy of the predictions. The function is based on the formula below. The function classify_predictions() calculates the amount of true positive, true negative, false negative, and false positive observations. Based on the results of the functions, the accuracy is `0.81`.
+
+$$Accuracy = \frac{TP+TN}{TP+FP+TN+FN}$$
+**MAYBE improve classify_predictions() to accept df, x1, x2 (data frame, )?**
+```{r classify_predictions}
+classify_predictions <- function(df) {
+
+    true_negative <- df %>% select(class, scored.class) %>% filter(scored.class == 0 & class == 0)
+    true_positive <- df %>% select(class, scored.class) %>% filter(scored.class == 1 & class == 1)
+
+    false_negative <- df %>% select(class, scored.class) %>% filter(scored.class == 0 & class == 1)
+    false_positive <- df %>% select(class, scored.class) %>% filter(scored.class == 1 & class == 0)
+
+    matrix <- list("tn" = nrow(true_negative),
+                   "tp" = nrow(true_positive),
+                   "fn" = nrow(false_negative),
+                   "fp" = nrow(false_positive))
+    return (matrix)
+}
+
+```
+
+```{r accuracy}
+test_accuracy <- function(df) {
+    m <- classify_predictions(df)
+    accuracy <- (m$tp + m$tn) / (m$tp + m$fp + m$tn + m$fn)
+    return (accuracy)
+}
+```
+
+```{r check_accuracy, echo=FALSE}
+sprintf("The accuracy of the predictions: %.3f", test_accuracy(data))
+```
+
+
+## 4. Classification error rate
+The function test_classification_error_rate() takes the data set as a dataframe, with actual and predicted classifications identified, and returns the classification error rate of the predictions. The function is based on the formula below. Based on the results of the functions, the classification error rate of the predictions is `0.19`.
+
+$$Classification\: Error\: Rate = \frac{FP+FN}{TP+FP+TN+FN}$$
+
+```{r classification_error_rate}
+test_classification_error_rate <- function(df) {
+    m <- classify_predictions(df)
+    cer <- (m$fp + m$fn) / (m$tp + m$fp + m$tn + m$fn)
+    return (cer)
+}
+```
+
+```{r check_error_rate, echo=FALSE}
+sprintf("The classification error rate of the predictions: %.3f", test_classification_error_rate(data))
+```
+As we see below, the accuracy and the error rate sums to one which means or custom functions work correctly.
+```{r check_sum, echo=FALSE}
+sprintf("The sum of the accuracy and classification error: %.1f", test_classification_error_rate(data) + test_accuracy(data))
+```
+
+
+## 5. Precision
+The function test_precision() takes the data set as a dataframe, with actual and predicted classifications identified, and returns the precision of the predictions. The function is based on the formula below. Based on the results of the functions, the precision of the predictions is `0.84`.
+
+$$Precision = \frac{TP}{TP+FP}$$
+
+```{r precision}
+test_precision <- function(df) {
+    m <- classify_predictions(df)
+    p <- m$tp / (m$tp + m$fp)
+    return (p)
+}
+```
+
+```{r check_precision, echo=FALSE}
+sprintf("The precision of the predictions: %.3f", test_precision(data))
+```
+
+
+## 6. Sensitivity
+The test_sensitivity() function takes the data set as a dataframe, with actual and predicted classifications identified, and returns the sensitivity of the predictions. The function is based on the formula below. Based on the results of the functions, the precision of the predictions is `0.47`.
+
+$$Sensitivity = \frac{TP}{TP+FN}$$
+
+```{r sensitivity}
+test_sensitivity <- function(df) {
+    m <- classify_predictions(df)
+    s <- (m$tp) / (m$tp + m$fn)
+    return (s)
+}
+```
+
+```{r check_sensitivity, echo=FALSE}
+sprintf("The sensitivity of the predictions: %.3f", test_sensitivity(data))
+```
+
+
+## 7. Specificity
+The test_specificity() function takes the data set as a dataframe, with actual and predicted classifications identified, and returns the specificity of the predictions. The function is based on the formula below. Based on the results of the functions, the precision of the predictions is `0.96`.
+
+$$Specificity = \frac{TN}{TN+FP}$$
+
+```{r specificity}
+test_specificity <- function(df) {
+    m <- classify_predictions(df)
+    s <- (m$tn) / (m$tn + m$fp)
+    return (s)
+}
+```
+
+```{r check_specificity, echo=FALSE}
+sprintf("The specificity of the predictions: %.3f", test_specificity(data))
+```
+
+
+## 8.  F1 score
+The test_f1_score() function takes the data set as a dataframe, with actual and predicted classifications identified, and returns the F1 score of the predictions. The function is based on the formula below. Based on the results of the functions, the precision of the predictions is `0.61`.
+
+$$F1 \: Score = \frac{2 \cdot Precision \cdot Sensitivity}{Precision + Sensitivity}$$
+
+```{r f1_score}
+test_f1_score <- function(df) {
+    precision <- test_precision(df)
+    sensitivity <- test_sensitivity(df)
+
+    score <- (2 * precision * sensitivity) / (precision + sensitivity)
+    return(score)
+}
+```
+
+```{r check_f1_score, echo=FALSE}
+sprintf("The f1_score of the predictions: %.3f", test_f1_score(data))
+```
+
+
+## 9. Bounds on the F1 score
+
+**MAYBE check this using R?**
+
+The F1 score is calculated from precision and sensitivity. They both have a range from 0 to 1. Based on the rule that if *a>0 and 0<b<1, then ab<a*: $$ If \; 0<Precision<1 \; and \; 0<Sensitivity<1, \\
+then \; Precision \cdot Sensitivity<Precision \; \\
+and \; Precision \cdot Sensitivity<Sensitivity, \\ 
+then \; 2 \cdot Precision \cdot Sensitivity < Precision + Sensitivity$$
+
+F1 score is the fraction with numerator *2•Precision•Sensitivity* and denominator *Precision + Sensitivity*, the numerator is less than denominator. Also, Precision and Sensitivity are both positive. The result of the fraction can not be greater than 1 and negative in this case. F1 score can not be equal to 0. If Precision is 0 than Sensitivity is 0, F1 score is not defined. It means that the only range for F1 score is $$0<F1 \; score<1$$
+
+
+
+
+
+**Was here From Cliff from the beginning**
+```{r call_functions, eval=FALSE}
 
 ## Verify that you get an accuracy and an error rate that sums to one.
 
@@ -29,6 +243,7 @@ print( accuracy(data))
 print( sensitivity(data))
 print( specificity(data))
 ```
+
 ```{r}
 xtab <- table(data$class, data$scored.class)
 confusionMatrix(xtab)
