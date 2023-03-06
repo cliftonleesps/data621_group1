@@ -68,3 +68,51 @@ test_f1_score <- function(df) {
     score <- (2 * precision * sensitivity) / (precision + sensitivity)
     return(score)
 }
+
+
+
+#' 10. function that generates an ROC curve and calculates the auc
+#'
+#' @param df
+#'
+#' @return list with the plot object and the calculated auc
+test_roc <- function(class, prob) {
+
+  # create new dataframe with class and prob vars
+  df <- data.frame(class,prob)
+  df <- df[order(-df$prob),]
+
+  # add TP and FP rates to dataframe
+  df <- df %>% mutate(
+                    TPR=cumsum(df$class)/sum(df$class),
+                    FPR=cumsum(!df$class)/sum(!df$class)
+                )
+
+  # recode ROC plot
+  plot(df$FPR, df$TPR, main="ROC Curve", xlab='FPR' , ylab='TPR')
+  axis(side=1, at=seq(0, 1, by=0.1))
+  axis(side=2, at=seq(0, 1, by=0.1))
+  p <- recordPlot()
+
+  # calc auc
+  calc_auc <- with(df, simple_auc(TPR, FPR))
+
+  return(list(p, calc_auc))
+
+}
+
+
+
+
+#' Helper function to support the calculation of AUC
+#'
+#' @param TPR vector
+#' @param FPR vector
+#'
+#' @return
+simple_auc <- function(TPR, FPR){
+  dFPR <- c(diff(FPR), 0)
+  dTPR <- c(diff(TPR), 0)
+  sum(TPR * dFPR) + sum(dTPR * dFPR)/2
+}
+
