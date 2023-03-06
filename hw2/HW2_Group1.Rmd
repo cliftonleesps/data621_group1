@@ -248,3 +248,24 @@ print( specificity(data))
 xtab <- table(data$class, data$scored.class)
 confusionMatrix(xtab)
 ```
+
+
+
+# 10 ROC Curve
+
+The test_roc() function takes the data set as a dataframe, with a true classification column and a probability column and returns a list that includes the plot of the ROC curve and the AUC.
+
+
+```{r}
+
+ret_lst <- test_roc(data$class, data$scored.probability)
+
+# output plot
+ret_lst[1]
+
+# print the AUC
+print(paste0('auc = ', round(as.numeric(ret_lst[2]),4)))
+
+
+```
+
