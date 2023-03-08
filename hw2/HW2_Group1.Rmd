@@ -20,6 +20,7 @@ editor_options:
 library(tidyverse)
 library(dplyr)
 library(caret)
+library(pROC)
 library(skimr)
 library(lemon)
 library(DT)
@@ -266,6 +267,22 @@ ret_lst[1]
 # print the AUC
 print(paste0('auc = ', round(as.numeric(ret_lst[2]),4)))
 
+
+```
+
+
+# 13 pROC package
+
+The auc() function in pROC package generates the same value as the manual process in questions 10. Furthermore the ROC curves have a similar profile.
+
+
+```{r}
+
+roc_obj <- roc(data$class, data$scored.probability)
+auc(roc_obj)
+plot(roc_obj, print.auc=TRUE)
+axis(side=1, at=seq(0, 1, by=0.1))
+axis(side=2, at=seq(0, 1, by=0.1))
 
 ```
 
