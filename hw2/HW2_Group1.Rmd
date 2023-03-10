@@ -32,8 +32,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Overview
-In this homework assignment, we will work through various classification metrics. We will createfunctions in R to carry out the various calculations. We will also investigate some functions in packages that will let you obtain the equivalent results. Finally, we will create graphical output that also can be used to evaluate the output of classification models, such as binary logistic regression.
+In this homework assignment, we will work through various classification metrics. We will create functions in R to carry out the various calculations. We will also investigate some functions in packages that will let you obtain the equivalent results. Finally, we will create graphical output that also can be used to evaluate the output of classification models, such as binary logistic regression.
 
+<br></br>
 
 ## 1. Download the data
 The classification output data set `classification-output-data.csv` was loaded into the variable `data`. The data set contains 181 observations of 11 variables. This report will focus on three variables: "class" (the true class for each observation), "scored.class" (the predicted class for each observation), and "scored.probability" (the predicted likelihood of success for each observation).
@@ -54,7 +55,7 @@ DT::datatable(
                      searching = FALSE), 
       rownames = FALSE) 
 ```
-
+<br></br>
 
 ## 2. Raw confusion matrix
 
@@ -78,17 +79,20 @@ The confusion matrix below has rows and columns representing the actual and pred
 
 * `27` is the number of observations that are correctly classified as positive class 1 (`TP`, true positive observations)
 
-**MAYBE make the raw confusion matrix look better**
-
+<br></br>
 ```{r raw-matrix, echo=FALSE}
 data %>%
   select(scored.class, class) %>%
-  table()
+  table() |>
+  kable() |>
+  kable_styling(latex_options = "striped")
+
 ```
 
+<br></br>
 
 ## 3. Accuracy
-The function test_accuracy() takes the data set as a dataframe, with actual and predicted classifications identified, and returns the accuracy of the predictions. The function is based on the formula below. The function classify_predictions() calculates the amount of true positive, true negative, false negative, and false positive observations. Based on the results of the functions, the accuracy is `0.81`.
+The function classify_predictions() calculates the amount of true positive, true negative, false negative, and false positive observations. Then, the function test_accuracy() takes the data set as a dataframe, with actual and predicted classifications identified, and returns the accuracy of the predictions. Based on the results of the functions, the accuracy is `0.81`.
 
 $$Accuracy = \frac{TP+TN}{TP+FP+TN+FN}$$
 **MAYBE improve classify_predictions() to accept df, x1, x2 (data frame, )?**
@@ -121,7 +125,7 @@ test_accuracy <- function(df) {
 ```{r check_accuracy, echo=FALSE}
 sprintf("The accuracy of the predictions: %.3f", test_accuracy(data))
 ```
-
+<br></br>
 
 ## 4. Classification error rate
 The function test_classification_error_rate() takes the data set as a dataframe, with actual and predicted classifications identified, and returns the classification error rate of the predictions. The function is based on the formula below. Based on the results of the functions, the classification error rate of the predictions is `0.19`.
@@ -139,11 +143,11 @@ test_classification_error_rate <- function(df) {
 ```{r check_error_rate, echo=FALSE}
 sprintf("The classification error rate of the predictions: %.3f", test_classification_error_rate(data))
 ```
-As we see below, the accuracy and the error rate sums to one which means or custom functions work correctly.
+As we see below, the accuracy and the error rate sums to one which means our custom functions work correctly.
 ```{r check_sum, echo=FALSE}
 sprintf("The sum of the accuracy and classification error: %.1f", test_classification_error_rate(data) + test_accuracy(data))
 ```
-
+<br></br>
 
 ## 5. Precision
 The function test_precision() takes the data set as a dataframe, with actual and predicted classifications identified, and returns the precision of the predictions. The function is based on the formula below. Based on the results of the functions, the precision of the predictions is `0.84`.
@@ -161,7 +165,7 @@ test_precision <- function(df) {
 ```{r check_precision, echo=FALSE}
 sprintf("The precision of the predictions: %.3f", test_precision(data))
 ```
-
+<br></br>
 
 ## 6. Sensitivity
 The test_sensitivity() function takes the data set as a dataframe, with actual and predicted classifications identified, and returns the sensitivity of the predictions. The function is based on the formula below. Based on the results of the functions, the precision of the predictions is `0.47`.
@@ -179,7 +183,7 @@ test_sensitivity <- function(df) {
 ```{r check_sensitivity, echo=FALSE}
 sprintf("The sensitivity of the predictions: %.3f", test_sensitivity(data))
 ```
-
+<br></br>
 
 ## 7. Specificity
 The test_specificity() function takes the data set as a dataframe, with actual and predicted classifications identified, and returns the specificity of the predictions. The function is based on the formula below. Based on the results of the functions, the precision of the predictions is `0.96`.
@@ -197,9 +201,9 @@ test_specificity <- function(df) {
 ```{r check_specificity, echo=FALSE}
 sprintf("The specificity of the predictions: %.3f", test_specificity(data))
 ```
+<br></br>
 
-
-## 8.  F1 score
+## 8. F1 score
 The test_f1_score() function takes the data set as a dataframe, with actual and predicted classifications identified, and returns the F1 score of the predictions. The function is based on the formula below. Based on the results of the functions, the precision of the predictions is `0.61`.
 
 $$F1 \: Score = \frac{2 \cdot Precision \cdot Sensitivity}{Precision + Sensitivity}$$
@@ -217,26 +221,20 @@ test_f1_score <- function(df) {
 ```{r check_f1_score, echo=FALSE}
 sprintf("The f1_score of the predictions: %.3f", test_f1_score(data))
 ```
-
+<br></br>
 
 ## 9. Bounds on the F1 score
 
-**MAYBE check this using R?**
-
-The F1 score is calculated from precision and sensitivity. They both have a range from 0 to 1. Based on the rule that if *a>0 and 0<b<1, then ab<a*: $$ If \; 0<Precision<1 \; and \; 0<Sensitivity<1, \\
+The F1 score is calculated from precision and sensitivity. They both have a range from 0 to 1. Based on the rule that if *0<a<1 and 0<b<1, then ab<a*: $$ If \; 0<Precision<1 \; and \; 0<Sensitivity<1, \\
 then \; Precision \cdot Sensitivity<Precision \; \\
 and \; Precision \cdot Sensitivity<Sensitivity, \\ 
 then \; 2 \cdot Precision \cdot Sensitivity < Precision + Sensitivity$$
 
-F1 score is the fraction with numerator *2•Precision•Sensitivity* and denominator *Precision + Sensitivity*, the numerator is less than denominator. Also, Precision and Sensitivity are both positive. The result of the fraction can not be greater than 1 and negative in this case. F1 score can not be equal to 0. If Precision is 0 than Sensitivity is 0, F1 score is not defined. It means that the only range for F1 score is $$0<F1 \; score<1$$
-
-
-
+F1 score is the fraction with numerator *2•Precision•Sensitivity* and denominator *Precision + Sensitivity*, the numerator is less than denominator. Also, Precision and Sensitivity are both positive. The result of the fraction can not be greater than 1 and negative in this case. The F1 score can not be equal to 0, and if Precision is 0 or Sensitivity is 0, the F1 score is not defined. Thus, the only range for F1 score is $$0<F1 \; score<1$$
 
 
 **Was here From Cliff from the beginning**
 ```{r call_functions, eval=FALSE}
-
 ## Verify that you get an accuracy and an error rate that sums to one.
 
 print( accuracy(data) + classification_error_rate(data) == 1)
@@ -249,10 +247,9 @@ print( specificity(data))
 xtab <- table(data$class, data$scored.class)
 confusionMatrix(xtab)
 ```
+<br></br>
 
-
-
-# 10 ROC Curve
+# 10. ROC Curve
 
 The test_roc() function takes the data set as a dataframe, with a true classification column and a probability column and returns a list that includes the plot of the ROC curve and the AUC.
 
@@ -269,9 +266,30 @@ print(paste0('auc = ', round(as.numeric(ret_lst[2]),4)))
 
 
 ```
+<br></br>
 
+# 12. Using `caret` package
+Our manually calculated metrics: <br></br>
+ 1. Sensitivity = `r round(test_sensitivity(data), 3)` <br></br>
+ 2. Specificity = `r round(test_specificity(data), 3)`
+<br>
+<br>
+Using caret's confusionMatrix function:
+```{r echo=FALSE}
+confusionMatrix(as.factor(data$scored.class), as.factor(data$class))
+```
+Using caret's `sensitivity` function:
+```{r echo=FALSE}
+sensitivity(as.factor(data$scored.class), as.factor(data$class))
+```
+Using caret's `specificity` function:
+```{r echo=FALSE}
+specificity(as.factor(data$scored.class), as.factor(data$class))
+```
+Happily, as we can see, R's `caret` functions return the same values as our manually written functions.
+<br></br>
 
-# 13 pROC package
+# 13. pROC package
 
 The auc() function in pROC package generates the same value as the manual process in questions 10. Furthermore the ROC curves have a similar profile.
 
@@ -285,4 +303,3 @@ axis(side=1, at=seq(0, 1, by=0.1))
 axis(side=2, at=seq(0, 1, by=0.1))
 
 ```
-
