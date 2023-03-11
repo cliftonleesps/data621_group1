@@ -85,7 +85,7 @@ data %>%
   select(scored.class, class) %>%
   table() |>
   kable() |>
-  kable_styling(latex_options = "striped")
+  kable_styling(latex_options = "striped", full_width = FALSE)
 
 ```
 
@@ -95,15 +95,16 @@ data %>%
 The function classify_predictions() calculates the amount of true positive, true negative, false negative, and false positive observations. Then, the function test_accuracy() takes the data set as a dataframe, with actual and predicted classifications identified, and returns the accuracy of the predictions. Based on the results of the functions, the accuracy is `0.81`.
 
 $$Accuracy = \frac{TP+TN}{TP+FP+TN+FN}$$
-**MAYBE improve classify_predictions() to accept df, x1, x2 (data frame, )?**
+
 ```{r classify_predictions}
 classify_predictions <- function(df) {
+    dfSelected <- df %>% select(class, scored.class)
+    
+    true_negative <- dfSelected %>% filter(scored.class == 0 & class == 0)
+    true_positive <- dfSelected %>% filter(scored.class == 1 & class == 1)
 
-    true_negative <- df %>% select(class, scored.class) %>% filter(scored.class == 0 & class == 0)
-    true_positive <- df %>% select(class, scored.class) %>% filter(scored.class == 1 & class == 1)
-
-    false_negative <- df %>% select(class, scored.class) %>% filter(scored.class == 0 & class == 1)
-    false_positive <- df %>% select(class, scored.class) %>% filter(scored.class == 1 & class == 0)
+    false_negative <- dfSelected %>% filter(scored.class == 0 & class == 1)
+    false_positive <- dfSelected %>% filter(scored.class == 1 & class == 0)
 
     matrix <- list("tn" = nrow(true_negative),
                    "tp" = nrow(true_positive),
@@ -115,6 +116,7 @@ classify_predictions <- function(df) {
 ```
 
 ```{r accuracy}
+
 test_accuracy <- function(df) {
     m <- classify_predictions(df)
     accuracy <- (m$tp + m$tn) / (m$tp + m$fp + m$tn + m$fn)
@@ -232,74 +234,128 @@ then \; 2 \cdot Precision \cdot Sensitivity < Precision + Sensitivity$$
 
 F1 score is the fraction with numerator *2•Precision•Sensitivity* and denominator *Precision + Sensitivity*, the numerator is less than denominator. Also, Precision and Sensitivity are both positive. The result of the fraction can not be greater than 1 and negative in this case. The F1 score can not be equal to 0, and if Precision is 0 or Sensitivity is 0, the F1 score is not defined. Thus, the only range for F1 score is $$0<F1 \; score<1$$
 
-
-**Was here From Cliff from the beginning**
-```{r call_functions, eval=FALSE}
-## Verify that you get an accuracy and an error rate that sums to one.
-
-print( accuracy(data) + classification_error_rate(data) == 1)
-print( accuracy(data))
-print( sensitivity(data))
-print( specificity(data))
-```
-
-```{r}
-xtab <- table(data$class, data$scored.class)
-confusionMatrix(xtab)
-```
 <br></br>
 
-# 10. ROC Curve
+## 10. ROC Curve
 
-The test_roc() function takes the data set as a dataframe, with a true classification column and a probability column and returns a list that includes the plot of the ROC curve and the AUC.
+The test_roc() function takes the data set as a dataframe, with a true classification column and a probability column and returns a list that includes the plot of the ROC curve and the AUC. First, we create a new data frame with columns `class`, `prob` (in the descending order for `prob`) and columns `TPR`, `FPR`. The  simple_auc() function calculated auc based on TPR and FPR. The ROC curve is plotted using the plot() function. A diagonal line (abline(a = 0, b = 1)) is represents a random classifier. Based on the results of the functions, the AUC is `0.85`.
+```{r roc_curve}
+
+test_roc <- function(class, prob) {
+
+  # create new dataframe with class and prob vars
+  df <- data.frame(class,prob)
+  df <- df[order(-df$prob),]
+
+  # add TP and FP rates to dataframe
+  df <- df %>% mutate(
+                    TPR=cumsum(df$class)/sum(df$class),
+                    FPR=cumsum(!df$class)/sum(!df$class)
+                )
+
+  # calc auc
+  calc_auc <- with(df, simple_auc(TPR, FPR))
+
+    # recode ROC plot
+  plot(df$FPR, df$TPR, main="Manual ROC Curve", xlab='FPR' , ylab='TPR')
+  abline(a = 0, b = 1)
+  legend(.5, .5, round(calc_auc, 4), title = "AUC")
+  axis(side=1, at=seq(0, 1, by=0.1))
+  axis(side=2, at=seq(0, 1, by=0.1))
+  p <- recordPlot()
+
+  
+  return(list(p, calc_auc))
+
+}
 
 
-```{r}
 
+
+# Helper function to support the calculation of AUC
+simple_auc <- function(TPR, FPR){
+  dFPR <- c(diff(FPR), 0)
+  dTPR <- c(diff(TPR), 0)
+  sum(TPR * dFPR) + sum(dTPR * dFPR)/2
+}
+```
+
+
+```{r test_roc_curve}
 ret_lst <- test_roc(data$class, data$scored.probability)
 
 # output plot
 ret_lst[1]
+```
 
-# print the AUC
-print(paste0('auc = ', round(as.numeric(ret_lst[2]),4)))
-
+```{r echo=FALSE}
+print(paste0('The calculated area under the curve:', round(as.numeric(ret_lst[2]),4)))
 
 ```
 <br></br>
 
-# 12. Using `caret` package
-Our manually calculated metrics: <br></br>
- 1. Sensitivity = `r round(test_sensitivity(data), 3)` <br></br>
- 2. Specificity = `r round(test_specificity(data), 3)`
-<br>
-<br>
-Using caret's confusionMatrix function:
-```{r echo=FALSE}
-confusionMatrix(as.factor(data$scored.class), as.factor(data$class))
+## 11. Classification output data set
+Below are the classification metrics that were computed using the functions defined above.
+```{r classification_metrics}
+name <- c("Accuracy", "Classification Error Rate", "Precision", "Sensitivity", "Specificity", "F1 Score")
+results <- c(test_accuracy(data), test_classification_error_rate(data), test_precision(data), test_sensitivity(data), test_specificity(data), test_f1_score(data))
+output_data <- cbind('Metrics' = name, "Calculated Results" = round(results, 3)) 
+  
+kable(output_data) %>% 
+  kable_styling(latex_options = "striped", full_width = FALSE)
+
 ```
+
+
+## 12. `caret` package
+The `confusionMatrix()` function from the `caret` package provides access to various classification metrics (f1 score, accuracy, etc). Also, there are functions like `sensitivity()/specificity()` to calculate these metrics separately. The confusionMatrix() function should have a setting “positive” equal to 1 in our case. Otherwise, the `caret` package has a default positive equals to 0. \
+The table below provides the results for the classification metrics computed using the confusionMatrix() function together with values that were calculated using the functions created manually. As a result, R's `caret` functions return the same values as the manually written functions above.
+```{r caret_confusionMatrix}
+
+conf_matrix <- confusionMatrix(factor(data$scored.class), factor(data$class), positive = "1")
+
+results2 <- c(conf_matrix$overall[1], 1 - conf_matrix$overall[1], conf_matrix$byClass[3], 
+            conf_matrix$byClass[1], conf_matrix$byClass[2], conf_matrix$byClass[7])
+
+df_conf_matrix <- cbind("Metrics" = name, "Caret results" = round(results2, 3), 
+                 "Manual results" = round(results, 3)) 
+
+kable(df_conf_matrix, row.names = FALSE) %>% 
+  kable_styling(latex_options = "striped", full_width = FALSE)
+```
+
 Using caret's `sensitivity` function:
-```{r echo=FALSE}
-sensitivity(as.factor(data$scored.class), as.factor(data$class))
+```{r caret_sensitivity}
+sprintf("The sensitivity using caret package: %.3f", sensitivity(factor(data$scored.class), factor(data$class), positive = "1"))
 ```
 Using caret's `specificity` function:
-```{r echo=FALSE}
-specificity(as.factor(data$scored.class), as.factor(data$class))
+```{r caret_specificity}
+sprintf("The specificity using caret package: %.3f", specificity(as.factor(data$scored.class), as.factor(data$class), negative = "0"))
 ```
-Happily, as we can see, R's `caret` functions return the same values as our manually written functions.
+
+
 <br></br>
 
-# 13. pROC package
+## 13. `pROC` package
 
-The auc() function in pROC package generates the same value as the manual process in questions 10. Furthermore the ROC curves have a similar profile.
+The `auc()` function in `pROC` package generates the same value as the manual process in question 10. Furthermore, the ROC curve from the question 10 and a curve generated by the `roc()` function have a similar profile except for test_roc() function we created produces a plot with x-axis labeled as `FPR`  and  y-axis labeled as `TPR`, ranging from 0 to 1. On the other hand, the `pROC` package function produces a plot with x-axis labeled as `Specificity` and y-axis labeled as `Sensitivity`, ranging from 1 to 0. These two plots  ahve similar profile, except for the labeling and axes marks being slightly different.
 
-
-```{r}
-
+```{r proc, warning=FALSE, message=FALSE}
 roc_obj <- roc(data$class, data$scored.probability)
-auc(roc_obj)
-plot(roc_obj, print.auc=TRUE)
+sprintf("The AUC using pRoc package: %.4f", auc(roc_obj)) 
+sprintf("The AUC using manual function: %.4f", round(as.numeric(ret_lst[2]),4)) 
+
+plot(roc_obj, print.auc=TRUE, main="pROC package ROC Curve")
 axis(side=1, at=seq(0, 1, by=0.1))
 axis(side=2, at=seq(0, 1, by=0.1))
+ret_lst[1]
 
 ```
+
+## References
+
+1. Faraway, J. J. (2014). _Linear Models with R, Second Edition._ CRC Press.
+2. Sheather, S. (2009). _A Modern Approach to Regression with R._ Springer Science & Business Media.
+3. Kuhn, M., & Johnson, K. (2019). _Applied predictive modeling._ Springer.
+4. Dalpiaz, D. (2020, October 28). R for statistical learning. Chapter 9 Overview. Retrieved March 10, 2023, from https://daviddalpiaz.github.io/r4sl/classification-overview.html 
+
