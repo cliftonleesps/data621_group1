@@ -1,0 +1,120 @@
+---
+title: 'Homework #3: Logistic Regression'
+subtitle: 'Critical Thinking Group 1'
+author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver'
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+editor_options:
+  chunk_output_type: console
+  markdown: 
+    wrap: sentence
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(glmnet)
+
+library(caret)
+library(pROC)
+library(skimr)
+library(lemon)
+library(DT)
+library(kableExtra)
+library(forecast)
+source("logistic_functions.R")
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+In this homework assignment, you will explore, analyze and model a data set containing information on crime for various neighborhoods of a major city. Each record has a response variable indicating whether or not the crime rate is above the median crime rate (1) or not (0).
+
+<br></br>
+
+
+## 1. DATA EXPLORATION
+
+
+
+
+```{r data}
+
+train_df <- read.csv("crime-training-data_modified.csv")
+eval_df <- read.csv("crime-evaluation-data_modified.csv")
+
+```
+
+
+
+```{r summary}
+
+skim(train_df)
+
+```
+<br></br>
+
+
+
+```{r density_plot}
+
+m_df <- train_df %>% pivot_longer(!target, names_to='variable' , values_to = 'value')
+m_df %>% ggplot(aes(x=value, group=target, fill=target)) + 
+geom_density(color='#023020') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+```
+
+
+
+
+```{r density_plot}
+
+m_df <- train_df %>% pivot_longer(!target, names_to='variable' , values_to = 'value')
+m_df %>% ggplot(aes(x=target, y=value, group=target)) + 
+geom_boxplot(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) +
+  stat_summary(fun = "mean",  geom = "point", shape = 8, size = 2, color = "steelblue") + 
+  stat_summary(fun = "median",  geom = "point", shape = 8, size = 2, color = "red") + theme_bw()
+
+```
+
+
+
+
+## DATA PREPARATION
+
+
+
+
+
+
+
+## BUILD MODELS
+
+
+
+
+
+
+
+
+## SELECT MODELS
+
+
+
+
+
+
+
+
+## References
+
+
+
