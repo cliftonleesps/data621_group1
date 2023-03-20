@@ -1,0 +1,220 @@
+---
+title: 'Homework #3: Logistic Regression'
+subtitle: 'Critical Thinking Group 1'
+author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver'
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+editor_options:
+  chunk_output_type: console
+  markdown: 
+    wrap: sentence
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(glmnet)
+library(Hmisc)
+library(caTools)
+library(corrplot) 
+
+library(caret)
+library(pROC)
+library(skimr)
+library(lemon)
+library(DT)
+library(kableExtra)
+library(forecast)
+source("logistic_functions.R")
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+set.seed(1233)
+
+```
+
+
+
+
+
+
+## Overview
+In this homework assignment, you will explore, analyze and model a data set containing information on crime for various neighborhoods of a major city. Each record has a response variable indicating whether or not the crime rate is above the median crime rate (1) or not (0).
+
+<br></br>
+
+
+## 1. DATA EXPLORATION
+
+
+
+
+```{r data}
+
+df <- read.csv("crime-training-data_modified.csv")
+eval_df <- read.csv("crime-evaluation-data_modified.csv")
+
+
+sample <- sample.split(df$target, SplitRatio = 0.8)
+train_df  <- subset(df, sample == TRUE)
+test_df   <- subset(df, sample == FALSE)
+
+
+```
+
+
+
+```{r summary}
+
+skim(train_df)
+
+```
+<br></br>
+
+
+
+```{r density_plot}
+
+m_df <- train_df %>% pivot_longer(!target, names_to='variable' , values_to = 'value')
+m_df %>% ggplot(aes(x=value, group=target, fill=target)) + 
+geom_density(color='#023020') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+```
+
+
+
+
+```{r box_plot}
+
+m_df <- train_df %>% pivot_longer(!target, names_to='variable' , values_to = 'value')
+m_df %>% ggplot(aes(x=target, y=value, group=target)) + 
+geom_boxplot(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) +
+  stat_summary(fun = "mean",  geom = "point", shape = 8, size = 2, color = "steelblue") + 
+  stat_summary(fun = "median",  geom = "point", shape = 8, size = 2, color = "red") + theme_bw()
+
+```
+
+
+
+
+```{r corr}
+
+rcore <- rcorr(as.matrix(train_df %>% dplyr::select(where(is.numeric))))
+coeff <- rcore$r
+corrplot(coeff, tl.cex = .7, tl.col="black", method = 'color', addCoef.col = "black",
+         type="upper", order="hclust",
+         diag=FALSE)
+
+```
+
+
+
+
+## DATA PREPARATION
+
+```{r}
+
+# build X matrix and Y vector
+X <- model.matrix(target ~ ., data=train_df)[,-1]
+Y <- train_df[,"target"] 
+
+```
+
+
+
+
+
+
+## BUILD MODELS
+
+
+### Lasso Cross Validation
+
+```{r}
+
+lasso.model<- cv.glmnet(x=X,y=Y,
+                       family = "binomial", 
+                       link = "probit",
+                       standardize = TRUE,                       #standardize  
+                       nfold = 10,
+                       alpha=1)                                  #alpha=1 is lasso
+
+l.min <- lasso.model$lambda.min
+coef(lasso.model, s = l.min )
+lasso.model
+
+```
+
+
+```{r}
+
+par(mfrow=c(2,2))
+
+plot(lasso.model)
+plot(lasso.model$glmnet.fit, "lambda", label=1)
+plot(lasso.model$glmnet.fit, label=1, xvar='dev')
+
+rocs <- roc.glmnet(lasso.model, newx = X, newy = Y )
+plot(rocs,type="l")  
+
+```
+
+
+```{r}
+assess.glmnet(lasso.model,           
+              newx = X,              
+              newy = Y )    
+
+print(glmnet_cv_aicc(lasso.model, 'lambda.min'))
+
+```
+
+
+
+
+## SELECT MODELS
+
+```{r}
+
+X_new <- model.matrix(target ~  zn + indus + chas + nox + rm + 
+                      age + dis + rad + tax + ptratio + 
+                      lstat + medv,
+                      data=test_df)[,-1]
+
+
+
+lassoPred <- predict(lasso.model, newx = X_new, type = "response", s = l.min)
+
+pred_df <- test_df
+pred_df$target_prob <- lassoPred[,1]
+pred_df$target_pred <- ifelse(lassoPred > 0.5, 1, 0)[,1]
+
+
+```
+
+
+```{r}
+
+H <- table(pred_df$target_prob > 0.5, pred_df$target == 1) 
+H
+
+```
+
+
+
+
+## References
+
+
+
