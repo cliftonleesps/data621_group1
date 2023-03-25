@@ -3,7 +3,7 @@ library(mice)
 library(readr)
 
 #train_df <- read.csv("insurance_training_data.csv")
-train_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/hw4/insurance_training_data.csv")
+train_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw4/insurance_training_data.csv")
 
 ## Remove z_ from character class values
 z_vars <- c("MSTATUS","SEX","JOB","CAR_TYPE","URBANICITY","EDUCATION")
