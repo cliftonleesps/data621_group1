@@ -2,6 +2,13 @@ library(dplyr)
 library(mice)
 library(readr)
 
+## This script reads the training data and cleans the insurance data:
+##  - Removes z_ prefix from character values
+##  - Creates factors for: "PARENT1","CAR_TYPE","JOB","CAR_USE","URBANICITY","RED_CAR","REVOKED","MSTATUS","EDUCATION","SEX")
+##  - Converts to integers: INCOME, HOME_VAL, BLUEBOOK, OLDCLAIM
+##  - Imputes NAs with the mice library
+
+
 #train_df <- read.csv("insurance_training_data.csv")
 train_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw4/insurance_training_data.csv")
 
@@ -11,7 +18,7 @@ for (v in z_vars) {
   train_df <- train_df %>% mutate(!!v := str_replace(get(v),"z_",""))
 }
 
-## RED CAR, replace values
+## Update RED_CAR, replace [no,yes] values with [No, Yes] values
 train_df <- train_df %>% mutate( RED_CAR = ifelse(RED_CAR == "no","No","Yes"))
 
 ## Convert from character class to integer
@@ -60,7 +67,7 @@ imputed_Data <- mice(train_df, m=5, maxit = 20, method = 'pmm', seed = 500, prin
 train_df <- complete(imputed_Data)
 
 
-## We have one row with a car age < 0! just set it to zero, brand new car
+## We have one row with a car age < 0! just set it to zero. Assume it's a brand new car
 train_df <- rows_update(train_df, tibble(INDEX = 8772, CAR_AGE = 0))
 
 
