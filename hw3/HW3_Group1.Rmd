@@ -234,7 +234,7 @@ lstat_lambda <- BoxCox.lambda(transformed_train_df$lstat)
 box_train_df$lstat <- BoxCox(transformed_train_df$lstat, lstat_lambda)
 
 nox_lambda <- BoxCox.lambda(transformed_train_df$nox)
-box_train_df$nox <- BoxCox(transformed_train_df$nox, age_lambda)
+box_train_df$nox <- BoxCox(transformed_train_df$nox, nox_lambda)
 
 ptratio_lambda <- BoxCox.lambda(transformed_train_df$ptratio)
 box_train_df$ptratio <- BoxCox(transformed_train_df$ptratio, ptratio_lambda)
