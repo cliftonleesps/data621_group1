@@ -37,6 +37,7 @@ library(caTools)
 library(performance)
 library(jtools)
 library(regclass)
+library(MASS)
 library(PerformanceAnalytics)
 source("logistic_functions.R")
 
@@ -89,9 +90,6 @@ As we see below, `znn`, `indus`, `age`, and `lstat` are proportions. `chas` is a
 **ADD MORE TEXT**
 
 ```{r summary}
-
-describe(train_df) %>%  kable("html") %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F) %>% scroll_box(width = "100%")
-
 skim(train_df)
 ```
 <br></br>
@@ -193,24 +191,23 @@ transformed_train_df$zn <- as.factor(transformed_train_df$zn)
 
 The Log transformation will be applied to the variables that are highly skewed. As a result, skewness for these variables will be below 1.
 **ADD OR CHANGE VARIABLES FOR LOG TRANSF**
-```{r log}
+```{r log, warning=FALSE, message=FALSE}
 log_train_df <- transformed_train_df
 log_train_df$dis <- log(log_train_df$dis+1)
-log_train_df$zn <- log(log_train_df$zn+1)
 log_train_df$medv <- log(log_train_df$medv+1)
 
-log_train_df %>% dplyr::select(-c(chas, target, rad)) %>% skewness(na.rm=FALSE)
+log_train_df %>% dplyr::select(-c(chas, target, rad, zn)) %>% skewness(na.rm=FALSE)
 ```
 
 Let's check the normality of the distributions after the transformation.
 
-```{r log_hists}
-m_df_box <- log_train_df %>% select(c(dis, zn, medv)) %>% melt() 
+```{r log_hists, warning=FALSE, message=FALSE}
+m_df_box <- log_train_df %>% dplyr::select(c(dis, medv)) %>% melt() 
 
 a <- m_df_box %>% ggplot(aes(x= value)) + 
 geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
 
-m_df <- transformed_train_df %>% select(c(dis, zn, medv)) %>% melt() 
+m_df <- transformed_train_df %>% dplyr::select(c(dis, medv)) %>% melt() 
 
 b <- m_df %>% ggplot(aes(x= value)) + 
 geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
@@ -247,13 +244,13 @@ box_train_df$ptratio <- BoxCox(transformed_train_df$ptratio, ptratio_lambda)
 
 Compare the original distributions with transformed.
 
-```{r box_hists}
-m_df_box <- box_train_df %>% select(c(age, dis, lstat, nox, ptratio)) %>% melt() 
+```{r box_hists, warning=FALSE, message=FALSE}
+m_df_box <- box_train_df %>% dplyr::select(c(age, dis, lstat, nox, ptratio)) %>% melt() 
 
 a <- m_df_box %>% ggplot(aes(x= value)) + 
 geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
 
-m_df <- transformed_train_df %>% select(c(age, dis, lstat, nox, ptratio)) %>% melt() 
+m_df <- transformed_train_df %>% dplyr::select(c(age, dis, lstat, nox, ptratio)) %>% melt() 
 
 b <- m_df %>% ggplot(aes(x= value)) + 
 geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
@@ -284,7 +281,7 @@ Y <- train_df[,"target"]
 #### Dataset - transformed_train_df
 
 As the first step, we are going to build the generilized linear model based on the original training dataset with some variables transformed to categorical from numeric. Since our dependent variable takes only two values (0 and 1), we will use logistic regression. To do so, the function `glm()` with `family=binomial` is used. At the beginning, all variables are included
-```{r general}
+```{r general, warning=FALSE, message=FALSE}
 model_1 <- glm(transformed_train_df, formula = target ~., family = binomial(link = "logit"))
 summ(model_1)
 ```
@@ -293,7 +290,7 @@ Based on the the results of the function, we will include `zn`, `indus`, `nox`, 
 
 **MAYBE WE SHOULD USE SOMETHING DIFFERENT FOR VARIABLE SELECTION, Figure 7.12 Flow chart for multiple linear regression SHOS US WHAT TO USE FOR VARIABLE SELECTION, BOOK "A Modern Approach to Regression with R", CHAPTER 7.4, PAGE 252**
 
-```{r model1_aic}
+```{r model1_aic, warning=FALSE, message=FALSE}
 model_1_aic <- model_1 %>% stepAIC(trace = FALSE)
 summary(model_1_aic)
 ```
@@ -315,13 +312,13 @@ plot(model_1_aic)
 
 
 Next, we can try to build the generalized linear model based on the dataset with log transformation.
-```{r general_log}
+```{r general_log, warning=FALSE, message=FALSE}
 model_2 <- glm(log_train_df, formula = target ~., family = binomial(link = "logit"))
 summary(model_2)
 ```
 
 The stepAIC function tells us to include `zn`, `indus`, `nox`, `dis`, `rad`, `lstat` and `medv` variables.
-```{r model2_aic}
+```{r model2_aic, warning=FALSE, message=FALSE}
 model_2_aic <- model_2 %>% stepAIC(trace = FALSE)
 summary(model_2_aic)
 ```
@@ -343,13 +340,13 @@ plot(model_2_aic)
 
 
 Next, we can try to build the generalized linear model based on the dataset with boxcox transformation.
-```{r general_box}
+```{r general_box, warning=FALSE, message=FALSE}
 model_3 <- glm(box_train_df, formula = target ~., family = binomial(link = "logit"))
 summary(model_3)
 ```
 
 The stepAIC function tells us to include `zn`, `indus`, `nox`, `rm`, `age`, `dis`, `rad`, and `medv` variables.
-```{r model3_aic}
+```{r model3_aic, warning=FALSE, message=FALSE}
 model_3_aic <- model_3 %>% stepAIC(trace = FALSE)
 summary(model_3_aic)
 ```
