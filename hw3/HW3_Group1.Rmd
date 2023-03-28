@@ -445,13 +445,7 @@ In analyzing the resulting model, we explored two different sets of coefficients
 Based on the lower AIC we select the coefficients extracted using the lambda.min. 
 
 ```{r}
-# set.seed(1233)
-# 
-# sample <- sample.split(train_df$target, SplitRatio = 0.8)
-# trainining_df  <- subset(train_df, sample == TRUE)
-# testing_df   <- subset(train_df, sample == FALSE)
-
-
+# Create matrix new data
 X_new <- model.matrix(target ~  zn + indus + chas + nox + rm + 
                       age + dis + rad + tax + ptratio + 
                       lstat + medv,
@@ -470,9 +464,6 @@ Y_new <- pred_df$target
 
 
 ```{r}
-
-# H <- table(pred_df$target_prob > 0.5, pred_df$target == 1) 
-# H
 
 confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 
