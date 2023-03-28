@@ -44,6 +44,14 @@ source("logistic_functions.R")
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
+
+```{r}
+set.seed(1233)
+```
+
+
+
+
 ```{r data}
 
 train_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw3/crime-training-data_modified.csv")
@@ -261,13 +269,18 @@ ggarrange(a, b + rremove("x.text"),
 ```
 
 
-**from David for lasso**
+The glmnet() function uses a vector for the explanatory variable and a matrix for the predictor variables. The training and validation data frame are transformed into vectors and the corresponding matrix. Since the glmnet() function supports the standardization and transformation of the predictor variables, we do not need to create individual variable sets for the different transformations.  
 
 ```{r}
 
+sample <- sample.split(train_df$target, SplitRatio = 0.8)
+train_data  <- subset(train_df, sample == TRUE)
+test_data   <- subset(train_df, sample == FALSE)
+
+
 # build X matrix and Y vector
-X <- model.matrix(target ~ ., data=train_df)[,-1]
-Y <- train_df[,"target"] 
+X <- model.matrix(target ~ ., data=train_data)[,-1]
+Y <- train_data[,"target"] 
 
 ```
 
@@ -303,6 +316,7 @@ summary(model_1_aic)
 #### Checking Model Assumptions
 
 ```{r check_lm1}
+par(mfrow=c(2,2))
 plot(model_1_aic)
 ```
 
@@ -330,6 +344,7 @@ summary(model_2_aic)
 #### Checking Model Assumptions
 
 ```{r check_lm2}
+par(mfrow=c(2,2))
 plot(model_2_aic)
 ```
 
@@ -359,13 +374,21 @@ summary(model_3_aic)
 #### Checking Model Assumptions
 
 ```{r check_lm3}
+par(mfrow=c(2,2))
 plot(model_3_aic)
 ```
 
 
 ### 3.4 Lasso Cross Validation
 
-**FROM DAVID LASSO. PLEASE ADD TEXT**
+The cv.glmnet() function was used to perform k-fold cross-validation with variable selection using lasso regularization. The following attribute settings were selected for the model:
+
+- type.measure = "class" - The type.measure is set to class to minimize the misclassification errors of the model since the accurate classification of the validation data set is the desired outcome.  
+- nfold = 5 - Through our exploration, we did not uncover any hard and fast rules governing the optimal number of folds for n-fold cross-validation. Given the size of the training dataset, we opted for 5-fold cross-validation. 
+- family = binomial - For Logistic Regression, the family attribute of the function is set to binomial.
+- link = logit - For this model, we choose the default link function for a logistic model. 
+- alpha =1 - The alpha value of 1 sets the variable shrinkage method to lasso. 
+- standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling. 
 
 ```{r}
 
@@ -377,7 +400,9 @@ lasso.model<- cv.glmnet(x=X,y=Y,
                        alpha=1)                                  #alpha=1 is lasso
 
 l.min <- lasso.model$lambda.min
-coef(lasso.model, s = l.min )
+l.1se <- lasso.model$lambda.1se
+coef(lasso.model, s = "lambda.min" )
+coef(lasso.model, s = "lambda.1se" )
 lasso.model
 
 ```
@@ -388,8 +413,8 @@ lasso.model
 par(mfrow=c(2,2))
 
 plot(lasso.model)
-plot(lasso.model$glmnet.fit, "lambda", label=1)
-plot(lasso.model$glmnet.fit, label=1, xvar='dev')
+plot(lasso.model$glmnet.fit, xvar="lambda", label=TRUE)
+plot(lasso.model$glmnet.fit, xvar='dev', label=TRUE)
 
 rocs <- roc.glmnet(lasso.model, newx = X, newy = Y )
 plot(rocs,type="l")  
@@ -403,6 +428,7 @@ assess.glmnet(lasso.model,
               newy = Y )    
 
 print(glmnet_cv_aicc(lasso.model, 'lambda.min'))
+print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
 
 ```
 
@@ -411,37 +437,35 @@ print(glmnet_cv_aicc(lasso.model, 'lambda.min'))
 
 ## 4. Select Model
 
-**FROM DAVID LASSO**
+In analyzing the resulting model, we explored two different sets of coefficients that were extracted using lambda.min and lambda.1se respectively.
+
+- The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model drops one predictor variable rm and has an AIC of -427.0. 
+- The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). For this model the dis and lstat predictor variables dropout, generating an AIC of -393.2.
+
+Based on the lower AIC we select the coefficients extracted using the lambda.min. 
 
 ```{r}
-set.seed(1233)
-
-sample <- sample.split(train_df$target, SplitRatio = 0.8)
-trainining_df  <- subset(train_df, sample == TRUE)
-testing_df   <- subset(train_df, sample == FALSE)
-
-
+# Create matrix new data
 X_new <- model.matrix(target ~  zn + indus + chas + nox + rm + 
                       age + dis + rad + tax + ptratio + 
                       lstat + medv,
-                      data=testing_df)[,-1]
+                      data=test_data)[,-1]
 
 
-
+# predict using coefficients at lambda.min
 lassoPred <- predict(lasso.model, newx = X_new, type = "response", s = l.min)
 
-pred_df <- testing_df
+pred_df <- test_data
 pred_df$target_prob <- lassoPred[,1]
 pred_df$target_pred <- ifelse(lassoPred > 0.5, 1, 0)[,1]
-
+Y_new <- pred_df$target
 
 ```
 
 
 ```{r}
 
-H <- table(pred_df$target_prob > 0.5, pred_df$target == 1) 
-H
+confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 
 ```
 
