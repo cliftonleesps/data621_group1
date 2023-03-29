@@ -60,8 +60,12 @@ eval_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_gro
 ```
 
 ## Overview
-In large cities, crime is a prevalent issue that is of interest to citizens, policymakers, and law enforcement agencies. For this assignment, we will explore, analyze and model a dataset that contains information on crime rates in different neighborhoods of Boston. Each record indicates whether the crime rate is higher than the median rate (1) or not (0). 
-Our goal is to create a binary logistic regression model using the provided variables to predict whether a neighborhood is at risk for high crime levels. We will use the training dataset to build the model and then apply it to the evaluation dataset to provide classifications and probabilities.
+People's quality of life consists many factors: available housing; economic viability; geography. One of the most import factors is security which is directly related to the prevalence of crime. In large cities, crime negatively affects citizens' livlihood in many aspects. Criminal activity prevents people from safely raising families, running businesses, owning property and providing tax revenue among other effects. And once crime appears in a locality, it becomes expensive and difficult to reverse its influence; city planners and public officials still do not agree on the best approaches despite many attempts and experiments.
+
+Instead of examining crime treatments, this study focuses on crime detection and prediction. Specifically, using  publicly data gathered from various Boston neighborhoods to predict whether each area has a crime rate above or below below the city median.
+
+After investigating a few possibilities, a binary logistic regression model performed the best with an AIC score of -321  when incorporating eight predictors, out of a possible twelve. The predicting variables described an area's zoning, housing characteristics, and proximity to critical resources (e.g. employment or highways).  The final model achieved an accuracy rate of 86%; with this and similar models, city councils can devote resources and attention to neighborhoods with a higher crime risk as well as properly plan future development.
+
 
 <br></br>
 
