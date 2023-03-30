@@ -39,6 +39,7 @@ library(jtools)
 library(regclass)
 library(MASS)
 library(PerformanceAnalytics)
+library(leaps)
 source("logistic_functions.R")
 
 knitr::opts_chunk$set(echo = FALSE)
@@ -60,11 +61,13 @@ eval_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_gro
 ```
 
 ## Overview
-People's quality of life consists many factors: available housing; economic viability; geography. One of the most import factors is security which is directly related to the prevalence of crime. In large cities, crime negatively affects citizens' livlihood in many aspects. Criminal activity prevents people from safely raising families, running businesses, owning property and providing tax revenue among other effects. And once crime appears in a locality, it becomes expensive and difficult to reverse its influence; city planners and public officials still do not agree on the best approaches despite many attempts and experiments.
+People's quality of life consists many factors: available housing, economic viability, and geography among many others. One of the most import factors is security, which is directly related to the prevalence of crime. In large cities, crime negatively affects citizens' livelihood. Criminal activity prevents people from safely raising families, running businesses, owning property and providing tax revenue among other effects. And once crime appears in a locality, it becomes expensive and difficult to reverse its influence; city planners and public officials still do not agree on the best approaches despite many attempts and experiments.
 
-Instead of examining crime treatments, this study focuses on crime detection and prediction. Specifically, using  publicly data gathered from various Boston neighborhoods to predict whether each area has a crime rate above or below below the city median.
+This study focuses on crime detection and prediction. Specifically, using publicly data gathered from various Boston neighborhoods to predict whether each area has a crime rate above or below below the city median. The predictor variables describe an area's zoning, housing characteristics, and proximity to critical resources (e.g. employment or highways), among others.
 
-After investigating a few possibilities, a binary logistic regression model performed the best with an AIC score of -321  when incorporating eight predictors, out of a possible twelve. The predicting variables described an area's zoning, housing characteristics, and proximity to critical resources (e.g. employment or highways).  The final model achieved an accuracy rate of 86%; with this and similar models, city councils can devote resources and attention to neighborhoods with a higher crime risk as well as properly plan future development.
+In order to best assess our predictive model, we created a test set within our training data, and split it along an 80/20 training/testing proportion, before applying the finalized model to a separate evaluation dataset that did not contain the target.
+
+After investigating a few models, a binary logistic regression performed the best with an AIC score of -321 when incorporating eight predictors, out of a possible twelve. The model achieved an accuracy rate of 86%. With this and similar models, city councils can devote resources and attention to neighborhoods with a higher crime risk as well as better plan future development.
 
 
 <br></br>
@@ -80,8 +83,7 @@ The descriptions of each column are below.
 ### 1.1 Summary Statistics
 
 First, let's take a look at the train data.
-Our `traget` variable takes two values: 0 an 1.
-**ADD MORE TEXT**
+Our `target` variable takes two values: 0 an 1.
 
 ```{r summary1}
 DT::datatable(
@@ -98,8 +100,7 @@ DT::datatable(
 ```
 
 The table below provides the mean for each variable, the standard deviation and some other descriptive statistics.
-As we see below, `znn`, `indus`, `age`, and `lstat` are proportions. `chas` is a dummy variable. The rest are integers. Also, there is no missing values.
-**ADD MORE TEXT**
+As we see below, `zn`, `indus`, `age`, and `lstat` are proportions. `chas` is a dummy variable. The rest are integers and fortunately, there are no missing values.
 
 ```{r summary}
 skim(train_df)
@@ -107,12 +108,10 @@ skim(train_df)
 <br></br>
 
 ### 1.2 Distribution
-Next, we will check the density plots. It will help us to start thinking about what variables can be included in our model and how they relate to our target. 
-Some distributions seem skewed: left-skewed `age`, `ptratio` and right-skewed `dis`, `lstat`, `zn`. We may consider some transformations for these variables to deal with the linear regression assumptions.
-The variables `tax` and `rad` seem binomial.
-The feature `chas` is binary and takes mostly the value of `0`.
+Next, we will check the density plots. It will help us to start thinking about which variables can be included in our model and how they are distributed relative to our target variable, so we graph both the total density and density per target category below.
+Some distributions are skewed: left-skewed `age`, `ptratio` and right-skewed `dis`, `lstat`, `zn`. We may consider some transformations for these variables to deal with the linear regression assumptions.
+The variables `tax` and `rad` appear binomial, and `chas` is binary and takes mostly the value of `0`. Likewise, `zn` also takes mostly the value of `0`, and thus may be worth removing.
 
-**ADD MORE TEXT**
 
 ```{r density_plot}
 
@@ -125,11 +124,10 @@ geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'fre
 
 ```
 
-Box plots indicate some outliers that we may address later.
+Box plots indicate some outliers that we may wish to address.
 
 ```{r box_plot}
 
-m_df <- train_df %>% pivot_longer(!target, names_to='variable' , values_to = 'value')
 m_df %>% ggplot(aes(x=target, y=value, group=target)) + 
 geom_boxplot(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 4) +
   stat_summary(fun = "mean",  geom = "point", shape = 8, size = 2, color = "steelblue") + 
@@ -137,7 +135,7 @@ geom_boxplot(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'fre
 
 ```
 
-Before building a model, we need to make sure that we have both classes equally presented in out target variable. Class `1` takes 49% and class `0` takes 51% of the target variable. As a result, we don't have unbalanced class distribution for our target variable that we have to deal with. Otherwise, we had to take some additional steps (bootstrapping, etc) before using logistic regression.
+Before building a model, we need to make sure that we have both classes equally presented in out target variable. This appears to be the case, as class `1` takes 49% and class `0` takes 51% of the target variable. As a result, we don't have unbalanced class distribution for our target variable that we have to deal with. Otherwise, we had to take some additional steps (bootstrapping, etc) before using logistic regression.
 
 ```{r balance}
 proportion <- colMeans(train_df['target'])
@@ -145,14 +143,15 @@ proportion
 ```
 
 ### 1.3 Correlation Matrix
-Plotting the correlations between the `target` and the variables, we can see that some variables correlate with the target, such as `indus`, `nox`, `age`, `rad`, `tax`, `lstat` (positive), `zn` and `dis` (negative). 
-**ADD MORE EXPLN USING WHAT"S BEHIND THESE VARIABLES**
+Plotting the correlations between the `target` and the variables, we can see that some variables correlate *positively* with the target, such as `indus` (proportion of non-retail business acres), `nox` (nitrogen oxides concentration), `age` (proportion of units built prior to 1940), `rad` (accessibility to highways), `tax` (property tax rate per $10,000), `lstat` (lower status of population i.e. a socioeconomic measure), and *negatively* with `zn` (proportion of residential land zoned for large lots) and `dis` (mean distance to 5 Boston employment centers). Intuitively and based on well-studied socioeconomic principles, these make sense, barring perhaps the tax rate, which one would expect to be lower in higher crime-prone neighborhoods.
+
 Variables with correlations close to zero are unlikely to offer significant insights into the factors contributing to a crime rate. 
 
 To avoid multicollinearity, we should exclude some variables from the model that have high degrees of correlation with each other.
-We can see potential cases of multicollinearity for the variable `indus`, `nox`, `dis`.
+We can see potential cases of multicollinearity for the variables `rad`/`tax`, `indus`/`tax`, `age`/`nox`, `indus`/`nox`, `rm`/`medv`, `lstat`/`medv`, `nox`/`dis`, `indus`/`dis`, and `age`/`dis`.
 
-**ADD MORE TEXT**
+We will carefully examine the VIF for these later on.
+
 ```{r corr}
 
 rcore <- rcorr(as.matrix(train_df %>% dplyr::select(where(is.numeric))))
@@ -175,81 +174,92 @@ kable(cor(drop_na(train_df))[,13], "html", escape = F, col.names = c('Coefficien
 
 ## 2. Data preparation
 
-**MAYBE DECIDE HERE WHAT VARIABLES TO REMOVE**
+To build our model, we need to transform categorical variables `chas`, `target` and `rad` from numeric (default by the data) to factors. `rad` in particular is an ordinal categorical index.
 
-To build our model, we need to transform categorical variables `chas`, `target` and `rad`` from numeric (default by the data) to factor.
-
-**FOR RAD MAYBE CREATE COLUMNS RA1, RAD2, ETC?**
 ```{r factor}
 transformed_train_df <- train_df
 transformed_train_df$chas <- as.factor(transformed_train_df$chas)
 transformed_train_df$target <- as.factor(transformed_train_df$target)
-transformed_train_df$ rad <- as.factor(transformed_train_df$rad)
+transformed_train_df$rad <- as.factor(transformed_train_df$rad)
 ```
 
-**NOT SURE IF WE SHOULD DO THIS TO ZN OR MAYBE JUST REMOVE THIS COLUMN OR DO LOG/BOXCOX TRANSF**
-As mentioned above, the variable `zn`has 0 value as the most occurred. It appears 339 times out of total 466. It may cause overdispersion. 
-one thing to avoid is to transform `zn` variable to a class variable with class `0`indicating that there is not residential land zoned for large lots, `1` indication that there is residential land zoned for large lots.
+
+As mentioned above, the variable `zn` has 0 value as the most occurred. It appears 339 times out of total 466 (72%), and may cause overdispersion, so we will remove it.
 ```{r count_zn}
 count(train_df,zn)
+
+transformed_train_df <- subset(transformed_train_df, select = -c(zn))
 ```
 
-```{r zn}
-transformed_train_df$zn <- ifelse(transformed_train_df$zn == 0, 0, 1) 
-count(transformed_train_df,zn)
-transformed_train_df$zn <- as.factor(transformed_train_df$zn)
+```{r eval=FALSE}
+# transformed_train_df$zn <- ifelse(transformed_train_df$zn == 0, 0, 1) 
+# count(transformed_train_df,zn)
+# transformed_train_df$zn <- as.factor(transformed_train_df$zn)
 ```
 
 
-The Log transformation will be applied to the variables that are highly skewed. As a result, skewness for these variables will be below 1.
-**ADD OR CHANGE VARIABLES FOR LOG TRANSF**
 ```{r log, warning=FALSE, message=FALSE}
-log_train_df <- transformed_train_df
-log_train_df$dis <- log(log_train_df$dis+1)
-log_train_df$medv <- log(log_train_df$medv+1)
-
-log_train_df %>% dplyr::select(-c(chas, target, rad, zn)) %>% skewness(na.rm=FALSE)
+# log_train_df <- transformed_train_df
+# log_train_df$dis <- log(log_train_df$dis+1)
+# log_train_df$medv <- log(log_train_df$medv+1)
+# 
+# log_train_df %>% dplyr::select(-c(chas, target, rad)) %>% skewness(na.rm=FALSE)
 ```
-
-Let's check the normality of the distributions after the transformation.
 
 ```{r log_hists, warning=FALSE, message=FALSE}
-m_df_box <- log_train_df %>% dplyr::select(c(dis, medv)) %>% melt() 
-
-a <- m_df_box %>% ggplot(aes(x= value)) + 
-geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
-
-m_df <- transformed_train_df %>% dplyr::select(c(dis, medv)) %>% melt() 
-
-b <- m_df %>% ggplot(aes(x= value)) + 
-geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
-
-ggarrange(a, b + rremove("x.text"), 
-          labels = c("Transformed", "Original"),
-          ncol = 2, nrow = 1)
+# m_df_box <- log_train_df %>% dplyr::select(c(dis, medv)) %>% melt() 
+# 
+# a <- m_df_box %>% ggplot(aes(x= value)) + 
+# geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
+# 
+# m_df <- transformed_train_df %>% dplyr::select(c(dis, medv)) %>% melt() 
+# 
+# b <- m_df %>% ggplot(aes(x= value)) + 
+# geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
+# 
+# ggarrange(a, b + rremove("x.text"), 
+#           labels = c("Transformed", "Original"),
+#           ncol = 2, nrow = 1)
 ```
 
 
-
-Next, we can try the BoxCox transformation.
-**ADD OR CHANGE VARIABLES FOR BOXCOX TRANSF OR MAYBE I DID IT IN THE WRONG WAY**
+Next, let's use BoxCox transformation to normalize our variables - we will look at the distributions for all: `age`, `dis`, `lstat`, `nox`, `ptratio`, `tax`, `medv`, and `indus`.
 ```{r boxcox}
+# Create new dataframe to work with
 box_train_df <- transformed_train_df
 
-age_lambda <- BoxCox.lambda(transformed_train_df$age)
-box_train_df$age <- BoxCox(transformed_train_df$age, age_lambda)
 
-dis_lambda <- BoxCox.lambda(transformed_train_df$dis)
-box_train_df$dis <- BoxCox(transformed_train_df$dis, dis_lambda)
+age_boxcox <- boxcox(lm(box_train_df$age ~ 1))
+age_lambda <- age_boxcox$x[which.max(age_boxcox$y)]
+box_train_df$age <- BoxCox(box_train_df$age, age_lambda)
 
-lstat_lambda <- BoxCox.lambda(transformed_train_df$lstat)
-box_train_df$lstat <- BoxCox(transformed_train_df$lstat, lstat_lambda)
+dis_boxcox <- boxcox(lm(box_train_df$dis ~ 1))
+dis_lambda <- dis_boxcox$x[which.max(dis_boxcox$y)]
+box_train_df$dis <- BoxCox(box_train_df$dis, dis_lambda)
 
-nox_lambda <- BoxCox.lambda(transformed_train_df$nox)
-box_train_df$nox <- BoxCox(transformed_train_df$nox, nox_lambda)
+lstat_boxcox <- boxcox(lm(box_train_df$lstat ~ 1))
+lstat_lambda <- lstat_boxcox$x[which.max(lstat_boxcox$y)]
+box_train_df$lstat <- BoxCox(box_train_df$lstat, lstat_lambda)
 
-ptratio_lambda <- BoxCox.lambda(transformed_train_df$ptratio)
-box_train_df$ptratio <- BoxCox(transformed_train_df$ptratio, ptratio_lambda)
+nox_boxcox <- boxcox(lm(box_train_df$nox ~ 1))
+nox_lambda <- lstat_boxcox$x[which.max(nox_boxcox$y)]
+box_train_df$nox <- BoxCox(box_train_df$nox, nox_lambda)
+
+ptratio_boxcox <- boxcox(lm(box_train_df$ptratio ~ 1))
+ptratio_lambda <- lstat_boxcox$x[which.max(ptratio_boxcox$y)]
+box_train_df$ptratio <- BoxCox(box_train_df$ptratio, ptratio_lambda)
+
+tax_boxcox <- boxcox(lm(box_train_df$tax ~ 1))
+tax_lambda <- tax_boxcox$x[which.max(tax_boxcox$y)]
+box_train_df$tax <- BoxCox(box_train_df$tax, tax_lambda)
+
+indus_boxcox <- boxcox(lm(box_train_df$indus ~ 1))
+indus_lambda <- indus_boxcox$x[which.max(indus_boxcox$y)]
+box_train_df$indus <- BoxCox(box_train_df$indus, indus_lambda)
+
+medv_boxcox <- boxcox(lm(box_train_df$medv ~ 1))
+medv_lambda <- medv_boxcox$x[which.max(medv_boxcox$y)]
+box_train_df$medv <- BoxCox(box_train_df$medv, medv_lambda)
 
 ``` 
 
@@ -257,25 +267,24 @@ box_train_df$ptratio <- BoxCox(transformed_train_df$ptratio, ptratio_lambda)
 Compare the original distributions with transformed.
 
 ```{r box_hists, warning=FALSE, message=FALSE}
-m_df_box <- box_train_df %>% dplyr::select(c(age, dis, lstat, nox, ptratio)) %>% melt() 
+m_df_box <- box_train_df %>% dplyr::select(c(age, dis, lstat, nox, ptratio, tax, indus, medv)) %>% melt() 
 
 a <- m_df_box %>% ggplot(aes(x= value)) + 
 geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
 
-m_df <- transformed_train_df %>% dplyr::select(c(age, dis, lstat, nox, ptratio)) %>% melt() 
+m_df <- transformed_train_df %>% dplyr::select(c(age, dis, lstat, nox, ptratio, tax, indus, medv)) %>% melt() 
 
 b <- m_df %>% ggplot(aes(x= value)) + 
 geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
 
 ggarrange(a, b + rremove("x.text"), 
-          labels = c("Transformed", "Original"),
-          ncol = 2, nrow = 1)
+          labels = c("Transformed", "Original"))
 ```
 
 
 The glmnet() function uses a vector for the explanatory variable and a matrix for the predictor variables. The training and validation data frame are transformed into vectors and the corresponding matrix. Since the glmnet() function supports the standardization and transformation of the predictor variables, we do not need to create individual variable sets for the different transformations.  
 
-```{r}
+```{r echo=TRUE}
 
 sample <- sample.split(train_df$target, SplitRatio = 0.8)
 train_data  <- subset(train_df, sample == TRUE)
@@ -288,8 +297,26 @@ Y <- train_data[,"target"]
 
 ```
 
-**BEFORE BUILIDNG THE MODELS WE MAY NEED TO DEAL WITH OVERDISPERSION OR multicollinearity**
+**BEFORE BUILIDNG THE MODELS WE MAY NEED TO DEAL WITH OVERDISPERSION OR multicollinearity** **SHOULD BE DONE ON THE MODELS**
+**We can also deal with variable selection again after running the models by using Cp Mallow's statistic. Template code example commented here**
 
+```{r}
+# # Run subsets of variables for the model multiple times and save to regfit.full. Default only goes up to subsets of size 8 variables.
+# regfit.full=regsubsets(Salary~., data=Hitters)
+# summary(regfit.full)
+# 
+# # Increase number of variables.
+# regfit.full=regsubsets(Salary~., data=Hitters, nvmax=19)
+# summary <- summary(regfit.full)
+# 
+# # Plot the number of variables versus the 'Cp' (Mallow's Cp) statistic which gives an idea of predictive power per number of variables. Cp value should always be less than the number of predictor variables + 1.
+# plot(summary$cp, xlab="Number of Variables", ylab="Cp")
+# which.min(summary$cp)
+# # Way to view all the specific regsubset variables with Cps
+# plot(regfit.full, scale="Cp")
+# # Coefficients for model 10
+# coef(regfit.full, 10)
+```
 
 ## 3. Build Models
 
@@ -297,7 +324,7 @@ Y <- train_data[,"target"]
 
 #### Dataset - transformed_train_df
 
-As the first step, we are going to build the generilized linear model based on the original training dataset with some variables transformed to categorical from numeric. Since our dependent variable takes only two values (0 and 1), we will use logistic regression. To do so, the function `glm()` with `family=binomial` is used. At the beginning, all variables are included
+As the first step, we are going to build the generalized linear model based on the original training dataset with some variables transformed to categorical from numeric. Since our dependent variable takes only two values (0 and 1), we will use logistic regression. To do so, the function `glm()` with `family=binomial` is used. At the beginning, all variables are included
 ```{r general, warning=FALSE, message=FALSE}
 model_1 <- glm(transformed_train_df, formula = target ~., family = binomial(link = "logit"))
 summ(model_1)
@@ -329,16 +356,16 @@ plot(model_1_aic)
 #### Dataset - log_train_df
 
 
-Next, we can try to build the generalized linear model based on the dataset with log transformation.
+**Next, we can try to build the generalized linear model based on the dataset with log transformation.**
 ```{r general_log, warning=FALSE, message=FALSE}
-model_2 <- glm(log_train_df, formula = target ~., family = binomial(link = "logit"))
-summary(model_2)
+#model_2 <- glm(log_train_df, formula = target ~., family = binomial(link = "logit"))
+#summary(model_2)
 ```
 
-The stepAIC function tells us to include `zn`, `indus`, `nox`, `dis`, `rad`, `lstat` and `medv` variables.
+**The stepAIC function tells us to include `zn`, `indus`, `nox`, `dis`, `rad`, `lstat` and `medv` variables.**
 ```{r model2_aic, warning=FALSE, message=FALSE}
-model_2_aic <- model_2 %>% stepAIC(trace = FALSE)
-summary(model_2_aic)
+#model_2_aic <- model_2 %>% stepAIC(trace = FALSE)
+#summary(model_2_aic)
 ```
 
 #### Model Results
@@ -348,8 +375,8 @@ summary(model_2_aic)
 #### Checking Model Assumptions
 
 ```{r check_lm2}
-par(mfrow=c(2,2))
-plot(model_2_aic)
+#par(mfrow=c(2,2))
+#plot(model_2_aic)
 ```
 
 
@@ -481,6 +508,5 @@ confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 
 
 ## Appendix: R code
-
 
 
