@@ -1,7 +1,7 @@
 ---
 title: 'Homework #3: Logistic Regression'
 subtitle: 'Critical Thinking Group 1'
-author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks, Nick Oliver'
+author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks'
 output:
   html_document:
     toc: yes
@@ -40,6 +40,8 @@ library(regclass)
 library(MASS)
 library(PerformanceAnalytics)
 library(leaps)
+library(broom)
+
 source("logistic_functions.R")
 
 knitr::opts_chunk$set(echo = FALSE)
@@ -65,9 +67,7 @@ People's quality of life consists many factors: available housing, economic viab
 
 This study focuses on crime detection and prediction. Specifically, using publicly data gathered from various Boston neighborhoods to predict whether each area has a crime rate above or below below the city median. The predictor variables describe an area's zoning, housing characteristics, and proximity to critical resources (e.g. employment or highways), among others.
 
-In order to best assess our predictive model, we created a test set within our training data, and split it along an 80/20 training/testing proportion, before applying the finalized model to a separate evaluation dataset that did not contain the target.
-
-After investigating a few models, a binary logistic regression performed the best with an AIC score of -321 when incorporating eight predictors, out of a possible twelve. The model achieved an accuracy rate of 86%. With this and similar models, city councils can devote resources and attention to neighborhoods with a higher crime risk as well as better plan future development.
+We are going to build several models using different techniques and variable selection. In order to best assess our predictive model, we created a test set within our training data, and split it along an 80/20 training/testing proportion, before applying the finalized model to a separate evaluation dataset that did not contain the target.
 
 
 <br></br>
@@ -174,10 +174,9 @@ kable(cor(drop_na(train_df))[,13], "html", escape = F, col.names = c('Coefficien
 ```
 
 
-
 ## 2. Data preparation
 
-To build our model, we need to transform categorical variables `chas`, `target` and `rad` from numeric (default by the data) to factors. `rad` in particular is an ordinal categorical index.
+To build our model, we need to transform categorical variables `chas`, `target` and `rad` from numeric (default by the data) to factors. `rad` in particular is an ordinal categorical index. The data will be split for training and testing.
 
 ```{r factor}
 transformed_train_df <- train_df
@@ -186,7 +185,6 @@ transformed_train_df$target <- as.factor(transformed_train_df$target)
 transformed_train_df$rad <- as.factor(transformed_train_df$rad)
 ```
 
-
 As mentioned above, the variable `zn` has 0 value as the most occurred. It appears 339 times out of total 466 (72%), and may cause overdispersion, so we will remove it.
 ```{r count_zn}
 count(train_df,zn)
@@ -194,40 +192,17 @@ count(train_df,zn)
 transformed_train_df <- subset(transformed_train_df, select = -c(zn))
 ```
 
-```{r eval=FALSE}
-# transformed_train_df$zn <- ifelse(transformed_train_df$zn == 0, 0, 1) 
-# count(transformed_train_df,zn)
-# transformed_train_df$zn <- as.factor(transformed_train_df$zn)
-```
 
-
-```{r log, warning=FALSE, message=FALSE}
-# log_train_df <- transformed_train_df
-# log_train_df$dis <- log(log_train_df$dis+1)
-# log_train_df$medv <- log(log_train_df$medv+1)
-# 
-# log_train_df %>% dplyr::select(-c(chas, target, rad)) %>% skewness(na.rm=FALSE)
-```
-
-```{r log_hists, warning=FALSE, message=FALSE}
-# m_df_box <- log_train_df %>% dplyr::select(c(dis, medv)) %>% melt() 
-# 
-# a <- m_df_box %>% ggplot(aes(x= value)) + 
-# geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
-# 
-# m_df <- transformed_train_df %>% dplyr::select(c(dis, medv)) %>% melt() 
-# 
-# b <- m_df %>% ggplot(aes(x= value)) + 
-# geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
-# 
-# ggarrange(a, b + rremove("x.text"), 
-#           labels = c("Transformed", "Original"),
-#           ncol = 2, nrow = 1)
+```{r split_data_1}
+#split data for training and testing
+sample <- sample.split(transformed_train_df$target, SplitRatio = 0.8)
+transformed_training  <- subset(transformed_train_df, sample == TRUE)
+transformed_testing   <- subset(transformed_train_df, sample == FALSE)
 ```
 
 
 Next, let's use BoxCox transformation to normalize our variables - we will look at the distributions for all: `age`, `dis`, `lstat`, `nox`, `ptratio`, `tax`, `medv`, and `indus`.
-```{r boxcox}
+```{r boxcox, fig.keep="none"}
 # Create new dataframe to work with
 box_train_df <- transformed_train_df
 
@@ -267,7 +242,15 @@ box_train_df$medv <- BoxCox(box_train_df$medv, medv_lambda)
 ``` 
 
 
-Compare the original distributions with transformed.
+```{r split_data_2}
+#split data for training and testing
+sample <- sample.split(box_train_df$target, SplitRatio = 0.8)
+box_training  <- subset(box_train_df, sample == TRUE)
+box_testing   <- subset(box_train_df, sample == FALSE)
+```
+
+Compare the original distributions with transformed. 
+As we see on the graphs below, distributions of the transformed variables became closer to normal.
 
 ```{r box_hists, warning=FALSE, message=FALSE}
 m_df_box <- box_train_df %>% dplyr::select(c(age, dis, lstat, nox, ptratio, tax, indus, medv)) %>% melt() 
@@ -285,7 +268,7 @@ ggarrange(a, b + rremove("x.text"),
 ```
 
 
-The glmnet() function uses a vector for the explanatory variable and a matrix for the predictor variables. The training and validation data frame are transformed into vectors and the corresponding matrix. Since the glmnet() function supports the standardization and transformation of the predictor variables, we do not need to create individual variable sets for the different transformations.  
+The glmnet() function (will be used later) uses a vector for the explanatory variable and a matrix for the predictor variables. The training and validation data frame are transformed into vectors and the corresponding matrix (X, Y). Since the glmnet() function supports the standardization and transformation of the predictor variables, we do not need to create individual variable sets for the different transformations.  
 
 ```{r echo=TRUE}
 
@@ -298,6 +281,101 @@ test_data   <- subset(train_df, sample == FALSE)
 X <- model.matrix(target ~ ., data=train_data)[,-1]
 Y <- train_data[,"target"] 
 
+```
+
+
+## 3. Build Models
+
+### 3.1 Model 1 - Logit model, original data
+
+As the first step, we are going to build the generalized linear model based on the original training dataset (but without `zn` column) with some variables transformed to categorical from numeric. Since our dependent variable takes only two values (0 and 1), we will use logistic regression. To do so, the function `glm()` with `family=binomial` is used. At the beginning, all variables are included.
+
+```{r general, warning=FALSE, message=FALSE}
+model_1 <- glm(transformed_training, formula = target ~., family = binomial(link = "logit"))
+summ(model_1)
+```
+
+
+With stepAIC, we can try to see what variables should be included in our model to increase the performance. 
+Based on the the results of the function, we will include `nox`, `rm`, `age`, `rad`, `tax`, `ptratio` and `medv` variables.
+
+```{r model1_aic, warning=FALSE, message=FALSE}
+model_1_aic <- model_1 %>% stepAIC(trace = FALSE)
+summary(model_1_aic)
+```
+
+The p-value associated with this Chi-Square statistic is below. The lower the p-value, the better the model is able to fit the dataset compared to a model with just an intercept term.
+```{r chi_model_1}
+1-pchisq(model_1_aic$null.deviance-model_1_aic$deviance, model_1_aic$df.null- model_1_aic$df.residual)
+```
+
+#### Model Results
+
+Only `nox`, `age`, `tax`, `ptratio` and `medv` have regression coefficients in model that are highly significant at the 5% level. The coefficients of `nox` (nitrogen oxides concentration), `age` (proportion of owner-occupied units built prior to 1940), `ptratio` (pupil-teacher ratio by town) and `medv` (median value of owner-occupied homes in 1000s dollars) increase the chance of crime while `tax` (full-value property-tax rate per $10,000) decreases as expected. 
+
+The `null deviance` of `516.96` defines how well the target variable can be predicted by a model with only an intercept term.
+
+The `residual deviance` of `97.06` defines how well the target variable can be predicted by our AIC model that we fit with  predictor variables mentioned above. The lower the value, the better the model is able to predict the value of the response variable.
+
+The p-value associated with this Chi-Square statistic is 0 which is less than .05, the model can be useful.
+
+The Akaike information criterion (`AIC`) is `127.06`. We will use this metric to compare the fit of different models.  The lower the value, the better the regression model is able to fit the data.
+
+#### Checking Model Assumptions
+
+We evaluate the modeling assumptions using standard diagnostic plots, marginal model plots, Variance Inflation Factor (VIF) to assess collinearity.
+
+**ADD TEXT ABOUT GRAPHS BELOW**
+
+```{r check_lm1}
+par(mfrow=c(2,2))
+plot(model_1_aic)
+```
+
+To check the linearity assumptions (if there is a linear relationship between independent variables and the Logit of the target variable). We select only numeric variables from our data, add the logit results based on the probability from the predictions and build a scatter plot. We are going check the linearity assumptions visually.
+Only `rm`, `lstat`, `medv`, `nox` seem like linear relation with the logit results.
+```{r model_1_linearity}
+probabilities <- predict(model_1_aic, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, "pos", "neg")
+head(predicted.classes)
+
+#Only numeric predictors
+data <- transformed_training %>%
+  dplyr::select_if(is.numeric) 
+predictors <- colnames(data)
+
+# Bind the logit and tidying the data for plot
+data <- data %>%
+  mutate(logit = log(probabilities/(1-probabilities))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+
+#Scatter plot
+ggplot(data, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+```
+
+The Standardized Residuals plot seems to have a constant variance though there are some outliers.
+```{r model_1_residuals}
+model_1_aic.data <- augment(model_1_aic) %>% 
+  mutate(index = 1:n())
+
+ggplot(model_1_aic.data, aes(index, .std.resid)) + 
+  geom_point(aes(color = target), alpha = .5) +
+  theme_bw()
+```
+
+The marginal model plot is a very useful graphical method for deciding if a logistic regression model is adequate or not. The marginal model plots below show reasonable agreement across the two sets of fits indicating that model_1_aic is a valid model.
+
+```{r warning=FALSE, message=FALSE}
+car::mmps(model_1_aic, span = 3/4, layout = c(2, 2))
+```
+
+In terms of multicollinearity, all variables have vif less than 5. As a result, multicollinearity shouldn't be a problem for our model.
+```{r model_1_vif}
+car::vif(model_1_aic)
 ```
 
 **BEFORE BUILIDNG THE MODELS WE MAY NEED TO DEAL WITH OVERDISPERSION OR multicollinearity** **SHOULD BE DONE ON THE MODELS**
@@ -321,99 +399,93 @@ Y <- train_data[,"target"]
 # coef(regfit.full, 10)
 ```
 
-## 3. Build Models
-
-### 3.1 Model 1 - Logit model
-
-#### Dataset - transformed_train_df
-
-As the first step, we are going to build the generalized linear model based on the original training dataset with some variables transformed to categorical from numeric. Since our dependent variable takes only two values (0 and 1), we will use logistic regression. To do so, the function `glm()` with `family=binomial` is used. At the beginning, all variables are included
-```{r general, warning=FALSE, message=FALSE}
-model_1 <- glm(transformed_train_df, formula = target ~., family = binomial(link = "logit"))
-summ(model_1)
-```
-With stepAIC, we can try to see what variables should be included in our model to increase the performance. 
-Based on the the results of the function, we will include `zn`, `indus`, `nox`, `rm`, `age`, `dis`, `rad`, `tax` and `medv` variables.
-
-**MAYBE WE SHOULD USE SOMETHING DIFFERENT FOR VARIABLE SELECTION, Figure 7.12 Flow chart for multiple linear regression SHOS US WHAT TO USE FOR VARIABLE SELECTION, BOOK "A Modern Approach to Regression with R", CHAPTER 7.4, PAGE 252**
-
-```{r model1_aic, warning=FALSE, message=FALSE}
-model_1_aic <- model_1 %>% stepAIC(trace = FALSE)
-summary(model_1_aic)
-```
-
-
-#### Model Results
-
-**ADD TEXT ABOUT THE MODEL**
-
-#### Checking Model Assumptions
-
-```{r check_lm1}
-par(mfrow=c(2,2))
-plot(model_1_aic)
-```
-
-### 3.2 Model 2 - 
-
-#### Dataset - log_train_df
-
-
-**Next, we can try to build the generalized linear model based on the dataset with log transformation.**
-```{r general_log, warning=FALSE, message=FALSE}
-#model_2 <- glm(log_train_df, formula = target ~., family = binomial(link = "logit"))
-#summary(model_2)
-```
-
-**The stepAIC function tells us to include `zn`, `indus`, `nox`, `dis`, `rad`, `lstat` and `medv` variables.**
-```{r model2_aic, warning=FALSE, message=FALSE}
-#model_2_aic <- model_2 %>% stepAIC(trace = FALSE)
-#summary(model_2_aic)
-```
-
-#### Model Results
-
-**ADD TEXT ABOUT THE MODEL**
-
-#### Checking Model Assumptions
-
-```{r check_lm2}
-#par(mfrow=c(2,2))
-#plot(model_2_aic)
-```
-
-
-### 3.3 Model 3 - 
-
-#### Dataset - box_train_df 
-
+### 3.2 Model 2 - Logit model, BoxCox transformation
 
 Next, we can try to build the generalized linear model based on the dataset with boxcox transformation.
 ```{r general_box, warning=FALSE, message=FALSE}
-model_3 <- glm(box_train_df, formula = target ~., family = binomial(link = "logit"))
-summary(model_3)
+model_2 <- glm(box_training, formula = target ~., family = binomial(link = "logit"))
+summary(model_2)
 ```
 
-The stepAIC function tells us to include `zn`, `indus`, `nox`, `rm`, `age`, `dis`, `rad`, and `medv` variables.
-```{r model3_aic, warning=FALSE, message=FALSE}
-model_3_aic <- model_3 %>% stepAIC(trace = FALSE)
-summary(model_3_aic)
+The stepAIC function tells us to include `nox`, `rm`, `age`, `dis`, `rad` and `medv` variables.
+```{r model2_aic, warning=FALSE, message=FALSE}
+model_2_aic <- model_2 %>% stepAIC(trace = FALSE)
+summary(model_2_aic)
 ```
 
+The p-value associated with this Chi-Square statistic is below. 
+```{r chi_model_2}
+1-pchisq(model_2_aic$null.deviance-model_2_aic$deviance, model_2_aic$df.null- model_2_aic$df.residual)
+```
 
 #### Model Results
 
-**ADD TEXT ABOUT THE MODEL**
+Only `nox`, `rm`, `age`, `dis`, and `medv` have regression coefficients in model that are significant. The coefficients of `nox` (nitrogen oxides concentration), `medv` (median value of owner-occupied homes in 1000s dollars), `age` (proportion of owner-occupied units built prior to 1940), `dis` (weighted mean of distances to five Boston employment centers) increase the chance of crime while `rm` (average number of rooms per dwelling) decreases. 
+
+The `residual deviance` is `113.97`.
+
+The p-value associated with this Chi-Square statistic is 0 which is less than .05, the model can be useful.
+
+The Akaike information criterion (`AIC`) is `139.97`. 
 
 #### Checking Model Assumptions
 
-```{r check_lm3}
+
+**ADD TEXT ABOUT GRAPHS BELOW**
+
+```{r check_lm2}
 par(mfrow=c(2,2))
-plot(model_3_aic)
+plot(model_2_aic)
+```
+
+By checking the linearity assumptions, we see that only `rm` seem like linear relation with the logit results.
+```{r model_2_linearity}
+probabilities <- predict(model_2_aic, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, "pos", "neg")
+head(predicted.classes)
+
+#Only numeric predictors
+data <- box_training %>%
+  dplyr::select_if(is.numeric) 
+predictors <- colnames(data)
+
+# Bind the logit and tidying the data for plot
+data <- data %>%
+  mutate(logit = log(probabilities/(1-probabilities))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+
+#Scatter plot
+ggplot(data, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+```
+
+The Standardized Residuals plot seems to have a constant variance though there are some outliers.
+```{r model_2_residuals}
+model_2_aic.data <- augment(model_2_aic) %>% 
+  mutate(index = 1:n())
+
+ggplot(model_2_aic.data, aes(index, .std.resid)) + 
+  geom_point(aes(color = target), alpha = .5) +
+  theme_bw()
+```
+
+The marginal model plots below show reasonable agreement across the two sets of fits indicating that model_2_aic is a valid model.
+
+```{r warning=FALSE, message=FALSE}
+car::mmps(model_2_aic, span = 3/4, layout = c(2, 2))
+```
+
+In terms of multicollinearity, all variables have vif less than 5. As a result, multicollinearity shouldn't be a problem for our model.
+```{r model_2_vif}
+car::vif(model_2_aic)
 ```
 
 
-### 3.4 Lasso Cross Validation
+
+### 3.3 Model 3 - Lasso Cross Validation
 
 The cv.glmnet() function was used to perform k-fold cross-validation with variable selection using lasso regularization. The following attribute settings were selected for the model:
 
@@ -467,9 +539,13 @@ print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
 ```
 
 
+#### Model Results
 
+**ADD TEXT FOR MODEL 3**
 
-## 4. Select Model
+#### Checking Model Assumptions
+
+**ADD TEXT FOR MODEL 3**
 
 In analyzing the resulting model, we explored two different sets of coefficients that were extracted using lambda.min and lambda.1se respectively.
 
@@ -503,11 +579,134 @@ confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 
 ```
 
+
+## 4. Select Model
+
+### 4.1 Confusion matrix, ROC curve
+To measure model performance, a confusion matrix (Classification Error Rate, Precision, Sensitivity, Specificity, F1 Score) and ROC curve will be used.
+
+**ADD CONF MATRIX AND ROC CURVE FOR MODEL 3**
+
+**MAYBE MAKE A BETTER conf_matrix_1**
+```{r model_1_confusionMatrix}
+
+transformed_testing$model_1 <- ifelse(predict.glm(model_1_aic, transformed_testing, "response") >= 0.5, 1, 0)
+conf_matrix_1 <- confusionMatrix(factor(transformed_testing$model_1), factor(transformed_testing$target), "1")
+
+
+results <- tibble(Model = "Model #1", Accuracy=conf_matrix_1$byClass[11], F1 = conf_matrix_1$byClass[7],
+                  Deviance= model_1_aic$deviance, 
+                  R2 = 1 - model_1_aic$deviance / model_1_aic$null.deviance,
+                  AIC= model_1_aic$aic)
+
+conf_matrix_1
+
+
+```
+
+
+```{r model_2_confusionMatrix}
+
+box_testing$model_2 <- ifelse(predict.glm(model_2_aic, box_testing, "response") >= 0.5, 1, 0)
+conf_matrix_2 <- confusionMatrix(factor(box_testing$model_2), factor(box_testing$target), "1")
+
+
+results2 <- rbind(results,tibble(Model = "Model #2", Accuracy=conf_matrix_2$byClass[11], F1 = conf_matrix_2$byClass[7],
+                  Deviance=model_2_aic$deviance, 
+                  R2 = 1 - model_2_aic$deviance / model_2_aic$null.deviance,
+                  AIC= model_2_aic$aic))
+conf_matrix_2
+```
+
+```{r roc_model_2, warning=FALSE, message=FALSE}
+par(mfrow=c(2,2))
+roc(transformed_testing$target, transformed_testing$model_1, plot = TRUE,  print.auc = TRUE, main="Model 1 - ROC Curve")
+
+roc(box_testing$target, box_testing$model_2, plot = TRUE,  print.auc = TRUE, main="Model 2 - ROC Curve")
+```
+
+```{r}
+kable(results2) %>% 
+  kable_styling(bootstrap_options = "basic", position = "center")
+```
+
+
+### 4.2 Predictions
+
+We are going to follow transformations that we did for the training data.
+
+**ONE OF THE DATA BELOW, DEPENS ON WHAT MODEL WE USE**
+
+For teh first model, we will transform variables `chas` and `rad` to categorical. Also, we remove `zn` column as it had 0 value as the most occurred.
+```{r factor_eval}
+transformed_eval_df <- eval_df
+transformed_eval_df$chas <- as.factor(transformed_eval_df$chas)
+transformed_eval_df$rad <- as.factor(transformed_eval_df$rad)
+
+transformed_eval_df <- subset(transformed_eval_df, select = -c(zn))
+```
+
+BoxCox transformations:
+```{r boxcox_eval, fig.keep = "none"}
+# Create new dataframe to work with
+box_eval_df <- transformed_eval_df
+
+
+age_boxcox <- boxcox(lm(box_eval_df$age ~ 1))
+age_lambda <- age_boxcox$x[which.max(age_boxcox$y)]
+box_eval_df$age <- BoxCox(box_eval_df$age, age_lambda)
+
+dis_boxcox <- boxcox(lm(box_eval_df$dis ~ 1))
+dis_lambda <- dis_boxcox$x[which.max(dis_boxcox$y)]
+box_eval_df$dis <- BoxCox(box_eval_df$dis, dis_lambda)
+
+lstat_boxcox <- boxcox(lm(box_eval_df$lstat ~ 1))
+lstat_lambda <- lstat_boxcox$x[which.max(lstat_boxcox$y)]
+box_eval_df$lstat <- BoxCox(box_eval_df$lstat, lstat_lambda)
+
+nox_boxcox <- boxcox(lm(box_eval_df$nox ~ 1))
+nox_lambda <- lstat_boxcox$x[which.max(nox_boxcox$y)]
+box_eval_df$nox <- BoxCox(box_eval_df$nox, nox_lambda)
+
+ptratio_boxcox <- boxcox(lm(box_eval_df$ptratio ~ 1))
+ptratio_lambda <- lstat_boxcox$x[which.max(ptratio_boxcox$y)]
+box_eval_df$ptratio <- BoxCox(box_eval_df$ptratio, ptratio_lambda)
+
+tax_boxcox <- boxcox(lm(box_eval_df$tax ~ 1))
+tax_lambda <- tax_boxcox$x[which.max(tax_boxcox$y)]
+box_eval_df$tax <- BoxCox(box_eval_df$tax, tax_lambda)
+
+indus_boxcox <- boxcox(lm(box_eval_df$indus ~ 1))
+indus_lambda <- indus_boxcox$x[which.max(indus_boxcox$y)]
+box_eval_df$indus <- BoxCox(box_eval_df$indus, indus_lambda)
+
+medv_boxcox <- boxcox(lm(box_eval_df$medv ~ 1))
+medv_lambda <- medv_boxcox$x[which.max(medv_boxcox$y)]
+box_eval_df$medv <- BoxCox(box_eval_df$medv, medv_lambda)
+
+``` 
+
+**CHANGE BASED ON THE MODEL OF CHOICE, CHANGE SELECTED VARIABLES**
+```{r predictions}
+eval_data <-  subset(box_eval_df, select = (c(nox, rm, age, dis, rad, ptratio, medv)))
+predictions <- ifelse(predict(model_2_aic, eval_data, type = "link") > 0.5, 1, 0)
+eval_df['target'] <- predictions
+
+write.csv(eval_df, 'eval_predictions.csv', row.names=F)
+predictions
+```
+
 ## 5. Conclusion
 
+  After investigating a few models, a binary logistic regression performed the best with an AIC score of -321 when incorporating eight predictors, out of a possible twelve. The model achieved an accuracy rate of 86%. With this and similar models, city councils can devote resources and attention to neighborhoods with a higher crime risk as well as better plan future development.
+  **ADD MORE BASED ON THE FINAL RESULTS, SOME RESULTING NUMBERS**
 
+## 6. References
 
-## References
+1. Faraway, J. J. (2014). _Linear Models with R, Second Edition._ CRC Press.
+2. Sheather, S. (2009). _A Modern Approach to Regression with R._ Springer Science & Business Media.
+3. _Detecting Multicollinearity Using Variance Inflation Factors_ | STAT 462. (n.d.). https://online.stat.psu.edu/stat462/node/180/
+4. Faraway, J. J. (2016). _Extending the Linear Model with R: Generalized Linear, Mixed Effects and Nonparametric Regression Models._ CRC Press.
 
 
 ## Appendix: R code
