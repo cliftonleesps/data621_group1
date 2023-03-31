@@ -82,8 +82,7 @@ The descriptions of each column are below.
 
 ### 1.1 Summary Statistics
 
-First, let's take a look at the train data.
-Our `target` variable takes two values: 0 an 1.
+The training data can be previewed below. The `target` column is the binary dependent variable denoting if a neighborhood had a crime rate above (target = 1) or below (target = 0) the city median.
 
 ```{r summary1}
 DT::datatable(
@@ -100,16 +99,20 @@ DT::datatable(
 ```
 
 The table below provides the mean for each variable, the standard deviation and some other descriptive statistics.
-As we see below, `zn`, `indus`, `age`, and `lstat` are proportions. `chas` is a dummy variable. The rest are integers and fortunately, there are no missing values.
+As we see below, `zn`, `indus`, `age`, and `lstat` are proportions. `Chas` is a dummy variable. The rest are integers and fortunately, there are no missing values.
 
 ```{r summary}
 skim(train_df)
 ```
 <br></br>
 
-### 1.2 Distribution
+### 1.2 Distributions
 Next, we will check the density plots. It will help us to start thinking about which variables can be included in our model and how they are distributed relative to our target variable, so we graph both the total density and density per target category below.
-Some distributions are skewed: left-skewed `age`, `ptratio` and right-skewed `dis`, `lstat`, `zn`. We may consider some transformations for these variables to deal with the linear regression assumptions.
+</br>
+</br>
+Both types of skewness appears in several variables; `age`, `ptratio` are left-skewed, while  `dis`, `lstat`, `zn` are right-skewed. We may consider some transformations for these variables to satisfy linear regression assumptions.
+</br>
+</br>
 The variables `tax` and `rad` appear binomial, and `chas` is binary and takes mostly the value of `0`. Likewise, `zn` also takes mostly the value of `0`, and thus may be worth removing.
 
 
