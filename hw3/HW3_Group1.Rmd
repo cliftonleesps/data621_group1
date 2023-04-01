@@ -266,7 +266,7 @@ The glmnet() function (will be used later) uses a vector for the explanatory var
 
 However, we will also split the regularly BoxCox transformed training set, to be able to compare those transformations against the glmnet() transforms and results.
 
-```{r split_data_2 echo=TRUE}
+```{r split_data_2, echo=TRUE}
 # Split data for training and testing
 sample <- sample.split(box_train_df$target, SplitRatio = 0.8)
 box_training  <- subset(box_train_df, sample == TRUE)
