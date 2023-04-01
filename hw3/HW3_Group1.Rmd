@@ -242,13 +242,6 @@ box_train_df$medv <- BoxCox(box_train_df$medv, medv_lambda)
 ``` 
 
 
-```{r split_data_2}
-#split data for training and testing
-sample <- sample.split(box_train_df$target, SplitRatio = 0.8)
-box_training  <- subset(box_train_df, sample == TRUE)
-box_testing   <- subset(box_train_df, sample == FALSE)
-```
-
 Compare the original distributions with transformed. 
 As we see on the graphs below, distributions of the transformed variables became closer to normal.
 
@@ -267,11 +260,21 @@ ggarrange(a, b + rremove("x.text"),
           labels = c("Transformed", "Original"))
 ```
 
+## 3. Build Models
 
-The glmnet() function (will be used later) uses a vector for the explanatory variable and a matrix for the predictor variables. The training and validation data frame are transformed into vectors and the corresponding matrix (X, Y). Since the glmnet() function supports the standardization and transformation of the predictor variables, we do not need to create individual variable sets for the different transformations.  
+The glmnet() function (will be used later) uses a vector for the explanatory variable and a matrix for the predictor variables. The training and validation data frame are transformed into vectors and the corresponding matrix (X, Y). Since the glmnet() function supports the standardization and transformation of the predictor variables, we do not need to create individual variable sets for the different transformations.
+
+However, we will also split the regularly BoxCox transformed training set, to be able to compare those transformations against the glmnet() transforms and results.
+
+```{r split_data_2 echo=TRUE}
+# Split data for training and testing
+sample <- sample.split(box_train_df$target, SplitRatio = 0.8)
+box_training  <- subset(box_train_df, sample == TRUE)
+box_testing   <- subset(box_train_df, sample == FALSE)
+```
 
 ```{r echo=TRUE}
-
+# Split the data for the 
 sample <- sample.split(train_df$target, SplitRatio = 0.8)
 train_data  <- subset(train_df, sample == TRUE)
 test_data   <- subset(train_df, sample == FALSE)
@@ -283,8 +286,6 @@ Y <- train_data[,"target"]
 
 ```
 
-
-## 3. Build Models
 
 ### 3.1 Model 1 - Logit model, original data
 
@@ -373,15 +374,15 @@ The marginal model plot is a very useful graphical method for deciding if a logi
 car::mmps(model_1_aic, span = 3/4, layout = c(2, 2))
 ```
 
-In terms of multicollinearity, all variables have vif less than 5. As a result, multicollinearity shouldn't be a problem for our model.
+In terms of multicollinearity, all variables have a VIF less than 5. As a result, multicollinearity shouldn't be a problem for our model.
 ```{r model_1_vif}
 car::vif(model_1_aic)
 ```
 
-**BEFORE BUILIDNG THE MODELS WE MAY NEED TO DEAL WITH OVERDISPERSION OR multicollinearity** **SHOULD BE DONE ON THE MODELS**
-**We can also deal with variable selection again after running the models by using Cp Mallow's statistic. Template code example commented here**
 
 ```{r}
+# **BEFORE BUILIDNG THE MODELS WE MAY NEED TO DEAL WITH OVERDISPERSION OR multicollinearity** **SHOULD BE DONE ON THE MODELS**
+# **We can also deal with variable selection again after running the models by using Cp Mallow's statistic. Template code example commented here**
 # # Run subsets of variables for the model multiple times and save to regfit.full. Default only goes up to subsets of size 8 variables.
 # regfit.full=regsubsets(Salary~., data=Hitters)
 # summary(regfit.full)
@@ -407,7 +408,7 @@ model_2 <- glm(box_training, formula = target ~., family = binomial(link = "logi
 summary(model_2)
 ```
 
-The stepAIC function tells us to include `nox`, `rm`, `age`, `dis`, `rad` and `medv` variables.
+The stepAIC function tells us to include once again the variables `nox`, `rm`, `age`, `dis`, `rad` and `medv`.
 ```{r model2_aic, warning=FALSE, message=FALSE}
 model_2_aic <- model_2 %>% stepAIC(trace = FALSE)
 summary(model_2_aic)
@@ -478,7 +479,7 @@ The marginal model plots below show reasonable agreement across the two sets of 
 car::mmps(model_2_aic, span = 3/4, layout = c(2, 2))
 ```
 
-In terms of multicollinearity, all variables have vif less than 5. As a result, multicollinearity shouldn't be a problem for our model.
+In terms of multicollinearity, all variables have a VIF less than 5. As a result, multicollinearity shouldn't be a problem for our model.
 ```{r model_2_vif}
 car::vif(model_2_aic)
 ```
@@ -502,7 +503,7 @@ lasso.model<- cv.glmnet(x=X,y=Y,
                        family = "binomial", 
                        link = "probit",
                        standardize = TRUE,                       #standardize  
-                       nfold = 10,
+                       nfold = 5,
                        alpha=1)                                  #alpha=1 is lasso
 
 l.min <- lasso.model$lambda.min
@@ -583,7 +584,7 @@ confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 ## 4. Select Model
 
 ### 4.1 Confusion matrixes, ROC curve
-To measure model performance, a confusion matrix (Classification Error Rate, Precision, Sensitivity, Specificity, F1 Score) and ROC curve will be used.
+To assess model performance, we will use the testing data that we split originally for each model. Then print out the confusion matrix (Classification Error Rate, Precision, Sensitivity, Specificity, F1 Score) and ROC curve.
 
 **ADD CONF MATRIX AND ROC CURVE FOR MODEL 3**
 
@@ -730,5 +731,4 @@ predictions
 
 
 ## Appendix: R code
-
 
