@@ -582,13 +582,13 @@ confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 
 ## 4. Select Model
 
-### 4.1 Confusion matrix, ROC curve
+### 4.1 Confusion matrixes, ROC curve
 To measure model performance, a confusion matrix (Classification Error Rate, Precision, Sensitivity, Specificity, F1 Score) and ROC curve will be used.
 
 **ADD CONF MATRIX AND ROC CURVE FOR MODEL 3**
 
 **MAYBE MAKE A BETTER conf_matrix_1**
-```{r model_1_confusionMatrix}
+```{r model_1_confusionMatrix, include=FALSE}
 
 transformed_testing$model_1 <- ifelse(predict.glm(model_1_aic, transformed_testing, "response") >= 0.5, 1, 0)
 conf_matrix_1 <- confusionMatrix(factor(transformed_testing$model_1), factor(transformed_testing$target), "1")
@@ -605,7 +605,7 @@ conf_matrix_1
 ```
 
 
-```{r model_2_confusionMatrix}
+```{r model_2_confusionMatrix, include=FALSE}
 
 box_testing$model_2 <- ifelse(predict.glm(model_2_aic, box_testing, "response") >= 0.5, 1, 0)
 conf_matrix_2 <- confusionMatrix(factor(box_testing$model_2), factor(box_testing$target), "1")
@@ -618,7 +618,27 @@ results2 <- rbind(results,tibble(Model = "Model #2", Accuracy=conf_matrix_2$byCl
 conf_matrix_2
 ```
 
-```{r roc_model_2, warning=FALSE, message=FALSE}
+## Confusion Matrixes
+
+**Model 1**
+```{r show_confusion_matrix_1}
+conf_matrix_1$table
+paste0(" Percent Correct: ", round((conf_matrix_1$table[1,1] + conf_matrix_1$table[2,2])  /(sum(conf_matrix_1$table[,1]) + sum(conf_matrix_1$table[,2])), 4))
+```
+
+**Model 2**
+```{r show_confusion_matrix_2}
+conf_matrix_2$table
+paste0(" Percent Correct: ", round((conf_matrix_2$table[1,1] + conf_matrix_2$table[2,2])  /(sum(conf_matrix_1$table[,1]) + sum(conf_matrix_1$table[,2])), 4))
+
+```
+
+**Model 3**
+```{r show_confusion_matrix_3}
+confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
+```
+
+```{r roc_model_2, warning=FALSE, message=FALSE, include=FALSE}
 par(mfrow=c(2,2))
 roc(transformed_testing$target, transformed_testing$model_1, plot = TRUE,  print.auc = TRUE, main="Model 1 - ROC Curve")
 
