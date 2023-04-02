@@ -41,6 +41,7 @@ library(MASS)
 library(PerformanceAnalytics)
 library(leaps)
 library(broom)
+library(vip)
 
 source("logistic_functions.R")
 
@@ -56,9 +57,15 @@ set.seed(1233)
 
 
 ```{r data}
-
-train_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw3/crime-training-data_modified.csv")
+# read train and evaluation datasets
+df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw3/crime-training-data_modified.csv")
 eval_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw3/crime-evaluation-data_modified.csv")
+
+
+# 80/20 split of the training data set
+sample <- sample.split(df$target, SplitRatio = 0.8)
+train_df  <- subset(df, sample == TRUE)
+test_df   <- subset(df, sample == FALSE)
 
 ```
 
@@ -274,15 +281,10 @@ box_testing   <- subset(box_train_df, sample == FALSE)
 ```
 
 ```{r echo=TRUE}
-# Split the data for the 
-sample <- sample.split(train_df$target, SplitRatio = 0.8)
-train_data  <- subset(train_df, sample == TRUE)
-test_data   <- subset(train_df, sample == FALSE)
-
 
 # build X matrix and Y vector
-X <- model.matrix(target ~ ., data=train_data)[,-1]
-Y <- train_data[,"target"] 
+X <- model.matrix(target ~ ., data=train_df)[,-1]
+Y <- train_df[,"target"] 
 
 ```
 
@@ -501,7 +503,7 @@ The cv.glmnet() function was used to perform k-fold cross-validation with variab
 
 lasso.model<- cv.glmnet(x=X,y=Y,
                        family = "binomial", 
-                       link = "probit",
+                       link = "logit",
                        standardize = TRUE,                       #standardize  
                        nfold = 5,
                        alpha=1)                                  #alpha=1 is lasso
@@ -540,13 +542,15 @@ print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
 ```
 
 
+
+Select variables
+```{r}
+coef(lasso.model, s = "lambda.min" )
+vip(lasso.model, geom = "point")
+```
+
+
 #### Model Results
-
-**ADD TEXT FOR MODEL 3**
-
-#### Checking Model Assumptions
-
-**ADD TEXT FOR MODEL 3**
 
 In analyzing the resulting model, we explored two different sets of coefficients that were extracted using lambda.min and lambda.1se respectively.
 
@@ -555,18 +559,19 @@ In analyzing the resulting model, we explored two different sets of coefficients
 
 Based on the lower AIC we select the coefficients extracted using the lambda.min. 
 
+
 ```{r}
 # Create matrix new data
-X_new <- model.matrix(target ~  zn + indus + chas + nox + rm + 
-                      age + dis + rad + tax + ptratio + 
+X_new <- model.matrix(target ~  zn + indus + chas + nox + rm +
+                      age + dis + rad + tax + ptratio +
                       lstat + medv,
-                      data=test_data)[,-1]
+                      data=test_df)[,-1]
 
 
 # predict using coefficients at lambda.min
-lassoPred <- predict(lasso.model, newx = X_new, type = "response", s = l.min)
+lassoPred <- predict(lasso.model, newx = X_new, type = "response", s = 'lambda.min')
 
-pred_df <- test_data
+pred_df <- test_df
 pred_df$target_prob <- lassoPred[,1]
 pred_df$target_pred <- ifelse(lassoPred > 0.5, 1, 0)[,1]
 Y_new <- pred_df$target
@@ -579,6 +584,49 @@ Y_new <- pred_df$target
 confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 
 ```
+
+
+
+
+#### Checking Model Assumptions
+
+
+Again we check linear relationship between independent variables and the Logit of the target variable. Visually inspecting the results only `dis`, `indus`, `nox`, `rm` and `tax` seem like linear relation with the logit results.
+
+
+```{r}
+
+pred_df <- pred_df %>%
+  mutate(logit = log(target_prob/(1-target_prob))) 
+
+m_df <- pred_df %>% pivot_longer(!c(target,target_prob,target_pred,logit), 
+                                 names_to='variable' , values_to = 'value')
+
+#Scatter plot
+ggplot(m_df, aes(logit, value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~variable, scales = "free_y")
+
+```
+
+
+The Standardized Residuals plot seems to have a constant variance though there are some outliers.
+
+```{r}
+pred_df$index <- as.numeric(rownames(pred_df))
+pred_df$resid <- pred_df$target_prob - pred_df$target
+
+
+ggplot(pred_df, aes(index, resid)) + 
+  geom_point(aes(color = target), alpha = .5) +
+  theme_bw()
+
+```
+
+
+The lasso regression solve multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero. 
 
 
 ## 4. Select Model
@@ -641,13 +689,35 @@ confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 
 ```{r roc_model_2, warning=FALSE, message=FALSE, include=FALSE}
 par(mfrow=c(2,2))
-roc(transformed_testing$target, transformed_testing$model_1, plot = TRUE,  print.auc = TRUE, main="Model 1 - ROC Curve")
-
-roc(box_testing$target, box_testing$model_2, plot = TRUE,  print.auc = TRUE, main="Model 2 - ROC Curve")
+rocs <- roc.glmnet(lasso.model, newx = X_new, newy = Y_new )
+plot(rocs,type="l")  
 ```
 
 ```{r}
-kable(results2) %>% 
+
+lasso.r1 <- assess.glmnet(lasso.model,           
+                                newx = X_new,              
+                                newy = Y_new )   
+
+lasso.r2 <- glmnet_cv_aicc(lasso.model, 'lambda.min')
+
+
+results2 <- rbind(results2,tibble(Model = "Model #3", 
+                            Accuracy=lasso.r1$auc[1], 
+                            F1 = NA,
+                            Deviance=lasso.r1$deviance[[1]], 
+                            R2 = NA,
+                            AIC= lasso.r2$AICc))
+
+```
+
+
+
+
+
+
+```{r}
+kable(results2, digits=4) %>% 
   kable_styling(bootstrap_options = "basic", position = "center")
 ```
 
