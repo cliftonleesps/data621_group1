@@ -128,7 +128,13 @@ geom_density(color='#023020', fill='gray') + facet_wrap(~variable, scales = 'fre
 
 ```
 
-Box plots indicate some outliers that we may wish to address.
+1.3 Box Plots
+
+Box plots for all predictors are below and some we can see `rm`, `medv` and `age` related outliers are significant and may need further handling.  Additionally, `nox`, `dis`, `tax` and `rad` have non-overlapping quartiles with little to no outliers; so we can expect to see these appear in multiple models.  
+
+Lastly, `chas` clearly can be converted to a categorical variable as it has binary values.
+
+
 
 ```{r box_plot}
 
