@@ -275,6 +275,8 @@ box_testing   <- subset(box_train_df, sample == FALSE)
 ```
 
 ```{r echo=TRUE}
+# set seed for consistancy 
+set.seed(1233)
 
 # 80/20 split of the training data set
 sample <- sample.split(train_df$target, SplitRatio = 0.8)
@@ -503,10 +505,11 @@ The cv.glmnet() function was used to perform k-fold cross-validation with variab
 
 The resulting model is explored by extractng coefficients at two different values for lambda, lambda.min and lambda.1se respectively.
 
-- The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model drops one predictor variable rm and has an AIC of -352.6. 
-- The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). For this model the 'rm' and 'tax' predictor variables dropout, generating an AIC of -334.3.
+- The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model drops one predictor variable rm and has an AIC of -352.0. 
+- The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). For this model the 'rm' and 'tax' predictor variables dropout, generating an AIC of -336.8.
 
-Based on the lower AIC we select the coefficients extracted using the lambda.min. 
+Even though the coefficients extracted using the lambda.min have the lower AIC value, selecting the coefficients at lambda.1se generates a more parsimonious model.
+
 
 ```{r}
 
@@ -552,46 +555,37 @@ print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
 
 
 
-Taking a closer look at the coefficients for the selected lamdba values  
-
+Looking closer at the remaining coefficients for the selected lambda values, the `nox` predictor variable has the largest coefficient, and several variables including `lstat`,`age`,`zn`,and `indus` have coefficients close to zero. As mentioned earlier, the dataset has a high correlation between predictor variables. The lasso regression approaches this issue by selecting the variable with the highest correlation (in this case`nox`) and shrinking the remaining variables (as can be seen in the plot of coefficients). 
 ```{r}
-coef(lasso.model, s = "lambda.min" )
-vip(lasso.model, geom = "point")
+coef(lasso.model, s = "lambda.1se" )
+vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.1se")
 ```
 
 
 #### Model Results
 
-In analyzing the resulting model, we explored two different sets of coefficients that were extracted using lambda.min and lambda.1se respectively.
 
-- The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model drops one predictor variable rm and has an AIC of -427.0. 
-- The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). For this model the dis and lstat predictor variables dropout, generating an AIC of -393.2.
-
-Based on the lower AIC we select the coefficients extracted using the lambda.min. 
-
+The coefficients extracted at the lambda.1se value are used to predict the relative crime rate for the testing data set. The confusion matrix highlights an accuracy of 83.9%.
 
 ```{r}
 # Create matrix new data
-X_new <- model.matrix(target ~  zn + indus + chas + nox + rm +
-                      age + dis + rad + tax + ptratio +
-                      lstat + medv,
-                      data=test_data)[,-1]
+X_test <- model.matrix(target ~ ., data=test_data)[,-1]
+Y_test <- test_data[,"target"] 
 
 
 # predict using coefficients at lambda.min
-lassoPred <- predict(lasso.model, newx = X_new, type = "response", s = 'lambda.min')
+lassoPred <- predict(lasso.model, newx = X_test, type = "response", s = 'lambda.1se')
 
 pred_df <- test_data
 pred_df$target_prob <- lassoPred[,1]
 pred_df$target_pred <- ifelse(lassoPred > 0.5, 1, 0)[,1]
-Y_new <- pred_df$target
 
 ```
 
 
 ```{r}
 
-confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
+confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.1se')
 
 ```
 
@@ -601,7 +595,7 @@ confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
 #### Checking Model Assumptions
 
 
-Again we check linear relationship between independent variables and the Logit of the target variable. Visually inspecting the results only `dis`, `indus`, `nox`, `rm` and `tax` seem like linear relation with the logit results.
+Again we check linear relationship between independent variables and the Logit of the target variable. Visually inspecting the results there is a linear trend in the relationship but there are deviations from the straight line in all variables with the exception of `nox` and `ptratio`.
 
 
 ```{r}
@@ -694,22 +688,22 @@ paste0(" Percent Correct: ", round((conf_matrix_2$table[1,1] + conf_matrix_2$tab
 
 **Model 3**
 ```{r show_confusion_matrix_3}
-confusion.glmnet(lasso.model, newx = X_new, newy = Y_new, s = l.min)
+confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = l.min)
 ```
 
 ```{r roc_model_2, warning=FALSE, message=FALSE, include=FALSE}
 par(mfrow=c(2,2))
-rocs <- roc.glmnet(lasso.model, newx = X_new, newy = Y_new )
+rocs <- roc.glmnet(lasso.model, newx = X_test, newy = Y_test )
 plot(rocs,type="l")  
 ```
 
 ```{r}
 
 lasso.r1 <- assess.glmnet(lasso.model,           
-                                newx = X_new,              
-                                newy = Y_new )   
+                                newx = X_test,              
+                                newy = Y_test )   
 
-lasso.r2 <- glmnet_cv_aicc(lasso.model, 'lambda.min')
+lasso.r2 <- glmnet_cv_aicc(lasso.model, 'lambda.1se')
 
 
 results2 <- rbind(results2,tibble(Model = "Model #3", 
@@ -796,6 +790,29 @@ eval_df['target'] <- predictions
 write.csv(eval_df, 'eval_predictions.csv', row.names=F)
 predictions
 ```
+
+
+
+
+```{r}
+
+# build X matrix and Y vector
+X_eval <- model.matrix(target ~ ., data=eval_df)[,-1]
+Y_eval <- eval_df[,"target"] 
+
+
+# predict using coefficients at lambda.min
+lassoEval <- predict(lasso.model, newx = X_eval, type = "response", s = 'lambda.1se')
+
+eval_pred_df <- eval_df
+eval_pred_df$target_prob <- lassoEval[,1]
+eval_pred_df$target_pred <- ifelse(lassoEval > 0.5, 1, 0)[,1]
+
+write.csv(eval_pred_df, 'eval_predictions_lasso.csv', row.names=F)
+
+```
+
+
 
 ## 5. Conclusion
 
