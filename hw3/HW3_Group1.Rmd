@@ -691,12 +691,22 @@ paste0(" Percent Correct: ", round((conf_matrix_2$table[1,1] + conf_matrix_2$tab
 confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = l.min)
 ```
 
-```{r roc_model_2, warning=FALSE, message=FALSE, include=FALSE}
-par(mfrow=c(2,2))
-rocs <- roc.glmnet(lasso.model, newx = X_test, newy = Y_test )
-plot(rocs,type="l")  
-```
+## ROC Curves
 
+```{r roc_model_2, warning=FALSE, message=FALSE}
+par(mfrow=c(2,2))
+
+# Model 1 curve
+plot(roc(transformed_testing$target, transformed_testing$model_1, plot = FALSE,  print.auc = TRUE), quiet=TRUE, main="Model 1 - ROC Curve")
+
+
+# Model 2 curve
+plot(roc(box_testing$target, box_testing$model_2, plot = FALSE,  print.auc = TRUE, quiet=TRUE), main="Model 2 - ROC Curve")
+
+
+# Model 3 curve
+plot(roc(pred_df$target, pred_df$target_pred, plot = FALSE,  print.auc = TRUE, quiet=TRUE), main="Model 3 - ROC Curve")
+```
 ```{r}
 
 lasso.r1 <- assess.glmnet(lasso.model,           
