@@ -641,12 +641,12 @@ The lasso regression solve multicollinearity issue by selecting the variable wit
 
 ## 4. Select Model
 
-### 4.1 Confusion matrixes, ROC curve
-To assess model performance, we will use the testing data that we split originally for each model. Then print out the confusion matrix (Classification Error Rate, Precision, Sensitivity, Specificity, F1 Score) and ROC curve.
+To choose which of our three models for prediction, we will focus on performance only. I.e. comparing ROC curves, performance statistics and confusion matrices. We did not have models differ in the amount of predictors.
+
+Ideally, all three comparisons favors a single model but they didn't in our case. 
 
 **ADD CONF MATRIX AND ROC CURVE FOR MODEL 3**
 
-**MAYBE MAKE A BETTER conf_matrix_1**
 ```{r model_1_confusionMatrix, include=FALSE}
 
 transformed_testing$model_1 <- ifelse(predict.glm(model_1_aic, transformed_testing, "response") >= 0.5, 1, 0)
@@ -677,7 +677,9 @@ results2 <- rbind(results,tibble(Model = "Model #2", Accuracy=conf_matrix_2$byCl
 conf_matrix_2
 ```
 
-## Confusion Matrixes
+## Confusion Matrices
+
+Comparing model 1 and 2, we see they are very similar except model 2 has a slightly higher miss rate. However, model 3's false negative rate was much higher than the other models and hurt its overall accuracy.
 
 **Model 1**
 ```{r show_confusion_matrix_1}
@@ -698,6 +700,8 @@ confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = l.min)
 ```
 
 ## ROC Curves
+
+As expected from the confusion matrices, we see the ROC curves for model 1 and 2 being closer to ideal. 
 
 ```{r roc_model_2, warning=FALSE, message=FALSE}
 par(mfrow=c(2,2))
@@ -733,8 +737,9 @@ results2 <- rbind(results2,tibble(Model = "Model #3",
 
 
 
+## Other Statistics
 
-
+Even though model 3's accuracy is the lowest, its AIC is the lowest so we'll choose it for predictions.
 
 ```{r}
 kable(results2, digits=4) %>% 
@@ -746,9 +751,9 @@ kable(results2, digits=4) %>%
 
 We are going to follow transformations that we did for the training data.
 
-**ONE OF THE DATA BELOW, DEPENS ON WHAT MODEL WE USE**
+**ONE OF THE DATA BELOW, DEPENDS ON WHAT MODEL WE USE**
 
-For teh first model, we will transform variables `chas` and `rad` to categorical. Also, we remove `zn` column as it had 0 value as the most occurred.
+For the first model, we will transform variables `chas` and `rad` to categorical. Also, we remove `zn` column as it had 0 value as the most occurred.
 ```{r factor_eval}
 transformed_eval_df <- eval_df
 transformed_eval_df$chas <- as.factor(transformed_eval_df$chas)
