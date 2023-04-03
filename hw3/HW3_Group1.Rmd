@@ -729,14 +729,13 @@ plot(roc(pred_df$target, pred_df$target_pred, plot = FALSE,  print.auc = TRUE, q
 
 ### 4.3 Predictions
 
-We are going to follow transformations that we did for the training data using Lasso functions. The results of the prediction will be written to the `eval_predictions_lasso.csv` and loaded to the [GitHub repo](https://github.com/ex-pr/data621_group1/tree/main/hw3).
+Using the selected model we will predict the eval dataset. The matrix used in the predict() function requires a target variable so we will create a dummy variable for these purposes and set it to 0. The prediction function will generate a vector of probablisites that we will use to calcuate a binomial prediction (using a threshold of 0.5). The results of the prediction will be written to the `eval_predictions_lasso.csv` and loaded to the [GitHub repo](https://github.com/ex-pr/data621_group1/tree/main/hw3).
 
-```{r pred, eval=FALSE}
+```{r}
 
 # build X matrix and Y vector
+eval_df$target <- 0
 X_eval <- model.matrix(target ~ ., data=eval_df)[,-1]
-Y_eval <- eval_df[,"target"] 
-
 
 # predict using coefficients at lambda.min
 lassoEval <- predict(lasso.model, newx = X_eval, type = "response", s = 'lambda.1se')
@@ -748,7 +747,7 @@ eval_pred_df$target_pred <- ifelse(lassoEval > 0.5, 1, 0)[,1]
 write.csv(eval_pred_df, 'eval_predictions_lasso.csv', row.names=F)
 ```
 
-```{r results_table, eval=FALSE}
+```{r results_table}
 DT::datatable(
       eval_pred_df,
       extensions = c('Scroller'),
@@ -766,7 +765,7 @@ DT::datatable(
 
 ## 5. Conclusion
 
-  After investigating a few models, the third model where k-fold cross-validation with variable selection using lasso regularization performed the best with an AIC score of -337 when incorporating eight predictors, out of a possible twelve. The model achieved an accuracy rate of 94%. With this and similar models, city councils can devote resources and attention to neighborhoods with a higher crime risk as well as better plan future development.
+  After investigating a few models, the third model, where 5-fold cross-validation with variable selection using lasso regularization, performed the best with an AIC score of -336.8 when incorporating ten predictors out of a possible twelve. The model achieved an accuracy rate of 93.9%. The relative size of the coefficients is noteworthy. The `nox` predictor variable is the largest coefficient of the ten remaining variables, with 4 of those coefficients being close to zero (less than 0.05 difference from zero). Although there is clearly a relationship between pollution captured by the `nox` variable and relative crime rate, we recommend further investigation to fully understand the causal pathways.
 
 
 ## 6. References
