@@ -506,6 +506,7 @@ eval_pred_df <- eval_df
 eval_pred_df$target_prob <- lassoEval[,1]
 eval_pred_df$target_pred <- ifelse(lassoEval > 0.5, 1, 0)[,1]
 
+eval_pred_df <- subset(eval_pred_df, select = -c(target))
 write.csv(eval_pred_df, 'eval_predictions_lasso.csv', row.names=F)
 
 
