@@ -1,0 +1,205 @@
+---
+title: 'Homework #4:  Multiple linear regression and Binary logistic regression'
+subtitle: 'Critical Thinking Group 1'
+author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks'
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+  pdf_document:
+    toc: yes
+editor_options:
+  chunk_output_type: console
+  markdown: 
+    wrap: sentence
+---
+
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(mice)
+library(readr)
+library(skimr)
+library(ggplot2)
+library(tidyverse)
+library(reshape2)
+
+
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r data}
+# read train and evaluation datasets
+train_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw4/insurance_training_data.csv")
+eval_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw4/insurance-evaluation-data.csv")
+
+```
+
+
+## Overview
+
+In this homework assignment, we will explore, analyze and model a data set containing approximately 8000 records representing a customer at an auto insurance company. We will build multiple linear regression on the continuous variable `TARGET_AMT` and binary logistic regression on the `TARGET_FLAG` using the training data to predict the probability that a person will crash their car and also the amount of money it will cost if the person does crash their car. 
+
+We are going to build several models using different techniques and variable selection. In order to best assess our predictive model, we created a test set within our training data, and split it along an 80/20 training/testing proportion, before applying the finalized models to a separate evaluation dataset that did not contain the target.
+
+
+## 1. Data Exploration
+
+The insurance training dataset contains 8161 observations of 26 variables, each record represents a customer at an auto insurance company. The evaluation dataset contains 2141 observations of 26 variables.
+The descriptions of each column are below.
+
+Each record has two response variables. The first response variable, `TARGET_FLAG`, is a 1 or a 0. A “1” means that the person was in a car crash. A zero means that the person was not in a car crash. The second response variable is `TARGET_AMT`. This value is zero if the person did not crash their car. But if they did crash their car, this number will be a value greater than zero.
+
+
+<img src="https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw4/hw4_variables.png" width="1200" style="display: block; margin-left: auto; margin-right: auto; width: 100%;"/>
+
+### 1.1 Summary Statistics
+
+The training data can be previewed below. The `TARGET_FLAG` column is the binary dependent variable denoting if a car was in a crash (target = 1) or not (target = 0).
+`TARGET_AMT` is a numeric dependent variable and represents the amount of time the car spent on repairs in case of crash. The minimum is 0 (car wasn't in crash, no time spent on repairs), the maximum is 107586.1. 
+```{r summary1}
+DT::datatable(
+      train_df[1:500,],
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE) 
+```
+
+The table below provides valuable descriptive statistics about the training data. 14 variables are categorical, 12 variables are numeric.
+There is no missing data for categorical variables while numeric variables `YOJ` (years on job) has 5% of missing data, `CAR_AGE` (vehicle age) has 6%, and `AGE` (age of driver) has less than 1%. 
+Most of the numeric variables have a minimum of zero. Some numbers seem strange, we should deal with it later. For example, `CAR_AGE` has the minimum value of -3.
+Some of the variables are character though they should be numeric and vice versa. Variable `OLDCLAIM`, `BLUEBOOK`, `HOME_VAL`, `INCOME` have $ sign in front a number, we should remove the sign and transform the variable to numeric. Variables `MSTATUS` (Marital Status), `EDUCATION`, `JOB`, `CAR_TYPE`, `SEX` AND `URBANICITY` contain prefix `z_` that should be removed as well.
+**ADD SOMETHING ELSE FOR SUMMARY**
+
+```{r summary}
+skim(train_df)
+```
+
+```{r balance}
+proportion <- colMeans(train_df['TARGET_FLAG'])
+proportion
+```
+
+### 1.2 Distributions
+
+
+
+### 1.3 Box Plots
+
+
+
+### 1.4 Correlation Matrix
+
+
+
+## 2. Data preparation
+
+### 2.1 Data type
+First, we will remove prefixes `z_` and `$` together with the `INDEX` variable (identification Variable), transform to factor variables `TARGET_FLAG`, `KIDSDRIV`, `HOMEKIDS`, `CLM_FREQ`, `MVR_PTS`. Also, we transform to numeric variables `INCOME`, `HOME_VAL`, `BLUEBOOK`, `OLDCLAIM`
+
+```{r}
+train_df <- train_df %>%  dplyr::select(-INDEX)
+
+z_vars <- c("MSTATUS","SEX","JOB","CAR_TYPE","URBANICITY","EDUCATION")
+for (v in z_vars) {
+  train_df <- train_df %>% mutate(!!v := str_replace(get(v),"z_",""))
+}
+
+dollar_vars <- c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM")
+for (v in dollar_vars) {
+  train_df <- train_df %>% mutate(!!v := str_replace(get(v),"[\\$,]",""))
+}
+
+currency_vars <- c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM")
+
+for (v in currency_vars) {
+  train_df <- train_df %>% mutate(!!v := parse_number(get(v)))
+}
+
+factor_vars <- c("TARGET_FLAG", "KIDSDRIV","HOMEKIDS","CLM_FREQ", "MVR_PTS", "PARENT1","CAR_TYPE","JOB","CAR_USE","URBANICITY","RED_CAR","REVOKED","MSTATUS","EDUCATION","SEX")
+
+for (v in factor_vars) {
+  train_df <- train_df %>% mutate(!!v := factor(get(v)))
+}
+```
+
+
+### 2.2 Missing values
+```{r eval=FALSE}
+
+
+
+
+## Update RED_CAR, replace [no,yes] values with [No, Yes] values
+train_df <- train_df %>% mutate( RED_CAR = ifelse(RED_CAR == "no","No","Yes"))
+
+
+## We need to impute the AGE, YOJ, CAR_AGE, INCOME, HOME_VAL and CAR_AGE variables
+imputed_Data <- mice(train_df, m=5, maxit = 20, method = 'pmm', seed = 500, printFlag=FALSE)
+train_df <- complete(imputed_Data)
+
+
+## We have one row with a car age < 0! just set it to zero. Assume it's a brand new car
+train_df <- rows_update(train_df, tibble(INDEX = 8772, CAR_AGE = 0))
+
+
+print(summary(train_df))
+
+
+```
+
+
+### 2.3 Outliers
+
+
+## 3. Multiple linear regression
+
+
+### 3.1 Model 1 - 
+
+
+### 3.2 Model 2 - 
+
+
+### 3.3 Model 3 - 
+
+### 3.4 Model selection
+
+
+
+## 4. Binary logistic regression
+
+
+### 4.1 Model 1 - 
+
+
+### 4.2 Model 2 - 
+
+
+### 4.3 Model 3 - 
+
+### 4.4 Model selection
+
+
+
+## 5. Predictions
+
+
+## 6. Conclusion
+
+
+
+## 7. References
+
+
+## Appendix: R code
+
+
