@@ -1,3 +1,4 @@
+library(tidyverse)
 library(dplyr)
 library(mice)
 library(readr)
@@ -72,3 +73,21 @@ train_df <- rows_update(train_df, tibble(INDEX = 8772, CAR_AGE = 0))
 
 
 print(summary(train_df))
+
+
+a <- train_df %>% dplyr::select(c(4,5,6,7,8,10,15,17,18,22,24,25)) %>% data.table::melt()
+a %>% ggplot(aes(x=value))+ geom_density(alpha=.2,fill="#FF6666") + facet_wrap(~variable, scales='free')
+
+
+# use Box-Cox on INCOME, TRAVTIME, BLUEBOOK, TIF
+train_df$INCOME <- BoxCox(train_df$INCOME, BoxCox.lambda(train_df$INCOME))
+
+#i <- BoxCox(train_df$TRAVTIME, BoxCox.lambda(train_df$TRAVTIME))
+#hist(i,breaks=50)
+
+#i <- BoxCox(train_df$BLUEBOOK, BoxCox.lambda(train_df$BLUEBOOK))
+#i <- BoxCox(train_df$TIF, BoxCox.lambda(train_df$TIF))
+
+
+## Create CAR_CRASH variable from the target flag for later exploration
+train_df <- train_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
