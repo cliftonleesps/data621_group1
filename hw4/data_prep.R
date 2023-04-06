@@ -2,6 +2,9 @@ library(tidyverse)
 library(dplyr)
 library(mice)
 library(readr)
+library(MASS)
+library(forecast)
+
 
 ## This script reads the training data and cleans the insurance data:
 ##  - Removes z_ prefix from character values
@@ -44,6 +47,7 @@ for (v in currency_vars) {
 ## MSTATUS
 ## EDUCATION
 ## SEX
+
 factor_vars <- c("PARENT1","CAR_TYPE","JOB","CAR_USE","URBANICITY","RED_CAR","REVOKED","MSTATUS","EDUCATION","SEX")
 
 for (v in factor_vars) {
@@ -75,19 +79,55 @@ train_df <- rows_update(train_df, tibble(INDEX = 8772, CAR_AGE = 0))
 print(summary(train_df))
 
 
-a <- train_df %>% dplyr::select(c(4,5,6,7,8,10,15,17,18,22,24,25)) %>% data.table::melt()
-a %>% ggplot(aes(x=value))+ geom_density(alpha=.2,fill="#FF6666") + facet_wrap(~variable, scales='free')
+
+## Use basic log transformation on INCOME
+par(mfrow=c(1,2));hist(train_df$INCOME,breaks=100); hist(log(train_df$INCOME), breaks=100)
+train_df$INCOME <- log(train_df$INCOME)
 
 
-# use Box-Cox on INCOME, TRAVTIME, BLUEBOOK, TIF
-train_df$INCOME <- BoxCox(train_df$INCOME, BoxCox.lambda(train_df$INCOME))
+# use Box-Cox on TRAVTIME, BLUEBOOK, TIF
+bluebook_boxcox <- boxcox(lm(train_df$BLUEBOOK ~ 1))
+bluebook_lambda <- bluebook_boxcox$x[which.max(bluebook_boxcox$y)]
+bluebook_trans <- BoxCox(train_df$BLUEBOOK, bluebook_lambda)
 
-#i <- BoxCox(train_df$TRAVTIME, BoxCox.lambda(train_df$TRAVTIME))
-#hist(i,breaks=50)
+## see what differences there are between using the Box-Cox and a regular log transformation
+par(mfrow=c(1,3));hist(train_df$BLUEBOOK, breaks=100);hist(bluebook_trans, breaks=100);hist(log(train_df$BLUEBOOK), breaks=100);
 
-#i <- BoxCox(train_df$BLUEBOOK, BoxCox.lambda(train_df$BLUEBOOK))
-#i <- BoxCox(train_df$TIF, BoxCox.lambda(train_df$TIF))
+## just use the Box Cox
+train_df$BLUEBOOK <- bluebook_trans
+
+
+## Transform TRAVTIME
+travtime_boxcox <- boxcox(lm(train_df$TRAVTIME ~ 1))
+travtime_lambda <- travtime_boxcox$x[which.max(travtime_boxcox$y)]
+travtime_trans <- BoxCox(train_df$TRAVTIME, travtime_lambda)
+par(mfrow=c(1,4));hist(train_df$TRAVTIME, breaks=100);hist(log(train_df$TRAVTIME), breaks=100);hist(travtime_trans, breaks=100);hist(sqrt(train_df$TRAVTIME),breaks=100)
+
+## just use the Box Cox for TRAVTIME
+train_df$TRAVTIME <- travtime_trans
 
 
 ## Create CAR_CRASH variable from the target flag for later exploration
 train_df <- train_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
+
+
+## exploratory factor analysis for
+##  KIDSDRIV; HOMEKIDS; CLM_FREQ; MVR_PTS; TIF; CAR_AGE
+
+## put into bins:  TIF; CAR_AGE; HOMEKIDS; HOME_VAL
+q <- quantile(train_df$CAR_AGE)
+q <- c(-1,  1,  8, 12, 28)
+train_df <- train_df %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
+
+q <- quantile(train_df$HOME_VAL)
+q[1] <- -1
+train_df <- train_df %>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
+
+q <- quantile(train_df$TIF); q[1] <- -1
+train_df <- train_df %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
+
+a <- train_df %>% select_if(is.numeric) %>% dplyr::select(!(c(INDEX,TARGET_FLAG, TARGET_AMT))) %>% data.table::melt()
+a %>% ggplot(aes(x=value))+ geom_density(alpha=.2,fill="#FF6666") + facet_wrap(~variable, scales='free')
+
+
+
