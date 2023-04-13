@@ -17,13 +17,24 @@ editor_options:
 
 
 ```{r setup, include=FALSE}
-library(dplyr)
 library(mice)
 library(readr)
 library(skimr)
 library(ggplot2)
 library(tidyverse)
 library(reshape2)
+library(MASS)
+library(forecast)
+
+
+## To load the below libraries you might have to do the following in the console first:
+####  install.packages("devtools")
+####  devtools::install_github("haleyjeppson/ggmosaic")
+####  devtools::install_github("thomasp85/patchwork")
+
+library(ggmosaic)
+library(patchwork)
+
 
 
 knitr::opts_chunk$set(echo = FALSE)
@@ -108,11 +119,17 @@ First, we will remove prefixes `z_` and `$` together with the `INDEX` variable (
 ```{r}
 train_df <- train_df %>%  dplyr::select(-INDEX)
 
+## Create CAR_CRASH variable from the target flag for later exploration
+train_df <- train_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
+
+
+## Remove z_ from character class values
 z_vars <- c("MSTATUS","SEX","JOB","CAR_TYPE","URBANICITY","EDUCATION")
 for (v in z_vars) {
   train_df <- train_df %>% mutate(!!v := str_replace(get(v),"z_",""))
 }
 
+## Convert currency columns from character class to integer
 dollar_vars <- c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM")
 for (v in dollar_vars) {
   train_df <- train_df %>% mutate(!!v := str_replace(get(v),"[\\$,]",""))
@@ -124,6 +141,8 @@ for (v in currency_vars) {
   train_df <- train_df %>% mutate(!!v := parse_number(get(v)))
 }
 
+
+## Convert the below character variables to factors
 factor_vars <- c("TARGET_FLAG", "KIDSDRIV","HOMEKIDS","CLM_FREQ", "MVR_PTS", "PARENT1","CAR_TYPE","JOB","CAR_USE","URBANICITY","RED_CAR","REVOKED","MSTATUS","EDUCATION","SEX")
 
 for (v in factor_vars) {
@@ -133,7 +152,7 @@ for (v in factor_vars) {
 
 
 ### 2.2 Missing values
-```{r eval=FALSE}
+```{r include=FALSE}
 
 
 
@@ -148,7 +167,38 @@ train_df <- complete(imputed_Data)
 
 
 ## We have one row with a car age < 0! just set it to zero. Assume it's a brand new car
-train_df <- rows_update(train_df, tibble(INDEX = 8772, CAR_AGE = 0))
+### train_df <- rows_update(train_df, tibble(INDEX = 8772, CAR_AGE = 0))
+
+
+## Use basic log transformation on INCOME
+train_df$INCOME <- log(train_df$INCOME)
+
+# use Box-Cox on TRAVTIME, BLUEBOOK
+bluebook_boxcox <- boxcox(lm(train_df$BLUEBOOK ~ 1))
+bluebook_lambda <- bluebook_boxcox$x[which.max(bluebook_boxcox$y)]
+bluebook_trans <- BoxCox(train_df$BLUEBOOK, bluebook_lambda)
+train_df$BLUEBOOK <- bluebook_trans
+
+travtime_boxcox <- boxcox(lm(train_df$TRAVTIME ~ 1))
+travtime_lambda <- travtime_boxcox$x[which.max(travtime_boxcox$y)]
+travtime_trans <- BoxCox(train_df$TRAVTIME, travtime_lambda)
+train_df$TRAVTIME <- travtime_trans
+
+## Create CAR_CRASH variable from the target flag for later exploration
+train_df <- train_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
+
+## put into bins:  TIF; CAR_AGE; HOMEKIDS; HOME_VAL
+q <- quantile(train_df$CAR_AGE)
+q <- c(-1,  1,  8, 12, 28)
+train_df <- train_df %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
+
+q <- quantile(train_df$HOME_VAL)
+q[1] <- -1
+train_df <- train_df %>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
+
+q <- quantile(train_df$TIF); 
+q[1] <- -1
+train_df <- train_df %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
 
 
 print(summary(train_df))
@@ -156,9 +206,153 @@ print(summary(train_df))
 
 ```
 
-
 ### 2.3 Outliers
 
+### 2.4 Visualizations
+
+```{r visualizations}
+colnames(train_df)
+
+a <- train_df %>% select_if(is.numeric) %>% dplyr::select(!(c(TARGET_AMT))) %>% data.table::melt()
+a %>% ggplot(aes(x=value))+ geom_density(alpha=.2,fill="#FF6666") + facet_wrap(~variable, scales='free')
+
+
+## Mosaic plots to view any relationship to the TARGET_FLAG variable for binary factor variables
+## PARENT1
+plot_parent1 <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = PARENT1, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Single Parent", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 0, margin = margin(t = -6, unit="mm")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+## Sex
+plot_sex <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = SEX, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Sex", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 0, margin = margin(t = -6, unit="mm")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+## Marriage status
+plot_mstatus <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = MSTATUS, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Marriage Status", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 0, margin = margin(t = -6, unit="mm")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+## Car use
+plot_car_use <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = CAR_USE, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Car Use", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 0, margin = margin(t = -6, unit="mm")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+## Red car
+plot_red_car <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = RED_CAR, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Red Car?", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 0, margin = margin(t = -6, unit="mm")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+## license revoked
+plot_revoked <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = REVOKED, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="License Revoked (Past 7 Years)", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 0, margin = margin(t = -6, unit="mm")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+## urban or rural area
+plot_urbanicity <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = URBANICITY, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Home / Work Area", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 0, margin = margin(t = -6, unit="mm")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+plot_parent1 + plot_sex + plot_mstatus + plot_car_use + plot_red_car + plot_revoked + plot_urbanicity + plot_layout(nrow = 4)
+
+
+## Mosaic plots to view any relationship to the TARGET_FLAG variable for multi-level factors 
+plot_education <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = EDUCATION, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Education", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 90, margin = margin(t = -0.5, unit="pt")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+plot_job <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = JOB, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Job Category", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 90, margin = margin(t = -0.5, unit="pt")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+plot_car_type <- ggplot(data = train_df) +
+  geom_mosaic(aes(x = CAR_TYPE, fill=CAR_CRASH), offset = 0.005) +
+  labs(y="", x="", title="Car Type", margin=margin(b=10,unit="pt")) +
+    theme(panel.background = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y= element_blank(),
+          axis.ticks.x= element_blank(),
+          axis.text.x = element_text(angle = 90, margin = margin(t = -0.5, unit="pt")),
+          plot.title = element_text(hjust = 0.5),
+          axis.title.x = element_blank(),
+          legend.position = "right")
+
+
+plot_education + plot_job + plot_car_type + plot_layout(nrow = 2)
+
+```
 
 ## 3. Multiple linear regression
 

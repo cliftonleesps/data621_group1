@@ -58,6 +58,7 @@ plot_parent1 <- ggplot(data = train_df) +
           axis.title.x = element_blank(),
           legend.position = "right")
 
+## Sex
 plot_sex <- ggplot(data = train_df) +
   geom_mosaic(aes(x = SEX, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Sex", margin=margin(b=10,unit="pt")) +
@@ -70,7 +71,7 @@ plot_sex <- ggplot(data = train_df) +
           axis.title.x = element_blank(),
           legend.position = "right")
 
-
+## Marriage status
 plot_mstatus <- ggplot(data = train_df) +
   geom_mosaic(aes(x = MSTATUS, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Marriage Status", margin=margin(b=10,unit="pt")) +
@@ -83,6 +84,7 @@ plot_mstatus <- ggplot(data = train_df) +
           axis.title.x = element_blank(),
           legend.position = "right")
 
+## Car use
 plot_car_use <- ggplot(data = train_df) +
   geom_mosaic(aes(x = CAR_USE, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Car Use", margin=margin(b=10,unit="pt")) +
@@ -95,6 +97,7 @@ plot_car_use <- ggplot(data = train_df) +
           axis.title.x = element_blank(),
           legend.position = "right")
 
+## Red car
 plot_red_car <- ggplot(data = train_df) +
   geom_mosaic(aes(x = RED_CAR, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Red Car?", margin=margin(b=10,unit="pt")) +
@@ -107,6 +110,7 @@ plot_red_car <- ggplot(data = train_df) +
           axis.title.x = element_blank(),
           legend.position = "right")
 
+## license revoked
 plot_revoked <- ggplot(data = train_df) +
   geom_mosaic(aes(x = REVOKED, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="License Revoked (Past 7 Years)", margin=margin(b=10,unit="pt")) +
@@ -119,6 +123,7 @@ plot_revoked <- ggplot(data = train_df) +
           axis.title.x = element_blank(),
           legend.position = "right")
 
+## urban or rural area
 plot_urbanicity <- ggplot(data = train_df) +
   geom_mosaic(aes(x = URBANICITY, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Home / Work Area", margin=margin(b=10,unit="pt")) +
