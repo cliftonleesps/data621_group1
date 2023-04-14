@@ -25,7 +25,9 @@ library(tidyverse)
 library(reshape2)
 library(MASS)
 library(forecast)
-
+library(kableExtra)
+library(ggpubr)
+library(fastDummies)
 
 ## To load the below libraries you might have to do the following in the console first:
 ####  install.packages("devtools")
@@ -91,16 +93,21 @@ Some of the variables are character though they should be numeric and vice versa
 **ADD SOMETHING ELSE FOR SUMMARY**
 
 ```{r summary}
-skim(train_df)
+skim_without_charts(train_df)
 ```
 
-```{r balance}
-proportion <- colMeans(train_df['TARGET_FLAG'])
-proportion
-```
+
+
 
 ### 1.2 Distributions
 
+Before building a model, we need to make sure that we have both classes equally presented in out `TARGET_FLAG` variable. Class `1` takes 27% and class `0` takes 63% of the target variable. As a result, we have unbalanced class distribution for our target variable that we have to deal with, we have to take some additional steps (bootstrapping, etc) before using logistic regression.
+```{r balance}
+prop.table(table(train_df$TARGET_FLAG)) %>% kable(label = "Distribution of Target Flag", caption = "Distribution of Target Flag", col.names = c("Value", "%"), digits = 2) %>% 
+    kable_styling(full_width = F) 
+```
+
+The distribution of the second target variable `TARGET_AMT` is right skewed, we will also transform the variable to make it follow the normal distribution (log/BoxCox).
 
 
 ### 1.3 Box Plots
@@ -114,13 +121,15 @@ proportion
 ## 2. Data preparation
 
 ### 2.1 Data type
-First, we will remove prefixes `z_` and `$` together with the `INDEX` variable (identification Variable), transform to factor variables `TARGET_FLAG`, `KIDSDRIV`, `HOMEKIDS`, `CLM_FREQ`, `MVR_PTS`. Also, we transform to numeric variables `INCOME`, `HOME_VAL`, `BLUEBOOK`, `OLDCLAIM`
+First, we will remove prefixes `z_` and `$` together with the `INDEX` variable (identification Variable), transform to factor variables `TARGET_FLAG`, `KIDSDRIV`, `HOMEKIDS`, `CLM_FREQ`, `MVR_PTS`. Also, we transform to numeric variables `INCOME`, `HOME_VAL`, `BLUEBOOK`, `OLDCLAIM`.
+
+As we see below,  there are no unwanted characters in the factor variables. The `JOB` variable contains empty level `""`, it was substituted with `"Unknown"`. `RED_CAR` levels will be "Yes/No" instead of "yes/no".
+
+
+**ADDED DUMMY VARS, NOT SURE IF WE NEED THEM**
 
 ```{r}
 train_df <- train_df %>%  dplyr::select(-INDEX)
-
-## Create CAR_CRASH variable from the target flag for later exploration
-train_df <- train_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
 
 
 ## Remove z_ from character class values
@@ -128,6 +137,15 @@ z_vars <- c("MSTATUS","SEX","JOB","CAR_TYPE","URBANICITY","EDUCATION")
 for (v in z_vars) {
   train_df <- train_df %>% mutate(!!v := str_replace(get(v),"z_",""))
 }
+
+
+## Update RED_CAR, replace [no,yes] values with [No, Yes] values
+train_df <- train_df %>% mutate( RED_CAR = ifelse(RED_CAR == "no","No","Yes"))
+
+#Inasted of level "" will be "Unknown"
+train_df$JOB[train_df$JOB==""] <- "Unknown"
+
+
 
 ## Convert currency columns from character class to integer
 dollar_vars <- c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM")
@@ -151,75 +169,130 @@ for (v in factor_vars) {
 ```
 
 
-### 2.2 Missing values
-```{r include=FALSE}
+```{r}
 
-
-
-
-## Update RED_CAR, replace [no,yes] values with [No, Yes] values
-train_df <- train_df %>% mutate( RED_CAR = ifelse(RED_CAR == "no","No","Yes"))
-
-
-## We need to impute the AGE, YOJ, CAR_AGE, INCOME, HOME_VAL and CAR_AGE variables
-imputed_Data <- mice(train_df, m=5, maxit = 20, method = 'pmm', seed = 500, printFlag=FALSE)
-train_df <- complete(imputed_Data)
-
-
-## We have one row with a car age < 0! just set it to zero. Assume it's a brand new car
-### train_df <- rows_update(train_df, tibble(INDEX = 8772, CAR_AGE = 0))
-
-
-## Use basic log transformation on INCOME
-train_df$INCOME <- log(train_df$INCOME)
-
-# use Box-Cox on TRAVTIME, BLUEBOOK
-bluebook_boxcox <- boxcox(lm(train_df$BLUEBOOK ~ 1))
-bluebook_lambda <- bluebook_boxcox$x[which.max(bluebook_boxcox$y)]
-bluebook_trans <- BoxCox(train_df$BLUEBOOK, bluebook_lambda)
-train_df$BLUEBOOK <- bluebook_trans
-
-travtime_boxcox <- boxcox(lm(train_df$TRAVTIME ~ 1))
-travtime_lambda <- travtime_boxcox$x[which.max(travtime_boxcox$y)]
-travtime_trans <- BoxCox(train_df$TRAVTIME, travtime_lambda)
-train_df$TRAVTIME <- travtime_trans
-
-## Create CAR_CRASH variable from the target flag for later exploration
-train_df <- train_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
-
-## put into bins:  TIF; CAR_AGE; HOMEKIDS; HOME_VAL
-q <- quantile(train_df$CAR_AGE)
-q <- c(-1,  1,  8, 12, 28)
-train_df <- train_df %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
-
-q <- quantile(train_df$HOME_VAL)
-q[1] <- -1
-train_df <- train_df %>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
-
-q <- quantile(train_df$TIF); 
-q[1] <- -1
-train_df <- train_df %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
-
-
-print(summary(train_df))
-
+for (i in factor_vars) {
+  print(lapply(train_df[i], levels))
+}
 
 ```
 
 ### 2.3 Outliers
 
+There is `CAR_AGE`< 0, we can substitute it with NAs.
+
+```{r}
+
+
+## We have one row with a car age < 0! just set it to zero. Assume it's a brand new car
+### train_df <- rows_update(train_df, tibble(INDEX = 8772, CAR_AGE = 0))
+```
+
+
+### 2.3 Missing values, transformations
+Since variables `AGE`, `YOJ`, `CAR_AGE`, `INCOME` and `HOME_VALWe` have missing values, we are going to use function mice() to impute these variables.
+```{r impute}
+
+## We need to impute the AGE, YOJ, CAR_AGE, INCOME and HOME_VAL variables
+imputed_Data <- mice(train_df, m=5, maxit = 20, method = 'pmm', seed = 500, printFlag=FALSE)
+transformed_df <- complete(imputed_Data)
+
+```
+
+
+Log transformation will be applied to variables `INCOME`, `TARGET_AMT`, `OLDCLAIM` to transform their distributions from right-skewed to he normal.
+BoxCox transformation will be applied to variables `BLUEBOOK`, `TRAVTIME`, `TIF`, so they follow the normal distribution.
+
+
+```{r boxcox, fig.keep="none"}
+
+## Use basic log transformation on `TARGET_AMT`, `OLDCLAIM`, `INCOME`
+transformed_df$TARGET_AMT <- log(transformed_df$TARGET_AMT)
+transformed_df$OLDCLAIM <- log(transformed_df$OLDCLAIM)
+#transformed_df$INCOME <-  log(transformed_df$transformed_df$INCOME)
+
+
+# use Box-Cox on `BLUEBOOK`, `TRAVTIME`,  `TIF`
+
+bluebook_boxcox <- boxcox(lm(transformed_df$BLUEBOOK ~ 1))
+bluebook_lambda <- bluebook_boxcox$x[which.max(bluebook_boxcox$y)]
+bluebook_trans <- BoxCox(transformed_df$BLUEBOOK, bluebook_lambda)
+transformed_df$BLUEBOOK <- bluebook_trans
+
+travtime_boxcox <- boxcox(lm(transformed_df$TRAVTIME ~ 1))
+travtime_lambda <- travtime_boxcox$x[which.max(travtime_boxcox$y)]
+travtime_trans <- BoxCox(transformed_df$TRAVTIME, travtime_lambda)
+transformed_df$TRAVTIME <- travtime_trans
+
+tif_boxcox <- boxcox(lm(transformed_df$TIF ~ 1))
+tif_lambda <- tif_boxcox$x[which.max(tif_boxcox$y)]
+tif_trans <- BoxCox(transformed_df$TIF, tif_lambda)
+transformed_df$TIF <- tif_trans
+
+
+## Create CAR_CRASH variable from the target flag for later exploration
+transformed_df <- transformed_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
+
+## put into bins:  TIF; CAR_AGE; HOMEKIDS; HOME_VAL
+q <- quantile(transformed_df$CAR_AGE)
+q <- c(-1,  1,  8, 12, 28)
+transformed_df <- transformed_df %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
+
+q <- quantile(transformed_df$HOME_VAL)
+q[1] <- -1
+transformed_df <- transformed_df %>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
+
+q <- quantile(transformed_df$TIF); 
+q[1] <- -1
+transformed_df <- transformed_df %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
+
+
+print(summary(transformed_df))
+
+
+```
+
+
+**WE NEED TO ADD DUMMY VARS FOR SOME FACTORS, RIGHT?**
+
+```{r dummy_vars}
+dummy_vars <- function(df){
+  df %>%
+    mutate(
+      MALE <- factor(ifelse(SEX=="M", 1, 0)), 
+      MARRIED <- factor(ifelse(MSTATUS=="Yes", 1, 0)),
+      ANNUL <- factor(ifelse(REVOKED =="Yes", 1, 0)),
+      RED <- factor(ifelse(RED_CAR =="Yes", 1, 0)),
+      PRIVATE <- factor(ifelse(CAR_USE =="Private", 1, 0)),
+      SINGLE_PARENT <- factor(ifelse(PARENT1 =="Yes", 1, 0)),
+      URBAN <- factor(ifelse(URBANICITY =="Highly Urban/ Urban", 1, 0))
+    ) %>% 
+    dplyr::select(-c(SEX, MSTATUS, REVOKED, RED_CAR, CAR_USE, PARENT1,URBANICITY))
+  
+      }
+
+dummy_df <- dummy_vars(transformed_df)
+```
+
+
+```{r}
+#dummy_df <- dummy_cols(dummy_df, select_columns = 'EDUCATION')
+```
+
+
+
 ### 2.4 Visualizations
 
 ```{r visualizations}
-colnames(train_df)
+colnames(transformed_df)
 
-a <- train_df %>% select_if(is.numeric) %>% dplyr::select(!(c(TARGET_AMT))) %>% data.table::melt()
+a <- transformed_df %>% select_if(is.numeric) %>% dplyr::select(!(c(TARGET_AMT))) %>% data.table::melt()
 a %>% ggplot(aes(x=value))+ geom_density(alpha=.2,fill="#FF6666") + facet_wrap(~variable, scales='free')
 
 
 ## Mosaic plots to view any relationship to the TARGET_FLAG variable for binary factor variables
 ## PARENT1
-plot_parent1 <- ggplot(data = train_df) +
+plot_parent1 <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = PARENT1, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Single Parent", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -232,7 +305,7 @@ plot_parent1 <- ggplot(data = train_df) +
           legend.position = "right")
 
 ## Sex
-plot_sex <- ggplot(data = train_df) +
+plot_sex <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = SEX, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Sex", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -245,7 +318,7 @@ plot_sex <- ggplot(data = train_df) +
           legend.position = "right")
 
 ## Marriage status
-plot_mstatus <- ggplot(data = train_df) +
+plot_mstatus <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = MSTATUS, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Marriage Status", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -258,7 +331,7 @@ plot_mstatus <- ggplot(data = train_df) +
           legend.position = "right")
 
 ## Car use
-plot_car_use <- ggplot(data = train_df) +
+plot_car_use <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = CAR_USE, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Car Use", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -271,7 +344,7 @@ plot_car_use <- ggplot(data = train_df) +
           legend.position = "right")
 
 ## Red car
-plot_red_car <- ggplot(data = train_df) +
+plot_red_car <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = RED_CAR, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Red Car?", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -284,7 +357,7 @@ plot_red_car <- ggplot(data = train_df) +
           legend.position = "right")
 
 ## license revoked
-plot_revoked <- ggplot(data = train_df) +
+plot_revoked <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = REVOKED, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="License Revoked (Past 7 Years)", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -297,7 +370,7 @@ plot_revoked <- ggplot(data = train_df) +
           legend.position = "right")
 
 ## urban or rural area
-plot_urbanicity <- ggplot(data = train_df) +
+plot_urbanicity <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = URBANICITY, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Home / Work Area", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -313,7 +386,7 @@ plot_parent1 + plot_sex + plot_mstatus + plot_car_use + plot_red_car + plot_revo
 
 
 ## Mosaic plots to view any relationship to the TARGET_FLAG variable for multi-level factors 
-plot_education <- ggplot(data = train_df) +
+plot_education <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = EDUCATION, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Education", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -325,7 +398,7 @@ plot_education <- ggplot(data = train_df) +
           axis.title.x = element_blank(),
           legend.position = "right")
 
-plot_job <- ggplot(data = train_df) +
+plot_job <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = JOB, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Job Category", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
@@ -337,7 +410,7 @@ plot_job <- ggplot(data = train_df) +
           axis.title.x = element_blank(),
           legend.position = "right")
 
-plot_car_type <- ggplot(data = train_df) +
+plot_car_type <- ggplot(data = transformed_df) +
   geom_mosaic(aes(x = CAR_TYPE, fill=CAR_CRASH), offset = 0.005) +
   labs(y="", x="", title="Car Type", margin=margin(b=10,unit="pt")) +
     theme(panel.background = element_blank(),
