@@ -569,18 +569,18 @@ Y <- t_df[,"TARGET_AMT"]
 ```{r}
 
 
-lasso.model<- cv.glmnet(x=X,y=Y,
+lasso.ln.model<- cv.glmnet(x=X,y=Y,
                        family = "gaussian",
                        #link = "logit",
                        standardize = TRUE,                       #standardize  
                        nfold = 5,
                        alpha=1)                                  #alpha=1 is lasso
 
-l.min <- lasso.model$lambda.min
-l.1se <- lasso.model$lambda.1se
-coef(lasso.model, s = "lambda.min" )
-coef(lasso.model, s = "lambda.1se" )
-lasso.model
+l.min <- lasso.ln.model$lambda.min
+l.1se <- lasso.ln.model$lambda.1se
+coef(lasso.ln.model, s = "lambda.min" )
+coef(lasso.ln.model, s = "lambda.1se" )
+lasso.ln.model
 
 
 ```
@@ -591,9 +591,9 @@ lasso.model
 
 par(mfrow=c(2,2))
 
-plot(lasso.model)
-plot(lasso.model$glmnet.fit, xvar="lambda", label=TRUE)
-plot(lasso.model$glmnet.fit, xvar='dev', label=TRUE)
+plot(lasso.ln.model)
+plot(lasso.ln.model$glmnet.fit, xvar="lambda", label=TRUE)
+plot(lasso.ln.model$glmnet.fit, xvar='dev', label=TRUE)
 
 #rocs <- roc.glmnet(lasso.model, newx = X, newy = Y )
 #plot(rocs,type="l")  
@@ -602,20 +602,20 @@ plot(lasso.model$glmnet.fit, xvar='dev', label=TRUE)
 
 
 ```{r}
-assess.glmnet(lasso.model,           
+assess.glmnet(lasso.ln.model,           
               newx = X,              
               newy = Y )    
 
-print(glmnet_cv_aicc(lasso.model, 'lambda.min'))
-print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
+print(glmnet_cv_aicc(lasso.ln.model, 'lambda.min'))
+print(glmnet_cv_aicc(lasso.ln.model, 'lambda.1se'))
 
 ```
 
 
 
 ```{r}
-coef(lasso.model, s = "lambda.min" )
-vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
+coef(lasso.ln.model, s = "lambda.min" )
+vip(lasso.ln.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
 ```
 
 
@@ -632,10 +632,10 @@ X_test <- model.matrix(TARGET_AMT ~ ., data=t0_df)[,-1]
 Y_test <- t0_df[,"TARGET_AMT"] 
 
 # predict using coefficients at lambda.min
-lassoPred <- predict(lasso.model, newx = X_test, type = "response", s = 'lambda.min')
+lassoPred <- predict(lasso.ln.model, newx = X_test, type = "response", s = 'lambda.min')
 
-pred_df <- test_data %>% drop_na()
-pred_df$TARGET_AMT_PRED <- lassoPred[,1]
+pred_ln_df <- test_data %>% drop_na()
+pred_ln_df$TARGET_AMT_PRED <- lassoPred[,1]
 #pred_df$target_pred <- ifelse(lassoPred > 0.5, 1, 0)[,1]
 
 ```
@@ -692,18 +692,18 @@ Y <- t_df[,"TARGET_FLAG"]
 ```{r}
 
 
-lasso.model<- cv.glmnet(x=X,y=Y,
+lasso.log.model<- cv.glmnet(x=X,y=Y,
                        family = "binomial",
                        link = "logit",
                        standardize = TRUE,                       #standardize  
                        nfold = 5,
                        alpha=1)                                  #alpha=1 is lasso
 
-l.min <- lasso.model$lambda.min
-l.1se <- lasso.model$lambda.1se
-coef(lasso.model, s = "lambda.min" )
-coef(lasso.model, s = "lambda.1se" )
-lasso.model
+l.min <- lasso.log.model$lambda.min
+l.1se <- lasso.log.model$lambda.1se
+coef(lasso.log.model, s = "lambda.min" )
+coef(lasso.log.model, s = "lambda.1se" )
+lasso.log.model
 
 
 ```
@@ -714,31 +714,31 @@ lasso.model
 
 par(mfrow=c(2,2))
 
-plot(lasso.model)
-plot(lasso.model$glmnet.fit, xvar="lambda", label=TRUE)
-plot(lasso.model$glmnet.fit, xvar='dev', label=TRUE)
+plot(lasso.log.model)
+plot(lasso.log.model$glmnet.fit, xvar="lambda", label=TRUE)
+plot(lasso.log.model$glmnet.fit, xvar='dev', label=TRUE)
 
-rocs <- roc.glmnet(lasso.model, newx = X, newy = Y )
+rocs <- roc.glmnet(lasso.log.model, newx = X, newy = Y )
 plot(rocs,type="l")  
 
 ```
 
 
 ```{r}
-assess.glmnet(lasso.model,           
+assess.glmnet(lasso.log.model,           
               newx = X,              
               newy = Y )    
 
-print(glmnet_cv_aicc(lasso.model, 'lambda.min'))
-print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
+print(glmnet_cv_aicc(lasso.log.model, 'lambda.min'))
+print(glmnet_cv_aicc(lasso.log.model, 'lambda.1se'))
 
 ```
 
 
 
 ```{r}
-coef(lasso.model, s = "lambda.min" )
-vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
+coef(lasso.log.model, s = "lambda.min" )
+vip(lasso.log.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
 ```
 
 
@@ -755,11 +755,11 @@ X_test <- model.matrix(TARGET_FLAG ~ ., data=t0_df)[,-1]
 Y_test <- t0_df[,"TARGET_FLAG"] 
 
 # predict using coefficients at lambda.min
-lassoPred <- predict(lasso.model, newx = X_test, type = "response", s = 'lambda.min')
+lassoPred <- predict(lasso.log.model, newx = X_test, type = "response", s = 'lambda.min')
 
-pred_df <- test_data %>% drop_na()
-pred_df$TARGET_FLAG_PROB <- lassoPred[,1]
-pred_df$TARGET_FLAG_PRED <- ifelse(lassoPred > 0.5, 1, 0)[,1]
+pred_log_df <- test_data %>% drop_na()
+pred_log_df$TARGET_FLAG_PROB <- lassoPred[,1]
+pred_log_df$TARGET_FLAG_PRED <- ifelse(lassoPred > 0.5, 1, 0)[,1]
 
 ```
 
@@ -768,7 +768,7 @@ pred_df$TARGET_FLAG_PRED <- ifelse(lassoPred > 0.5, 1, 0)[,1]
 
 ```{r}
 
-confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.min')
+confusion.glmnet(lasso.log.model, newx = X_test, newy = Y_test, s = 'lambda.min')
 
 ```
 
