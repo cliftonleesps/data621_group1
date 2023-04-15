@@ -17,6 +17,9 @@ editor_options:
 
 
 ```{r setup, include=FALSE}
+
+library(yardstick)
+
 library(mice)
 library(readr)
 library(skimr)
@@ -42,6 +45,9 @@ library(corrplot)
 library(Hmisc)
 library(glmnet)
 library(vip)
+library(caret)
+
+
 
 knitr::opts_chunk$set(echo = FALSE)
 ```
@@ -569,18 +575,18 @@ Y <- t_df[,"TARGET_AMT"]
 ```{r}
 
 
-lasso.ln.model<- cv.glmnet(x=X,y=Y,
+lasso.lm.model<- cv.glmnet(x=X,y=Y,
                        family = "gaussian",
                        #link = "logit",
                        standardize = TRUE,                       #standardize  
                        nfold = 5,
                        alpha=1)                                  #alpha=1 is lasso
 
-l.min <- lasso.ln.model$lambda.min
-l.1se <- lasso.ln.model$lambda.1se
-coef(lasso.ln.model, s = "lambda.min" )
-coef(lasso.ln.model, s = "lambda.1se" )
-lasso.ln.model
+l.min <- lasso.lm.model$lambda.min
+l.1se <- lasso.lm.model$lambda.1se
+coef(lasso.lm.model, s = "lambda.min" )
+coef(lasso.lm.model, s = "lambda.1se" )
+lasso.lm.model
 
 
 ```
@@ -591,9 +597,9 @@ lasso.ln.model
 
 par(mfrow=c(2,2))
 
-plot(lasso.ln.model)
-plot(lasso.ln.model$glmnet.fit, xvar="lambda", label=TRUE)
-plot(lasso.ln.model$glmnet.fit, xvar='dev', label=TRUE)
+plot(lasso.lm.model)
+plot(lasso.lm.model$glmnet.fit, xvar="lambda", label=TRUE)
+plot(lasso.lm.model$glmnet.fit, xvar='dev', label=TRUE)
 
 #rocs <- roc.glmnet(lasso.model, newx = X, newy = Y )
 #plot(rocs,type="l")  
@@ -602,20 +608,21 @@ plot(lasso.ln.model$glmnet.fit, xvar='dev', label=TRUE)
 
 
 ```{r}
-assess.glmnet(lasso.ln.model,           
+assess.glmnet(lasso.lm.model,           
               newx = X,              
-              newy = Y )    
+              newy = Y,
+              family = 'gaussian')    
 
-print(glmnet_cv_aicc(lasso.ln.model, 'lambda.min'))
-print(glmnet_cv_aicc(lasso.ln.model, 'lambda.1se'))
+print(glmnet_cv_aicc(lasso.lm.model, 'lambda.min'))
+print(glmnet_cv_aicc(lasso.lm.model, 'lambda.1se'))
 
 ```
 
 
 
 ```{r}
-coef(lasso.ln.model, s = "lambda.min" )
-vip(lasso.ln.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
+coef(lasso.lm.model, s = "lambda.min" )
+vip(lasso.lm.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
 ```
 
 
@@ -632,7 +639,7 @@ X_test <- model.matrix(TARGET_AMT ~ ., data=t0_df)[,-1]
 Y_test <- t0_df[,"TARGET_AMT"] 
 
 # predict using coefficients at lambda.min
-lassoPred <- predict(lasso.ln.model, newx = X_test, type = "response", s = 'lambda.min')
+lassoPred <- predict(lasso.lm.model, newx = X_test, type = "response", s = 'lambda.min')
 
 pred_ln_df <- test_data %>% drop_na()
 pred_ln_df$TARGET_AMT_PRED <- lassoPred[,1]
@@ -658,6 +665,16 @@ for (i in 1 : n)
 
 ```
 
+
+
+
+
+```{r}
+
+multi_metric <- metric_set(mape, smape, mase, mpe, rmse)
+pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
+
+```
 
 
 ### 3.2 Model 2 - 
@@ -726,8 +743,11 @@ plot(rocs,type="l")
 
 ```{r}
 assess.glmnet(lasso.log.model,           
-              newx = X,              
-              newy = Y )    
+                newx = X,              
+                newy = Y,
+                family = "binomial",
+                s = 'lambda.min'
+              )    
 
 print(glmnet_cv_aicc(lasso.log.model, 'lambda.min'))
 print(glmnet_cv_aicc(lasso.log.model, 'lambda.1se'))
@@ -776,6 +796,43 @@ confusion.glmnet(lasso.log.model, newx = X_test, newy = Y_test, s = 'lambda.min'
 
 
 
+#### Checking Model Assumptions
+
+
+```{r}
+
+pred_log_df <- pred_log_df %>%
+  mutate(logit = log(TARGET_FLAG_PROB/(1-TARGET_FLAG_PROB))) 
+
+m_df <- pred_log_df %>% dplyr::select(where(is.numeric)) %>% pivot_longer(!c(TARGET_FLAG,TARGET_AMT,TARGET_FLAG_PROB,TARGET_FLAG_PRED,logit), 
+                                 names_to='variable' , values_to = 'value')
+
+#Scatter plot
+ggplot(m_df, aes(logit, value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~variable, scales = "free_y")
+
+```
+
+The lasso regression solve multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero. 
+
+
+
+```{r}
+
+pred_log_df$index <- as.numeric(rownames(pred_log_df))
+pred_log_df$resid <- pred_log_df$TARGET_FLAG_PROB - pred_log_df$TARGET_FLAG
+
+
+ggplot(pred_log_df, aes(index, resid)) + 
+  geom_point(aes(color = TARGET_FLAG), alpha = .5) +
+  theme_bw()
+
+```
+
+
 
 
 ### 4.2 Model 2 - 
@@ -785,6 +842,141 @@ confusion.glmnet(lasso.log.model, newx = X_test, newy = Y_test, s = 'lambda.min'
 
 
 ### 4.4 Model selection
+
+
+```{r}
+
+
+results_lm_tbl <- tibble(
+                      Model = character(),
+                      mape = numeric(), 
+                      smape = numeric(), 
+                      mase = numeric(), 
+                      mpe = numeric(), 
+                      rmse = numeric(),
+                      AIC = numeric()
+                )
+
+results_log_tbl <- tibble(
+                      Model = character(),
+                      Accuracy = numeric(), 
+                      "Classification error rate" = numeric(),
+                      F1 = numeric(),
+                      Deviance= numeric(), 
+                      R2 = numeric(),
+                      Sensitivity = numeric(),
+                      Specificity = numeric(),
+                      Precision = numeric(),
+                      AIC= numeric()
+                )
+
+```
+
+
+
+** Model 3.1: Lasso Linear Regression **
+
+
+```{r}
+
+lasso.r1 <- assess.glmnet(lasso.lm.model,           
+                                newx = X_test,              
+                                newy = Y_test )   
+lasso.r2 <- glmnet_cv_aicc(lasso.lm.model, 'lambda.min')
+
+
+multi_metric <- metric_set(mape, smape, mase, mpe, rmse)
+m_df <- pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
+
+
+
+results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
+                      Model = "M4.1:Lasso Linear", 
+                      mape = m_df[[1,3]], 
+                      smape = m_df[[2,3]], 
+                      mase = m_df[[3,3]], 
+                      mpe = m_df[[4,3]], 
+                      rmse = m_df[[5,3]],
+                      AIC = lasso.r2$AICc)
+                     )
+
+
+```
+
+
+
+
+
+** Model 4.1: Lasso Logistic Regression **
+
+```{r}
+
+conf_matrix_1 = confusionMatrix(factor(pred_log_df$TARGET_FLAG_PRED),factor(pred_log_df$TARGET_FLAG), "1")
+conf_matrix_1$byClass["F1"]
+
+
+lasso.r1 <- assess.glmnet(lasso.log.model,           
+                                newx = X_test,              
+                                newy = Y_test,
+                                family = "binomial",
+                                s = 'lambda.min'
+                          )   
+lasso.r2 <- glmnet_cv_aicc(lasso.log.model, 'lambda.min')
+
+
+
+results_log_tbl <- results_log_tbl %>% add_row(tibble_row(
+                      Model = "M4.1:Lasso Logistic", 
+                      Accuracy=lasso.r1$auc[1], 
+                      "Classification error rate" = 1 - lasso.r1$auc[1],
+                      F1 = conf_matrix_1$byClass["F1"],
+                      Deviance=lasso.r1$deviance[[1]], 
+                      R2 = NA,
+                      Sensitivity = conf_matrix_1$byClass["Sensitivity"],
+                      Specificity = conf_matrix_1$byClass["Specificity"],
+                      Precision = conf_matrix_1$byClass["Precision"],
+                      AIC= lasso.r2$AICc)
+                     )
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+Regression
+
+```{r}
+
+#t1 <- as_tibble(cbind(variables = names(results_tbl), t(results_tbl)))
+
+kable(results_lm_tbl, digits=4) %>% 
+  kable_styling(bootstrap_options = "basic", position = "center")
+
+```
+
+
+
+
+Logistic
+
+```{r}
+
+
+#t1 <- as_tibble(cbind(variables = names(results_tbl), t(results_tbl)))
+
+kable(results_log_tbl, digits=4) %>% 
+  kable_styling(bootstrap_options = "basic", position = "center")
+
+```
+
 
 
 ## 5. Predictions
