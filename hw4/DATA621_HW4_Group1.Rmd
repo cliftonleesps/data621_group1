@@ -786,7 +786,7 @@ confusion.glmnet(lasso.log.model, newx = X_test, newy = Y_test, s = 'lambda.min'
 pred_log_df <- pred_log_df %>%
   mutate(logit = log(TARGET_FLAG_PROB/(1-TARGET_FLAG_PROB))) 
 
-m_df <- pred_log_df %>% dplyr::select(where(is.numeric)) %>% pivot_longer(!c(TARGET_FLAG,TARGET_AMT,TARGET_FLAG_PROB,TARGET_FLAG_PRED,logit), 
+m_df <- pred_log_df %>% dplyr::select(where(is.numeric)) %>% pivot_longer(!c(TARGET_AMT,TARGET_FLAG_PROB,TARGET_FLAG_PRED,logit), 
                                  names_to='variable' , values_to = 'value')
 
 #Scatter plot
@@ -861,9 +861,16 @@ results_log_tbl <- tibble(
 
 ```{r}
 
-lasso.r1 <- assess.glmnet(lasso.lm.model,           
-                                newx = X_test,              
-                                newy = Y_test )   
+# build X matrix and Y vector
+t0_df <- valid_data %>% dplyr::select(-c(TARGET_FLAG)) %>% drop_na()
+X_test <- model.matrix(TARGET_AMT ~ ., data=t0_df)[,-1]
+Y_test <- t0_df[,"TARGET_AMT"] 
+
+
+
+lasso.r1 <- assess.glmnet(lasso.lm.model,
+                                newx = X_test,
+                                newy = Y_test )
 lasso.r2 <- glmnet_cv_aicc(lasso.lm.model, 'lambda.min')
 
 
@@ -873,11 +880,11 @@ m_df <- pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 
 
 results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
-                      Model = "M4.1:Lasso Linear", 
-                      mape = m_df[[1,3]], 
-                      smape = m_df[[2,3]], 
-                      mase = m_df[[3,3]], 
-                      mpe = m_df[[4,3]], 
+                      Model = "M4.1:Lasso Linear",
+                      mape = m_df[[1,3]],
+                      smape = m_df[[2,3]],
+                      mase = m_df[[3,3]],
+                      mpe = m_df[[4,3]],
                       rmse = m_df[[5,3]],
                       AIC = lasso.r2$AICc)
                      )
@@ -895,6 +902,13 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
 
 conf_matrix_1 = confusionMatrix(factor(pred_log_df$TARGET_FLAG_PRED),factor(pred_log_df$TARGET_FLAG), "1")
 conf_matrix_1$byClass["F1"]
+
+
+
+# build X matrix and Y vector
+t0_df <- valid_data %>% dplyr::select(-c(TARGET_AMT)) %>% drop_na()
+X_test <- model.matrix(TARGET_FLAG ~ ., data=t0_df)[,-1]
+Y_test <- t0_df[,"TARGET_FLAG"] 
 
 
 lasso.r1 <- assess.glmnet(lasso.log.model,           
