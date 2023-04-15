@@ -40,8 +40,37 @@ library(patchwork)
 library(caTools)
 library(corrplot)
 library(Hmisc)
+library(glmnet)
+library(vip)
 
 knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r common functions}
+
+#' glmnet_cv_aicc
+#'
+#' @param fit
+#' @param lambda
+#'
+#' @return
+#' @export
+#'
+#' @examples
+glmnet_cv_aicc <- function(fit, lambda = 'lambda.1se'){
+  whlm <- which(fit$lambda == fit[[lambda]])
+  with(fit$glmnet.fit,
+       {
+         tLL <- nulldev - nulldev * (1 - dev.ratio)[whlm]
+         k <- df[whlm]
+         n <- nobs
+         return(list('AICc' = - tLL + 2 * k + 2 * k * (k + 1) / (n - k - 1),
+                     'BIC' = log(n) * k - tLL))
+       })
+}
+
+
 ```
 
 
@@ -96,6 +125,9 @@ set.seed(1233)
 sample <- sample.split(train_df$TARGET_FLAG, SplitRatio = 0.8)
 train_data  <- subset(train_df, sample == TRUE)
 test_data   <- subset(train_df, sample == FALSE)
+
+
+
 
 ```
 
@@ -519,7 +551,113 @@ plot_education + plot_job + plot_car_type + plot_layout(nrow = 2)
 ## 3. Multiple linear regression
 
 
-### 3.1 Model 1 - 
+### 3.1 Model 1 - Lasso
+
+```{r}
+
+t_df <- train_data %>% dplyr::select(-c(TARGET_FLAG)) %>% drop_na()
+
+
+# build X matrix and Y vector
+X <- model.matrix(TARGET_AMT ~ ., data=t_df)[,-1]
+Y <- t_df[,"TARGET_AMT"] 
+
+```
+
+
+
+```{r}
+
+
+lasso.model<- cv.glmnet(x=X,y=Y,
+                       family = "gaussian",
+                       #link = "logit",
+                       standardize = TRUE,                       #standardize  
+                       nfold = 5,
+                       alpha=1)                                  #alpha=1 is lasso
+
+l.min <- lasso.model$lambda.min
+l.1se <- lasso.model$lambda.1se
+coef(lasso.model, s = "lambda.min" )
+coef(lasso.model, s = "lambda.1se" )
+lasso.model
+
+
+```
+
+
+
+```{r}
+
+par(mfrow=c(2,2))
+
+plot(lasso.model)
+plot(lasso.model$glmnet.fit, xvar="lambda", label=TRUE)
+plot(lasso.model$glmnet.fit, xvar='dev', label=TRUE)
+
+#rocs <- roc.glmnet(lasso.model, newx = X, newy = Y )
+#plot(rocs,type="l")  
+
+```
+
+
+```{r}
+assess.glmnet(lasso.model,           
+              newx = X,              
+              newy = Y )    
+
+print(glmnet_cv_aicc(lasso.model, 'lambda.min'))
+print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
+
+```
+
+
+
+```{r}
+coef(lasso.model, s = "lambda.min" )
+vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
+```
+
+
+#### Model Performance
+
+```{r}
+
+# 
+t0_df <- test_data %>% dplyr::select(-c(TARGET_FLAG)) %>% drop_na()
+
+
+# build X matrix and Y vector
+X_test <- model.matrix(TARGET_AMT ~ ., data=t0_df)[,-1]
+Y_test <- t0_df[,"TARGET_AMT"] 
+
+# predict using coefficients at lambda.min
+lassoPred <- predict(lasso.model, newx = X_test, type = "response", s = 'lambda.min')
+
+pred_df <- test_data %>% drop_na()
+pred_df$TARGET_AMT_PRED <- lassoPred[,1]
+#pred_df$target_pred <- ifelse(lassoPred > 0.5, 1, 0)[,1]
+
+```
+
+
+```{r}
+
+n <- nrow(t0_df)
+x <- t0_df$TARGET_AMT
+e <- lassoPred - t0_df$TARGET_AMT
+
+plot(x, e,  
+     xlab = "cost", 
+     ylab = "residuals", 
+     bg = "steelblue", 
+     col = "darkgray", cex = 1.5, pch = 21, frame = FALSE)
+abline(h = 0, lwd = 2)
+for (i in 1 : n) 
+  lines(c(x[i], x[i]), c(e[i], 0), col = "red" , lwd = 1)
+
+```
+
 
 
 ### 3.2 Model 2 - 
@@ -534,7 +672,110 @@ plot_education + plot_job + plot_car_type + plot_layout(nrow = 2)
 ## 4. Binary logistic regression
 
 
-### 4.1 Model 1 - 
+### 4.1 Model 1 - Lasso
+
+
+
+```{r}
+
+t_df <- train_data %>% dplyr::select(-c(TARGET_AMT)) %>% drop_na()
+
+
+# build X matrix and Y vector
+X <- model.matrix(TARGET_FLAG ~ ., data=t_df)[,-1]
+Y <- t_df[,"TARGET_FLAG"] 
+
+```
+
+
+
+```{r}
+
+
+lasso.model<- cv.glmnet(x=X,y=Y,
+                       family = "binomial",
+                       link = "logit",
+                       standardize = TRUE,                       #standardize  
+                       nfold = 5,
+                       alpha=1)                                  #alpha=1 is lasso
+
+l.min <- lasso.model$lambda.min
+l.1se <- lasso.model$lambda.1se
+coef(lasso.model, s = "lambda.min" )
+coef(lasso.model, s = "lambda.1se" )
+lasso.model
+
+
+```
+
+
+
+```{r}
+
+par(mfrow=c(2,2))
+
+plot(lasso.model)
+plot(lasso.model$glmnet.fit, xvar="lambda", label=TRUE)
+plot(lasso.model$glmnet.fit, xvar='dev', label=TRUE)
+
+rocs <- roc.glmnet(lasso.model, newx = X, newy = Y )
+plot(rocs,type="l")  
+
+```
+
+
+```{r}
+assess.glmnet(lasso.model,           
+              newx = X,              
+              newy = Y )    
+
+print(glmnet_cv_aicc(lasso.model, 'lambda.min'))
+print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
+
+```
+
+
+
+```{r}
+coef(lasso.model, s = "lambda.min" )
+vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
+```
+
+
+#### Model Performance
+
+```{r}
+
+# 
+t0_df <- test_data %>% dplyr::select(-c(TARGET_AMT)) %>% drop_na()
+
+
+# build X matrix and Y vector
+X_test <- model.matrix(TARGET_FLAG ~ ., data=t0_df)[,-1]
+Y_test <- t0_df[,"TARGET_FLAG"] 
+
+# predict using coefficients at lambda.min
+lassoPred <- predict(lasso.model, newx = X_test, type = "response", s = 'lambda.min')
+
+pred_df <- test_data %>% drop_na()
+pred_df$TARGET_FLAG_PROB <- lassoPred[,1]
+pred_df$TARGET_FLAG_PRED <- ifelse(lassoPred > 0.5, 1, 0)[,1]
+
+```
+
+
+
+
+```{r}
+
+confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.min')
+
+```
+
+
+
+
+
 
 
 ### 4.2 Model 2 - 
@@ -542,8 +783,8 @@ plot_education + plot_job + plot_car_type + plot_layout(nrow = 2)
 
 ### 4.3 Model 3 - 
 
-### 4.4 Model selection
 
+### 4.4 Model selection
 
 
 ## 5. Predictions
