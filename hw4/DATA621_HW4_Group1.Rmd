@@ -282,7 +282,7 @@ for (v in factor_vars) {
   train_df <- train_df %>% mutate(!!v := factor(get(v)))
 }
 
-## print factor levels
+## check factor levels
 # for (i in factor_vars) {
 #   print(lapply(train_df[i], levels))
 # }
@@ -653,7 +653,6 @@ l.1se <- lasso.lm.model$lambda.1se
 ```
 
 ```{r}
-
 par(mfrow=c(2,2))
 
 plot(lasso.lm.model)
@@ -671,7 +670,6 @@ assess.glmnet(lasso.lm.model,
 
 print(glmnet_cv_aicc(lasso.lm.model, 'lambda.min'))
 print(glmnet_cv_aicc(lasso.lm.model, 'lambda.1se'))
-
 ```
 
 
