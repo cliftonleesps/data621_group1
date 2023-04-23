@@ -208,14 +208,14 @@ prop.table(table(train_df$TARGET_FLAG)) %>%
 Many of these distributions seem highly skewed and non-normal.
 As part of our data preparation we'll use power transformations to find whether transforming variables to more normal distributions improves our models' efficacy.
 
-```{r}
+```{r, cache=TRUE}
 dist_df <- train_df %>% dplyr::select(where(is.numeric)) %>%
   pivot_longer(!c(TARGET_FLAG,TARGET_AMT), 
                names_to = 'variable', 
                values_to = 'value') %>% 
   drop_na()
 
-dist_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) + 
+dist_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) +
   geom_density(color='#023020') + 
   facet_wrap(~variable, scales = 'free',  ncol = 4) + 
   theme_bw()
@@ -225,7 +225,7 @@ dist_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) +
 
 Commentary
 
-```{r boxplot}
+```{r boxplot, cache=TRUE}
 dist_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) + 
   geom_boxplot(color='#023020') + 
   facet_wrap(~variable, scales = 'free',  ncol = 4) + 
@@ -237,7 +237,7 @@ dist_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) +
 Interestingly, none of our predictors appear to have strong linear relationships to our `TARGET_AMT` response variable, which is a primary assumption of linear regression.
 This suggests that alternative methods might be more successful in modeling the relationships.
 
-```{r scatterplot}
+```{r scatterplot, cache=TRUE}
 dist_df %>% drop_na() %>% ggplot(aes(x=value, y=TARGET_AMT)) + 
   geom_smooth(method='glm', se=TRUE, na.rm=TRUE) +
   geom_point(color='#023020') + 
@@ -249,7 +249,7 @@ dist_df %>% drop_na() %>% ggplot(aes(x=value, y=TARGET_AMT)) +
 
 Commentary
 
-```{r corr}
+```{r corr, cache=TRUE}
 rcore <- rcorr(as.matrix(train_df %>% dplyr::select(where(is.numeric))))
 coeff <- rcore$r
 corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "black",
@@ -318,22 +318,10 @@ We'll use MICE to impute our remaining variables with missing values - `AGE`, `Y
 
 -   We might reasonably assume that relationships exist between these variables (older, more years on the job may correlate with higher income and home value). Taking simple means or medians might suppress those features, but MICE should provide a better imputation.
 
-```{r impute}
+```{r impute, cache=TRUE}
 # MICE imputation of missing values
 imputed_Data <- mice(train_df, m=5, maxit = 20, method = 'pmm', seed = 500, printFlag=FALSE)
 train_df <- complete(imputed_Data)
-```
-
-
-We'll split our traning data into train (80%) and validaton (20%) datasets.
-
-```{r}
-# set.seed(1233)
-
-sample <- sample.split(train_df$TARGET_FLAG, SplitRatio = 0.8)
-train_data  <- subset(train_df, sample == TRUE)
-valid_data   <- subset(train_df, sample == FALSE)
-
 ```
 
 Next we'll want to consider any power transformations for variables that have skewed distributions.
@@ -342,7 +330,7 @@ For example, our numeric response variable `TARGET_AMT` is a good candidate for 
 -   Log transformation will be applied to variables `INCOME`, `TARGET_AMT`, `OLDCLAIM` to transform their distributions from right-skewed to normally distributed.
 -   Similarly, BoxCox transformation will be applied to variables `BLUEBOOK`, `TRAVTIME`, `TIF`, so they also are more normally distributed.
 
-```{r boxcox, fig.keep="none"}
+```{r boxcox, fig.keep="none", cache=TRUE}
 ## Use basic log transformation on `TARGET_AMT`, `OLDCLAIM`, `INCOME`
 train_df$TARGET_AMT <- log(train_df$TARGET_AMT + 0.01)
 train_df$OLDCLAIM <- log(train_df$OLDCLAIM + 0.01)
@@ -404,7 +392,7 @@ dummy_vars <- function(df){
 train_df <- dummy_vars(train_df)
 ```
 
-We can examine our final, transformed training dataset and distributions below (with a temporary numeric variable `CAR_CRASH` to represent)
+We can examine our final, transformed training dataset and distributions below (with a temporary numeric variable `CAR_CRASH` to represent the response variable for visualization purposes.)
 
 ```{r}
 skim_without_charts(train_df)
@@ -574,82 +562,74 @@ plot_car_type <- ggplot(data = vis_df) +
 plot_education + plot_job + plot_car_type + plot_layout(nrow = 2)
 ```
 
-## 2.x Training and Validation Sets
+### 2.5 Training and Validation Sets
 
 To proceed with modeling, we'll split our training data into train (80%) and validation (20%) datasets.
 
 ```{r}
 # set.seed(1233)
-# 
-# sample <- sample.split(train_df$TARGET_FLAG, SplitRatio = 0.8)
-# train_data  <- subset(train_df, sample == TRUE)
-# valid_data   <- subset(train_df, sample == FALSE)
-
+sample <- sample.split(train_df$TARGET_FLAG, SplitRatio = 0.8)
+train_data  <- subset(train_df, sample == TRUE)
+valid_data   <- subset(train_df, sample == FALSE)
 ```
 
-## 3. Multiple linear regression
+## 3. Multiple Linear Regression
 
-### 3.1 Model 1 - Lasso
+We'll use Multiple Linear Regression to model the `TARGET_AMT` response variable, the estimated cost of a crash for a given observation.
 
+### 3.1 Model 1 - Lasso Regression
 
-The cv.glmnet() function was used to perform k-fold cross-validation with variable selection using lasso regularization. The following attribute settings were selected for the model:
+The `cv.glmnet()` function was used to perform k-fold cross-validation with variable selection using lasso regularization.
+The following attribute settings were selected for the model:
 
-- type.measure = “mse” - The type.measure is set to minimize the mean squar error for the model. 
-- nfold = 10 - Given the size of the dataset we defaulted to 10 fold cross-validation.
-- family = gaussian - For linear Regression
-- alpha = 1 - The alpha value of 1 sets the variable shrinkage method to lasso.
-- weights = a weight of 0.2638 / n for observation with a 0 `TARGET_AMT` and 0.7362 / n for all obervations with all other values of `TARGET_AMT` 
-- standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling.
+-   type.measure = "mse" - The type.measure is set to minimize the Mean Squared Error for the model.
+-   nfold = 10 - Given the size of the dataset we defaulted to 10-fold cross-validation.
+-   family = gaussian - For Linear Regression
+-   alpha = 1 - The alpha value of 1 sets the variable shrinkage method to lasso.
+-   weights = a weight of 0.2638 / n for observation with a 0 `TARGET_AMT` and 0.7362 / n for all observations with all other values of `TARGET_AMT.`
+-   standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling.
 
 The resulting model is explored by extracting coefficients at two different values for lambda, lambda.min and lambda.1se respectively.
 
-The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model incldues 33 non zero coefficients and has an AIC of 60.08.
-The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). For this model there are 25 non zero coefficients and it has an AIC of 44.23
+The coefficients extracted using lambda.min minimizes the mean cross-validated error.
+The resulting model includes 33 non-zero coefficients and has an AIC of 60.08.
+The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum).
+For this model there are 25 non-zero coefficients and it has an AIC of 44.23
 
 The coefficients extracted using lambda.1se results in the lowest AIC (highest model performance) with fewer predictor variables.
-
 
 ```{r}
 # filter the target data
 t_df <- train_data %>% dplyr::select(-c(TARGET_FLAG))
 
-
 # build X matrix and Y vector
 X <- model.matrix(TARGET_AMT ~ ., data=t_df)[,-1]
 Y <- t_df[,"TARGET_AMT"] 
 
- 
 # calculate the weights for the target flag
 w <- table(train_data$TARGET_FLAG)
 n <- length(Y)
 prop_0 <- w[1] / (w[1] + w[2])
 prop_1 <- w[2] / (w[1] + w[2])
 
-  
 # calculate the weights vector
-weights_lm  <- ifelse(train_data$TARGET_FLAG == 0,  prop_1 / n, prop_0 / n)
-
+weights_lm  <- ifelse(train_data$TARGET_FLAG == 0,  prop_1/n, prop_0/n)
 ```
 
 ```{r}
-
-
-lasso.lm.model<- cv.glmnet(
-                        x=X,y=log(Y +0.01),
-                       family = "gaussian",
-                       type.measure="mse",
-                       standardize = TRUE,                       #standardize  
-                       nfold = 10,
-                       weights = weights_lm,
-                       alpha=1)                                  #alpha=1 is lasso
-
+lasso.lm.model <- cv.glmnet(
+  x=X,y=Y, # Y already logged in prep
+  family = "gaussian",
+  type.measure="mse",
+  standardize = TRUE, # standardize
+  nfold = 10,
+  weights = weights_lm,
+  alpha=1) # alpha=1 is lasso
 
 lasso.lm.model
 
 l.min <- lasso.lm.model$lambda.min
 l.1se <- lasso.lm.model$lambda.1se
-
-
 ```
 
 ```{r}
@@ -658,7 +638,6 @@ par(mfrow=c(2,2))
 plot(lasso.lm.model)
 plot(lasso.lm.model$glmnet.fit, xvar="lambda", label=TRUE)
 plot(lasso.lm.model$glmnet.fit, xvar='dev', label=TRUE)
-
 ```
 
 ```{r}
@@ -672,86 +651,100 @@ print(glmnet_cv_aicc(lasso.lm.model, 'lambda.min'))
 print(glmnet_cv_aicc(lasso.lm.model, 'lambda.1se'))
 ```
 
+A closer look at the remaining 37 non-zero coefficients for the selected lambda value of lambda.min (`r round(lasso.lm.model$lambda.min,3)`) we can observe the top predictor variables `URBANICITY Highly Urban/ Urban` predictor variable has the largest impact on the response variable `TARGET_AMT`.
 
-A closer look at the remaining 37 no zero coefficients for the selected lambda value of lambda.min we can observe the top predictor variables `URBANICITYHighly Urban/ Urban` predictor variable has the largest impact on the response variable `TARGET_AMT`. In the lasso model the coefficient for `URBANICITYHighly Urban/ Urban` home work area is biggest contributor to the cost estimates of a car crash by a factor of 2.
+In the lasso model the coefficient for `URBANICITY Highly Urban/ Urban` home work area is biggest contributor to the cost estimates of a car crash by a factor of 2.
 
-Reviewing the top 5 predictor variables that impact likelyhood and cost associated with an accident:
+Reviewing the top 5 predictor variables that impact likelihood and cost associated with an accident:
 
-- `URBANICITYHighly Urban/ Urban` - working or living in an urban neighborhood increase expected cost associated with a crash
-- `JOBManager` - being a manager reduces the expected costs associated with a crash
-- `CAR_USEPrivate` - using a car for private activities reduces
-- `REVOKEDYes` - a history of having a revoked license increases the expected costs associated with a crash
-- `JOBDoctor` - being a doctor reduces the expected costs associated with a crash
+-   `URBANICITY Highly Urban/ Urban` - working or living in an urban neighborhood increase expected cost associated with a crash
+-   `JOB Doctor` - being a doctor reduces the expected costs associated with a crash
+-   `JOB Manager` - being a manager reduces the expected costs associated with a crash
+-   `CAR_TYPE Sports Car` - owning a sports car increases the expected costs associated with a crash
+-   `CAR_USE Private` - using a car for private activities reduces the expected costs associated with a crash
+-   `REVOKED Yes` - a history of having a revoked license increases the expected costs associated with a crash
 
+Some of the notable coefficients that drop out of the model include:
 
-Some of the notable coefficeints that drop out of the model include:
-
-- `CAR_TYPE` (Truck, Pickup, Van or Red)
-- Sex of the driver
-- `EDUCATION` (PhD)
+-   `HOME_VAL`
+-   `JOB Professional`
+-   `CAR_AGE`
+-   `CAR_RED`
 
 ```{r}
-coef(lasso.lm.model, s = "lambda.min" )
+coef(lasso.lm.model, s = "lambda.min")
+```
+
+```{r}
+# # test
+# tbl <- data.matrix(coef(lasso.lm.model, s = "lambda.min"))
+# 
+# tbl <- data.matrix(tbl[order(tbl, decreasing=TRUE),])
+# 
+# kable(
+#   list(tbl[1:20,], tbl[21:41,]),
+#   booktabs = TRUE
+# ) %>% kable_styling()
+
+```
+
+```{r fig.show="hold", out.width="50%", fig.height=6}
 vip(lasso.lm.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
 
 coeffs.table <- coeff2dt(fitobject = lasso.lm.model, s = "lambda.1se")
 
 coeffs.table %>% mutate(name = fct_reorder(name, desc(coefficient))) %>%
 ggplot() +
-  geom_col(aes(x = name, y = coefficient, fill = {coefficient > 0})) +
+  geom_col(aes(y = name, x = coefficient, fill = {coefficient > 0})) +
   xlab(label = "") +
   ggtitle(expression(paste("Lasso Coefficients with ", lambda, " = 0.0275"))) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
-
 ```
 
-
-As mentioned earlier, the dataset has a high correlation between predictor variables. The lasso regression approaches this issue by selecting the variable with the highest correlation (in this casenox) and shrinking the remaining variables (as can be seen in the plot of coefficients).
-
+As mentioned earlier, the dataset has a high correlation between predictor variables.
+The lasso regression approaches this issue by selecting the variable with the highest correlation and shrinking the remaining variables (as can be seen in the plot of coefficients).
 
 #### Model Performance
 
+The lasso model using coefficients extracted at lambda.1se was used to predict the 60,421 test cases and comparing the predicted insurance AMT to the actual cost of a car crash.
+The predicted cost of the crash include negative numbers that are effectively 0.
+We selected a threshold cost and assigning 0 to all amounts below that threshold value.
+Since
 
-The lasso model using coefficients extracted at lambda.1se was used to predict the 60,421 test cases and comparing the predicted insurance AMT to the actual cost of a car crash. The predicted cost of the crash include negative numbers that are effectively 0. We selected a threshold cost and assigning 0 to all amounts below that threshold value. Since 
-
-In the training data 337.50 was the lowest crash cost included in the dataset. We used 100 as the measurement threshold and assume that all predicted costs below 100 dollars are effectively 0.
-
+In the training data 337.50 was the lowest crash cost included in the dataset.
+We used 100 as the measurement threshold and assume that all predicted costs below 100 dollars are effectively 0.
 
 ```{r}
-
 t0_df <- valid_data %>% dplyr::select(-c(TARGET_FLAG)) 
 X_test <- model.matrix(TARGET_AMT ~ ., data=t0_df)[,-1]
 Y_test <- t0_df[,"TARGET_AMT"] 
 
+lassoPred <- predict(
+  lasso.lm.model, 
+  newx = X_test,
+  type = "response",
+  s = 'lambda.1se')
 
-lassoPred <- predict(lasso.lm.model, newx = X_test, type = "response", s = 'lambda.1se')
 lassoPred <- exp(lassoPred) - 0.001
 
 pred_ln_df <- valid_data %>% drop_na()
 pred_ln_df$TARGET_AMT_PRED_RAW <- lassoPred[,1]
 pred_ln_df$TARGET_AMT_PRED <- ifelse(lassoPred > 100, lassoPred, 0)[,1]
-
 ```
-
 
 Using the yardstick package to measure model performance, mape, smape and mpe return NaNs while the `mase` = 0.578 and `rmse` = 4984.
 
 ```{r}
-
 multi_metric <- metric_set(mape, smape, mase, mpe, rmse)
 pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
-
 ```
 
+Analyzing a scatter plot of the prediction errors vs measured costs and a comparative histogram of the predicted and measured costs highlights a shortcoming of the lasso model.
+The model consistently predicts crash costs lower than the actual measured crash costs.
+The gap is more pronounced when looking at predicted and ??????
 
-
-
-Analysing a scatter plot of the prediction errors vs measured costs and a comparative histogram of the predicted and measured costs highlights a shortcomings of the lasso model.The model consistently predicts crash costs lower than the actual measured crash costs. The gap is more pronounced when looking at predicted and 
-
-
-```{r}
-
+```{r fig.show="hold", out.width="50%", fig.height=6}
 n <- nrow(t0_df)
 x <- t0_df$TARGET_AMT
 e <- lassoPred - t0_df$TARGET_AMT
@@ -765,86 +758,130 @@ abline(h = 0, lwd = 2)
 for (i in 1 : n) 
   lines(c(x[i], x[i]), c(e[i], 0), col = "red" , lwd = 1)
 
-
 # comparative histogram
 t0_df <- pred_ln_df %>% dplyr::select(TARGET_AMT,TARGET_AMT_PRED) %>% pivot_longer(c(TARGET_AMT,TARGET_AMT_PRED),
                                  names_to='variable' , values_to = 'value')
 
-
 t0_df %>% dplyr::filter(value <= 1000) %>% 
   ggplot(aes(x=value, fill=variable)) +geom_histogram(bins=5) 
 
-
 t0_df %>% dplyr::filter(value > 1000) %>% 
   ggplot(aes(x=value, fill=variable)) +geom_histogram(bins=100) 
-
 ```
-
-
 
 #### Model Assumptions
 
-To reduce multicollinearity we can use regularization that means to keep all the features but reducing the magnitude of the coefficients of the model. This is a good solution when each predictor contributes to predict the dependent variable. 
+To reduce multicollinearity we can use regularization that means to keep all the features but reducing the magnitude of the coefficients of the model.
+This is a good solution when each predictor contributes to predict the dependent variable.
 
-
-The Standardized Residuals plot shows increasing variance at hight values of the response variable.
+The Standardized Residuals plot shows increasing variance at higher values of the response variable.
 
 ```{r}
-
 pred_ln_df$PER_ERR <- (pred_ln_df$TARGET_AMT_PRED - pred_ln_df$TARGET_AMT)
-
-pred_ln_df %>% ggplot(aes(x=TARGET_AMT, colour=TARGET_AMT_PRED, y=PER_ERR)) +
-  geom_point()
-
 ```
 
+The lasso regression solves the multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero.
 
-The lasso regression solve multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero.
+```{r}
+pred_ln_df %>% ggplot(aes(x=TARGET_AMT, colour=TARGET_AMT_PRED, y=PER_ERR)) +
+  geom_point()
+```
 
+### 3.2 Model 2 - Stepwise Feature Selection
 
+```{r}
+# load data
+t_df <- train_data %>% dplyr::select(-c(TARGET_FLAG))
+v_df <- valid_data %>% dplyr::select(-c(TARGET_FLAG))
 
+# build model
+stepwise.base.lm.model <- lm(TARGET_AMT ~ ., data = t_df)
 
+# select features and refit by stepwise selection (AIC)
+stepwise.lm.model <- stepAIC(stepwise.base.lm.model, trace=FALSE, direction='backward')
+```
 
+#### Model Performance
 
+```{r}
+# summary table
+cap <- paste('Adjusted R2:',round(summary(stepwise.lm.model)$adj.r.squared,5))
 
-### 3.2 Model 2 -
+stepwise.lm.model %>% tidy() %>% 
+  dplyr::select(term, estimate, `p.value`) %>%
+  arrange(p.value, desc(abs(estimate))) %>% 
+  # mutate(est_orig = get_boxcox_exp(estimate, lm_bc_lambda)) %>%
+  # relocate(est_orig, .after=estimate) %>%
+  kable(digits = 3, caption=cap)
+```
+
+```{r}
+# validate and calculate RMSE
+stepwise.lm.valid <- predict(stepwise.lm.model, newdata = v_df)
+stepwise.lm.eval <- bind_cols(target = v_df$TARGET_AMT, predicted=stepwise.lm.valid)
+stepwise.lm.rmse <- sqrt(mean((stepwise.lm.eval$target - stepwise.lm.eval$predicted)^2)) 
+
+# plot targets vs predicted
+stepwise.lm.eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
+  labs(title=paste('RMSE:',round(stepwise.lm.rmse,1)))
+```
+
+The resulting model is much more parsimonious than the first, with statistically significant results for three predictors, **bluebook**, **mvr_pts** and **mstatus_yes**.
+
+The Adjusted R-Squared is better than Model 1 but still very low (0.0167) meaning this model only explains about 1.7% of the total variance in the response variable **target_amt**. However, an examination of the residuals indicates most of the key assumptions for linear regression are met - the Residuals vs Fitted plot shows a more constant variability of the residuals, and the Q-Q plot indicates a greater level of normality.
+
+The summary table includes the estimate transformed to original scale for easier interpretation.In this case, the 'base' *target_amt* would be estimated at \$3,434.76 with an increase in 1% per each dollar of bluebook value, a 1.07% increase if the driver were male, and 0.9% decrease if the driver were married.
+
+#### Model Assumptions
+
+```{r}
+# residual plots
+plot(stepwise.lm.model)
+```
 
 ### 3.3 Model 3 -
 
+#### Model Performance
+
 ### 3.4 Model selection
 
-## 4. Binary logistic regression
+## 4. Binary Logistic Regression
+
+We'll use Binary Logistic Regression to classify our response variable `TARGET_FLAG`, the probability of a car crash for a given observation.
 
 ### 4.1 Model 1 - Lasso
 
-The cv.glmnet() function was also used as logistic regression model. Similar to the regression model k-fold cross-validation was perfromed with variable selection using lasso regularization. The following attribute settings were selected for the model:
+Lasso Regression may be a good candidate for this dataset, since we are dealing with a large number of complex variables.
+Lasso helps identify the most important variables and reduces the model complexity.
 
-- type.measure = "class" - The type.measure is set to class to minimize the misclassification errors of the model since the accurate classification of the validation data set is the desired outcome.  
-- nfold = 10 - Given the size of the training dataset, we opted for 10-fold cross-validation as a default. 
-- family = binomial - For Logistic Regression, the family attribute of the function is set to binomial.
-- link = logit - For this model, we choose the default link function for a logistic model. 
-- alpha =1 - The alpha value of 1 sets the variable shrinkage method to lasso. 
-- weights = a weight of 0.2638 / n for observation with a 0 `TARGET_FLAG` and 0.7362 / n obervations with a 1 value of `TARGET_FLAG`.
-- standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling. 
+The cv.glmnet() function was also used as logistic regression model.
+Similar to the regression model k-fold cross-validation was performed with variable selection using lasso regularization.
+The following attribute settings were selected for the model:
 
+-   type.measure = "class" - The type.measure is set to class to minimize the mis-classification errors of the model since the accurate classification of the validation data set is the desired outcome.
+-   nfold = 10 - Given the size of the training dataset, we opted for 10-fold cross-validation as a default.
+-   family = binomial - For Logistic Regression, the family attribute of the function is set to binomial.
+-   link = logit - For this model, we choose the default link function for a logistic model.
+-   alpha =1 - The alpha value of 1 sets the variable shrinkage method to lasso.
+-   weights = a weight of 0.2638 / n for observation with a 0 `TARGET_FLAG` and 0.7362 / n observations with a 1 value of `TARGET_FLAG`.
+-   standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling.
 
 The resulting model is explored by extracting coefficients at two different values for lambda, lambda.min and lambda.1se respectively.
 
-- The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model includes 35 non zero coefficients and has an AIC of -1605.418. 
-- The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). The resulting model includes 25 no zero coefficients and has an AIC of -1503.695,
+-   The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model includes 35 non zero coefficients and has an AIC of -1605.418.
+-   The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). The resulting model includes 25 no zero coefficients and has an AIC of -1503.695,
 
 The coefficients extracted using lambda.min results in the lowest AIC and highest performance model.
 
-
 ```{r}
-
 t_df <- train_data %>% dplyr::select(-c(TARGET_AMT)) %>% drop_na()
-
 
 # build X matrix and Y vector
 X <- model.matrix(TARGET_FLAG ~ ., data=t_df)[,-1]
 Y <- t_df[,"TARGET_FLAG"] 
-
 
 # calculate weights
 w <- table(train_data$TARGET_FLAG)
@@ -852,33 +889,26 @@ n <- length(Y)
 prop_0 <- w[1] / (w[1] + w[2])
 prop_1 <- w[2] / (w[1] + w[2])
   
-
 # calculate weight vector 
 weights_log  <- ifelse(train_data$TARGET_FLAG == 0,  prop_1 / n, prop_0 / n)
-
 ```
 
 ```{r}
-
-
-lasso.log.model<- cv.glmnet(x=X,y=Y,
-                       family = "binomial",
-                       link = "logit",
-                       standardize = TRUE,                       #standardize  
-                       nfold = 5,
-                       alpha=1)                                  #alpha=1 is lasso
-
+lasso.log.model<- cv.glmnet(
+  x=X,y=Y,
+  family = "binomial",
+  link = "logit",
+  standardize = TRUE,
+  nfold = 5,
+  alpha=1) # alpha=1 is lasso
 
 lasso.log.model
 
 l.min <- lasso.log.model$lambda.min
 l.1se <- lasso.log.model$lambda.1se
-
-
 ```
 
 ```{r}
-
 par(mfrow=c(2,2))
 
 plot(lasso.log.model)
@@ -887,7 +917,6 @@ plot(lasso.log.model$glmnet.fit, xvar='dev', label=TRUE)
 
 rocs <- roc.glmnet(lasso.log.model, newx = X, newy = Y )
 plot(rocs,type="l")  
-
 ```
 
 ```{r}
@@ -900,49 +929,45 @@ assess.glmnet(lasso.log.model,
 
 print(glmnet_cv_aicc(lasso.log.model, 'lambda.min'))
 print(glmnet_cv_aicc(lasso.log.model, 'lambda.1se'))
-
 ```
 
+A closer look at the remaining 36 non-zero coefficients for the selected lambda value of lambda.min we can observe the `URBANICITY Highly Urban/ Urban` predictor variable has the largest impact on the prediction of a car crash by a factor of three.
+Reviewing the top 5 predictor variables that impact likelihood and cost associated with an accident:
 
-A closer look at the remaining 36 no zero coefficients for the selected lambda value of lambda.min we can observe the `URBANICITYHighly Urban/ Urban` predictor variable has the largest impact on the prediction of a car crash by a factor of three. Reviewing the top 5 predictor variables that impact likelihood and cost associated with an accident:
-
-- `URBANICITYHighly Urban/ Urban` - working or living in an urban neighborhood increase expected cost associated with a crash
-- `CAR_USEPrivate` - using a car for private activities reduces
-- `JOBManager` - being a manager reduces the expected costs associated with a crash
-- `REVOKEDYes` - a history of having a revoked license increases the expected costs associated with a crash
-- `JOBDoctor` - being a doctor reduces the expected costs associated with a crash
-
+-   `URBANICITY Highly Urban/ Urban` - working or living in an urban neighborhood increase expected cost associated with a crash
+-   `CAR_USE Private` - using a car for private activities reduces
+-   `JOB Manager` - being a manager reduces the expected costs associated with a crash
+-   `REVOKED Yes` - a history of having a revoked license increases the expected costs associated with a crash
+-   `JOB Doctor` - being a doctor reduces the expected costs associated with a crash
 
 The JOBStudent coefficient is the only predictor variable that drops out, however several variable including INCOME, HOME_VAL and OLDCLAIM are srunk substantially.
 
-
 ```{r}
 coef(lasso.log.model, s = "lambda.min" )
+```
+
+```{r fig.show="hold", out.width="50%", fig.height=6}
 vip(lasso.log.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
 
 coeffs.table <- coeff2dt(fitobject = lasso.log.model, s = "lambda.min")
 
 coeffs.table %>% mutate(name = fct_reorder(name, desc(coefficient))) %>%
 ggplot() +
-  geom_col(aes(x = name, y = coefficient, fill = {coefficient > 0})) +
+  geom_col(aes(y = name, x = coefficient, fill = {coefficient > 0})) +
   xlab(label = "") +
   ggtitle(expression(paste("Lasso Coefficients with ", lambda, " = 0.0275"))) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
-
-
 ```
 
 #### Model Performance
 
-The coefficients extracted at the lambda.min value are used to predict the lickihood of an accident. The confusion matrix highlights an accuracy of 73.7%.
-
+The coefficients extracted at the lambda.min value are used to predict the likelihood of an accident.
+The confusion matrix highlights an accuracy of 73.7%.
 
 ```{r}
-
 # drop TARGET_AMT
 t0_df <- valid_data %>% dplyr::select(-c(TARGET_AMT))
-
 
 # build X matrix and Y vector
 X_test <- model.matrix(TARGET_FLAG ~ ., data=t0_df)[,-1]
@@ -954,53 +979,42 @@ lassoPred <- predict(lasso.log.model, newx = X_test, type = "response", s = 'lam
 pred_log_df <- valid_data %>% drop_na()
 pred_log_df$TARGET_FLAG_PROB <- lassoPred[,1]
 pred_log_df$TARGET_FLAG_PRED <- ifelse(lassoPred > 0.5, 1, 0)[,1]
-
 ```
 
 ```{r}
-
 confusion.glmnet(lasso.log.model, newx = X_test, newy = Y_test, s = 'lambda.min')
-
 ```
 
 #### Checking Model Assumptions
 
-
-Again we check linear relationship between independent variables and the Logit of the target variable. Visually inspecting the results there is a linear trend in the relationship but there are deviations from the straight line in all variables.
-
+Again we check linear relationship between independent variables and the Logit of the target variable.
+Visually inspecting the results there is a linear trend in the relationship but there are deviations from the straight line in all variables.
+The lasso regression solves the multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero.
 
 ```{r}
-
 pred_log_df <- pred_log_df %>%
   mutate(logit = log(TARGET_FLAG_PROB/(1-TARGET_FLAG_PROB))) 
 
 m_df <- pred_log_df %>% dplyr::select(where(is.numeric)) %>% pivot_longer(!c(TARGET_AMT,TARGET_FLAG_PROB,TARGET_FLAG_PRED,logit), 
                                  names_to='variable' , values_to = 'value')
 
-#Scatter plot
+# Scatter plot
 ggplot(m_df, aes(logit, value))+
   geom_point(size = 0.5, alpha = 0.5) +
   geom_smooth(method = "loess") + 
   theme_bw() + 
   facet_wrap(~variable, scales = "free_y")
 
-```
-
-The lasso regression solve multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero.
-
-```{r}
-
+# Scatter plot 2
 pred_log_df$index <- as.numeric(rownames(pred_log_df))
-pred_log_df$resid <- pred_log_df$TARGET_FLAG_PROB - pred_log_df$TARGET_FLAG
-
+pred_log_df$resid <- pred_log_df$TARGET_FLAG_PROB - pred_log_df$TARGET_FLAG    
 
 ggplot(pred_log_df, aes(index, resid)) + 
   geom_point(aes(color = TARGET_FLAG), alpha = .5) +
   theme_bw()
-
 ```
 
-### 4.2 Model 2 -
+### 4.2 Model 2 - Stepwise Feature Selection
 
 ### 4.3 Model 3 -
 
