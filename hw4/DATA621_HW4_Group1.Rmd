@@ -35,6 +35,8 @@ library(forecast)
 library(kableExtra)
 library(ggpubr)
 library(fastDummies)
+library(jtools)
+library(performance)
 
 ## To load the below libraries you might have to do the following in the console first:
 ####  install.packages("devtools")
@@ -120,15 +122,17 @@ These include demographic measures such as age and gender, socioeconomic measure
 
 <img src="https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw4/hw4_variables.png" width="1200" style="display: block; margin-left: auto; margin-right: auto; width: 100%;"/>
 
+
+### 1.1 Summary Statistics
+
 Each record also has two response variables.
 The first response variable, `TARGET_FLAG`, is a boolean where "1" means that the person was in a car crash.
 The second response variable, `TARGET_AMT` is a numeric indicating the (positive) cost if a car crash occurred; this value is zero if the person did not crash their car.
 
 We can explore a sample of the training data here, and make some initial observations:
 
--   Some of the variables are character though they should be numeric and vice-versa.
--   Some currency variables are strings with '\$' symbols instead of numerics.
--   Some character variables include a prefix `z_` that could be removed for readability.
+-   Some currency variables are strings with '\$' symbols instead of numerics (e.g.`OLDCLAIM`, `BLUEBOOK`).
+-   Some character variables include a prefix `z_` that could be removed for readability (`EDUCATION`, `JOB`).
 
 ```{r summary1}
 DT::datatable(
@@ -144,7 +148,20 @@ DT::datatable(
       rownames = FALSE) 
 ```
 
-### 1.1 Summary Statistics
+The table below provides valuable descriptive statistics about the training data.
+
+Based on this summary table and exploration of the data, we can make the following observations:
+
+-   14 variables are categorical, 12 are numeric.
+-   There is no missing data for character variables.
+-   Numeric variables with missing values include `YOJ` (6%), `INCOME` (5%), `HOME_VAL` (6%), `CAR_AGE` (6%), and `AGE` (1%).
+-   Most of the numeric variables have a minimum of zero.
+-   One variable, `CAR_AGE` has a negative value of -3, which doesn't make intuitive sense. We'll handle this below.
+-   Some of the variables are character though they should be numeric and vice-versa.
+
+```{r summary}
+skim_without_charts(train_df)
+```
 
 ```{r prep}
 # Drop INDEX
@@ -173,23 +190,10 @@ currency_vars <- c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM")
 for (v in currency_vars) {
   train_df <- train_df %>% mutate(!!v := parse_number(get(v)))
 }
+
 ```
 
-The table below provides valuable descriptive statistics about the training data:
 
-```{r summary}
-skim_without_charts(train_df)
-```
-
-/
-
-Based on this summary table and exploration of the data, we can make the following observations:
-
--   14 variables are categorical, 12 are numeric.
--   There is no missing data for character variables.
--   Numeric variables with missing values include `YOJ` (6%), `INCOME` (5%), `HOME_VAL` (6%), `CAR_AGE` (6%), and `AGE` (1%).
--   Most of the numeric variables have a minimum of zero.
--   One variable, `CAR_AGE` has a negative value of -3, which doesn't make intuitive sense. We'll handle this below.
 
 ### 1.2 Distributions
 
@@ -283,20 +287,18 @@ for (v in factor_vars) {
   train_df <- train_df %>% mutate(!!v := factor(get(v)))
 }
 
-## check factor levels
-# for (i in factor_vars) {
-#   print(lapply(train_df[i], levels))
-# }
 ```
 
-### 2.3 Transformations and Missing Values
+
+### 2.2 Transformations, Outliers and Missing Values
 
 Before we go further, we need to identify and handle any missing, NA or negative data values so we can perform log transformations and regression.
 
 First, we'll apply transformations to clean up and align formatting of our variables:
 
 -   Drop the `INDEX` variable.
--   Remove "z\_" from all character class values.
+-   Remove "z\_" from all character class values (`MSTATUS`, `SEX`, `JOB`, `CAR_TYPE`, `URBANICITY`, `EDUCATION`)
+-   Remove "\$" from the numeric values (`INCOME`, `HOME_VAL`, `BLUEBOOK`, `OLDCLAIM`).
 -   Update RED_CAR, replace [no,yes] values with [No, Yes] values.
 -   Replace `JOB` blank values with 'Unknown'.
 
@@ -328,31 +330,35 @@ train_df <- complete(imputed_Data)
 Next we'll want to consider any power transformations for variables that have skewed distributions.
 For example, our numeric response variable `TARGET_AMT` is a good candidate for transformation as its distribution is very highly skewed, and the assumption of normality is required in order to apply linear regression.
 
--   Log transformation will be applied to variables `INCOME`, `TARGET_AMT`, `OLDCLAIM` to transform their distributions from right-skewed to normally distributed.
+-   Log transformation will be applied to variables `TARGET_AMT`, `OLDCLAIM` to transform their distributions from right-skewed to normally distributed.
 -   Similarly, BoxCox transformation will be applied to variables `BLUEBOOK`, `TRAVTIME`, `TIF`, so they also are more normally distributed.
 
 ```{r boxcox, fig.keep="none", cache=TRUE}
-## Use basic log transformation on `TARGET_AMT`, `OLDCLAIM`, `INCOME`
-train_df$TARGET_AMT <- log(train_df$TARGET_AMT + 0.01)
-train_df$OLDCLAIM <- log(train_df$OLDCLAIM + 0.01)
-#transformed_df$INCOME <-  log(transformed_df$transformed_df$INCOME + 0.01)
+
+transformed_df <- train_df
+
+## Use basic log transformation on `TARGET_AMT`, `OLDCLAIM`
+transformed_df$TARGET_AMT <- log(transformed_df$TARGET_AMT + 1)
+transformed_df$OLDCLAIM <- log(transformed_df$OLDCLAIM + 1)
+
 
 # use Box-Cox on `BLUEBOOK`, `TRAVTIME`,  `TIF`
-bluebook_boxcox <- boxcox(lm(train_df$BLUEBOOK ~ 1))
+bluebook_boxcox <- boxcox(lm(transformed_df$BLUEBOOK ~ 1))
 bluebook_lambda <- bluebook_boxcox$x[which.max(bluebook_boxcox$y)]
-bluebook_trans <- BoxCox(train_df$BLUEBOOK, bluebook_lambda)
-train_df$BLUEBOOK <- bluebook_trans
+bluebook_trans <- BoxCox(transformed_df$BLUEBOOK, bluebook_lambda)
+transformed_df$BLUEBOOK <- bluebook_trans
 
-travtime_boxcox <- boxcox(lm(train_df$TRAVTIME ~ 1))
+travtime_boxcox <- boxcox(lm(transformed_df$TRAVTIME ~ 1))
 travtime_lambda <- travtime_boxcox$x[which.max(travtime_boxcox$y)]
-travtime_trans <- BoxCox(train_df$TRAVTIME, travtime_lambda)
-train_df$TRAVTIME <- travtime_trans
+travtime_trans <- BoxCox(transformed_df$TRAVTIME, travtime_lambda)
+transformed_df$TRAVTIME <- travtime_trans
 
-tif_boxcox <- boxcox(lm(train_df$TIF ~ 1))
+tif_boxcox <- boxcox(lm(transformed_df$TIF ~ 1))
 tif_lambda <- tif_boxcox$x[which.max(tif_boxcox$y)]
-tif_trans <- BoxCox(train_df$TIF, tif_lambda)
-train_df$TIF <- tif_trans
+tif_trans <- BoxCox(transformed_df$TIF, tif_lambda)
+transformed_df$TIF <- tif_trans
 ```
+
 
 To give our models more variables to work with, we'll engineer some additional features:
 
@@ -361,17 +367,17 @@ To give our models more variables to work with, we'll engineer some additional f
 
 ```{r}
 ## put into bins:  TIF; CAR_AGE; HOMEKIDS; HOME_VAL
-q <- quantile(train_df$CAR_AGE)
+q <- quantile(transformed_df$CAR_AGE)
 q <- c(-1,  1,  8, 12, 28)
-train_df <- train_df %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
+transformed_df <- transformed_df %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
 
-q <- quantile(train_df$HOME_VAL)
+q <- quantile(transformed_df$HOME_VAL)
 q[1] <- -1
-train_df <- train_df%>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
+transformed_df <- transformed_df%>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
 
-q <- quantile(train_df$TIF); 
+q <- quantile(transformed_df$TIF); 
 q[1] <- -1
-train_df <- train_df %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
+transformed_df <- transformed_df %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
 ```
 
 ```{r dummy_vars}
@@ -390,18 +396,18 @@ dummy_vars <- function(df){
     dplyr::select(-c(SEX, MSTATUS, REVOKED, RED_CAR, CAR_USE, PARENT1, URBANICITY))
       }
 
-train_df <- dummy_vars(train_df)
+transformed_df <- dummy_vars(transformed_df)
 ```
 
 We can examine our final, transformed training dataset and distributions below (with a temporary numeric variable `CAR_CRASH` to represent the response variable for visualization purposes.)
 
 ```{r}
-skim_without_charts(train_df)
+skim_without_charts(transformed_df)
 ```
 
 ```{r}
 ## Create temporary CAR_CRASH variable from the target_flag for visualization
-vis_df <- train_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
+vis_df <- transformed_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
 
 a <- vis_df %>% 
   select_if(is.numeric) %>% 
@@ -570,17 +576,165 @@ plot_education + plot_job + plot_car_type + plot_layout(nrow = 2)
 To proceed with modeling, we'll split our training data into train (80%) and validation (20%) datasets.
 
 ```{r}
-# set.seed(1233)
-sample <- sample.split(train_df$TARGET_FLAG, SplitRatio = 0.8)
-train_data  <- subset(train_df, sample == TRUE)
-valid_data   <- subset(train_df, sample == FALSE)
+set.seed(1233)
+sample <- sample.split(transformed_df$TARGET_FLAG, SplitRatio = 0.8)
+train_data  <- subset(transformed_df, sample == TRUE)
+valid_data   <- subset(transformed_df, sample == FALSE)
+
+
+train_original <- createDataPartition(train_df$TARGET_AMT, p=0.8, list = FALSE)
+original_train <- train_df[train_original, ] %>% dplyr::select(-c(TARGET_FLAG))
+original_test <- train_df[-train_original, ] %>% dplyr::select(-c(TARGET_FLAG))
+
+log_original <- createDataPartition(train_df$TARGET_FLAG, p=0.8, list = FALSE)
+log_train <- train_df[log_original, ] %>% dplyr::select(-c(TARGET_AMT))
+log_test <- train_df[-log_original, ] %>% dplyr::select(-c(TARGET_AMT))
+
+train_linear <- createDataPartition(transformed_df$TARGET_AMT, p=0.8, list = FALSE)
+train_log <- createDataPartition(transformed_df$TARGET_FLAG, p=0.8, list = FALSE)
+
+amt_train <- transformed_df[train_linear, ] %>% dplyr::select(-c(TARGET_FLAG))
+amt_test <- transformed_df[-train_linear, ] %>% dplyr::select(-c(TARGET_FLAG))
+
+flag_train <- transformed_df[train_log,] %>% dplyr::select(-c(TARGET_AMT))
+flag_test <- transformed_df[-train_log,] %>% dplyr::select(-c(TARGET_AMT))
+
 ```
 
 ## 3. Multiple Linear Regression
 
 We'll use Multiple Linear Regression to model the `TARGET_AMT` response variable, the estimated cost of a crash for a given observation.
 
-### 3.1 Model 1 - Lasso Regression
+### 3.1 Model 1 - Original data
+
+As the first step, we are going to build the linear model based on the original training dataset with some variables transformed to categorical/numeric if needed, with no missing values. First, we include all variables.
+
+```{r model_1}
+# build model
+model_1 <- lm(TARGET_AMT ~ ., data = original_train)
+
+```
+
+With stepAIC, we can try to see what variables should be included in our model to increase the performance. 
+Based on the the results of the function, we will include `KIDSDRIV`, `INCOME`, `PARENT1`,  `MSTATUS`,  `SEX`, `JOB`, `TRAVTIME`, `CAR_USE`, `BLUEBOOK`, `TIF`, `CAR_TYPE`, `OLDCLAIM`, `CLM_FREQ`, `REVOKED`, `MVR_PTS`, `CAR_AGE`, and `URBANICITY` variables.
+```{r model_1_aic}
+
+# select features and refit by stepwise selection (AIC)
+model_1_aic <- model_1 %>% stepAIC(trace = FALSE)
+summ(model_1_aic, digits = getOption("jtools-digits", 4))
+
+```
+
+#### Model Performance
+The F-statistic is 16.87, the adjusted R-squared is 0.064, and out of the 27 variables, 17 have statistically significant p-values.
+
+The adjusted R2 indicates that only 6.4% of the variance in the response variable can be explained by the predictor variables.
+The F-statistic is low and the model's p-value is not statistically significant.
+We should probably look at other models for better performance.
+
+```{r}
+# summary table
+cap <- paste('Adjusted R2:',round(summary(model_1_aic)$adj.r.squared,5))
+
+model_1_aic %>% tidy() %>% 
+  dplyr::select(term, estimate, `p.value`) %>%
+  arrange(p.value, desc(abs(estimate))) %>% 
+  # mutate(est_orig = get_boxcox_exp(estimate, lm_bc_lambda)) %>%
+  # relocate(est_orig, .after=estimate) %>%
+  kable(digits = 3, caption=cap)
+```
+
+```{r}
+# validate and calculate RMSE
+model_1_aic.valid <- predict(model_1_aic, newdata = original_test)
+model_1_aic.eval <- bind_cols(target = original_test$TARGET_AMT, predicted=model_1_aic.valid)
+model_1_aic.rmse <- sqrt(mean((model_1_aic.eval$target - model_1_aic.eval$predicted)^2)) 
+
+# plot targets vs predicted
+model_1_aic.eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
+  labs(title=paste('RMSE:',round(model_1_aic.rmse,1)))
+```
+
+#### Model Assumptions
+
+We evaluate the linear modeling assumptions using standard diagnostic plots, the Breusch--Pagan Test for Heteroscedasticity and Variance Inflation Factor (VIF) to assess colinearity.
+
+The initial review of the diagnostic plots for this model shows some deviation from linear modeling assumptions.
+The Q-Q plot shows some deviations from the normal distribution at the ends.
+The residuals-fitted and standardized residuals-fitted plots show a curve in the main cluster, which indicates that we do not have constant variance.
+
+```{r check_lm1}
+check_model(model_1_aic, check=c('ncv','qq','homogeneity','outliers'))
+```
+
+
+
+### 3.2 Model 2 - Stepwise Feature Selection
+
+```{r model_2}
+# load data
+t_df <- train_data %>% dplyr::select(-c(TARGET_FLAG))
+v_df <- valid_data %>% dplyr::select(-c(TARGET_FLAG))
+
+# build model
+model_2 <- lm(TARGET_AMT ~ ., data = t_df)
+
+```
+
+
+```{r model_2_aic}
+
+# select features and refit by stepwise selection (AIC)
+model_2_aic <- model_2 %>% stepAIC(trace = FALSE)
+```
+
+#### Model Performance
+
+```{r}
+# summary table
+cap <- paste('Adjusted R2:',round(summary(model_2_aic)$adj.r.squared,5))
+
+model_2_aic %>% tidy() %>% 
+  dplyr::select(term, estimate, `p.value`) %>%
+  arrange(p.value, desc(abs(estimate))) %>% 
+  # mutate(est_orig = get_boxcox_exp(estimate, lm_bc_lambda)) %>%
+  # relocate(est_orig, .after=estimate) %>%
+  kable(digits = 3, caption=cap)
+```
+
+```{r}
+# validate and calculate RMSE
+stepwise.lm.valid <- predict(model_2_aic, newdata = v_df)
+stepwise.lm.eval <- bind_cols(target = v_df$TARGET_AMT, predicted=stepwise.lm.valid)
+stepwise.lm.rmse <- sqrt(mean((stepwise.lm.eval$target - stepwise.lm.eval$predicted)^2)) 
+
+# plot targets vs predicted
+stepwise.lm.eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
+  labs(title=paste('RMSE:',round(stepwise.lm.rmse,1)))
+```
+
+The resulting model is much more parsimonious than the first, with statistically significant results for three predictors, **bluebook**, **mvr_pts** and **mstatus_yes**.
+
+The Adjusted R-Squared is better than Model 1 but still very low (0.0167) meaning this model only explains about 1.7% of the total variance in the response variable **target_amt**. However, an examination of the residuals indicates most of the key assumptions for linear regression are met - the Residuals vs Fitted plot shows a more constant variability of the residuals, and the Q-Q plot indicates a greater level of normality.
+
+The summary table includes the estimate transformed to original scale for easier interpretation.In this case, the 'base' *target_amt* would be estimated at \$3,434.76 with an increase in 1% per each dollar of bluebook value, a 1.07% increase if the driver were male, and 0.9% decrease if the driver were married.
+
+#### Model Assumptions
+
+```{r}
+# residual plots
+plot(model_2_aic)
+```
+
+
+
+### 3.3 Model 3 - Lasso Regression
 
 The `cv.glmnet()` function was used to perform k-fold cross-validation with variable selection using lasso regularization.
 The following attribute settings were selected for the model:
@@ -738,7 +892,7 @@ pred_ln_df$TARGET_AMT_PRED <- ifelse(lassoPred > 100, lassoPred, 0)[,1]
 
 Using the yardstick package to measure model performance, mape, smape and mpe return NaNs while the `mase` = 0.578 and `rmse` = 4984.
 
-```{r}
+```{r eval=FALSE}
 multi_metric <- metric_set(mape, smape, mase, mpe, rmse)
 pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 ```
@@ -790,64 +944,6 @@ pred_ln_df %>% ggplot(aes(x=TARGET_AMT, colour=TARGET_AMT_PRED, y=PER_ERR)) +
   geom_point()
 ```
 
-### 3.2 Model 2 - Stepwise Feature Selection
-
-```{r}
-# load data
-t_df <- train_data %>% dplyr::select(-c(TARGET_FLAG))
-v_df <- valid_data %>% dplyr::select(-c(TARGET_FLAG))
-
-# build model
-stepwise.base.lm.model <- lm(TARGET_AMT ~ ., data = t_df)
-
-# select features and refit by stepwise selection (AIC)
-stepwise.lm.model <- stepAIC(stepwise.base.lm.model, trace=FALSE, direction='backward')
-```
-
-#### Model Performance
-
-```{r}
-# summary table
-cap <- paste('Adjusted R2:',round(summary(stepwise.lm.model)$adj.r.squared,5))
-
-stepwise.lm.model %>% tidy() %>% 
-  dplyr::select(term, estimate, `p.value`) %>%
-  arrange(p.value, desc(abs(estimate))) %>% 
-  # mutate(est_orig = get_boxcox_exp(estimate, lm_bc_lambda)) %>%
-  # relocate(est_orig, .after=estimate) %>%
-  kable(digits = 3, caption=cap)
-```
-
-```{r}
-# validate and calculate RMSE
-stepwise.lm.valid <- predict(stepwise.lm.model, newdata = v_df)
-stepwise.lm.eval <- bind_cols(target = v_df$TARGET_AMT, predicted=stepwise.lm.valid)
-stepwise.lm.rmse <- sqrt(mean((stepwise.lm.eval$target - stepwise.lm.eval$predicted)^2)) 
-
-# plot targets vs predicted
-stepwise.lm.eval %>%
-  ggplot(aes(x = target, y = predicted)) +
-  geom_point(alpha = .3) +
-  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
-  labs(title=paste('RMSE:',round(stepwise.lm.rmse,1)))
-```
-
-The resulting model is much more parsimonious than the first, with statistically significant results for three predictors, **bluebook**, **mvr_pts** and **mstatus_yes**.
-
-The Adjusted R-Squared is better than Model 1 but still very low (0.0167) meaning this model only explains about 1.7% of the total variance in the response variable **target_amt**. However, an examination of the residuals indicates most of the key assumptions for linear regression are met - the Residuals vs Fitted plot shows a more constant variability of the residuals, and the Q-Q plot indicates a greater level of normality.
-
-The summary table includes the estimate transformed to original scale for easier interpretation.In this case, the 'base' *target_amt* would be estimated at \$3,434.76 with an increase in 1% per each dollar of bluebook value, a 1.07% increase if the driver were male, and 0.9% decrease if the driver were married.
-
-#### Model Assumptions
-
-```{r}
-# residual plots
-plot(stepwise.lm.model)
-```
-
-### 3.3 Model 3 -
-
-#### Model Performance
 
 ### 3.4 Model selection
 
@@ -855,7 +951,81 @@ plot(stepwise.lm.model)
 
 We'll use Binary Logistic Regression to classify our response variable `TARGET_FLAG`, the probability of a car crash for a given observation.
 
-### 4.1 Model 1 - Lasso
+### 4.1 Model 1 - Original data
+
+As the first step, we are going to build the generalized linear model based on the original training dataset with some variables transformed to categorical/numeric if needed, with no missing values. Since our dependent variable takes only two values (0 and 1), we will use logistic regression. To do so, the function `glm()` with `family=binomial` is used. At the beginning, all variables are included.
+
+```{r}
+log_train <- log_train %>% mutate(TARGET_FLAG = as.factor(TARGET_FLAG))
+log_test <- log_test %>% mutate(TARGET_FLAG = as.factor(TARGET_FLAG))
+
+```
+
+```{r log_model1, warning=FALSE, message=FALSE}
+log_model_1 <- glm(log_train, formula = TARGET_FLAG ~., family = binomial(link = "logit"))
+```
+
+
+With stepAIC, we can try to see what variables should be included in our model to increase the performance. 
+Based on the the results of the function, we will include the variables below.
+
+```{r log_model1_aic, warning=FALSE, message=FALSE}
+
+log_model_1_aic <- log_model_1 %>% stepAIC(trace = FALSE)
+summary(log_model_1_aic)
+```
+
+The p-value associated with this Chi-Square statistic is below. The lower the p-value, the better the model is able to fit the dataset compared to a model with just an intercept term.
+```{r chi_model_1}
+1-pchisq(log_model_1_aic$null.deviance-log_model_1_aic$deviance, log_model_1_aic$df.null- log_model_1_aic$df.residual)
+```
+
+#### Model Performance
+
+The `null deviance` of `7496.5` defines how well the target variable can be predicted by a model with only an intercept term.
+
+The `residual deviance` of `5843.4` defines how well the target variable can be predicted by our AIC model that we fit with  predictor variables mentioned above. The lower the value, the better the model is able to predict the value of the response variable.
+
+The p-value associated with this `Chi-Square statistic` is 0 which is less than .05, the model can be useful.
+
+The Akaike information criterion (`AIC`) is `5907.4`. We will use this metric to compare the fit of different models.  The lower the value, the better the regression model is able to fit the data.
+
+#### Model Assumptions
+
+```{r check_log1}
+par(mfrow=c(2,2))
+plot(log_model_1_aic)
+
+```
+
+
+### 4.2 Model 2 - Stepwise Feature Selection
+Next, we can try to build the generalized linear model based on the dataset with transformations and additional variables.
+
+```{r general_box, warning=FALSE, message=FALSE}
+log_model_2 <- glm(flag_train, formula = TARGET_FLAG ~ ., family = binomial(link = "logit"))
+```
+
+The stepAIC function tells us to include once again the variables below.
+```{r log_model2_aic, warning=FALSE, message=FALSE}
+log_model_2_aic <- log_model_2 %>% stepAIC(trace = FALSE)
+summary(log_model_2_aic)
+```
+
+The p-value associated with this Chi-Square statistic is below. 
+```{r chi_model_2}
+1-pchisq(log_model_2_aic$null.deviance-log_model_2_aic$deviance, log_model_2_aic$df.null- log_model_2_aic$df.residual)
+```
+
+
+#### Model Performance
+
+
+#### Model Assumptions
+
+
+
+### 4.3 Model 3 - Lasso
 
 Lasso Regression may be a good candidate for this dataset, since we are dealing with a large number of complex variables.
 Lasso helps identify the most important variables and reduces the model complexity.
@@ -988,7 +1158,7 @@ pred_log_df$TARGET_FLAG_PRED <- ifelse(lassoPred > 0.5, 1, 0)[,1]
 confusion.glmnet(lasso.log.model, newx = X_test, newy = Y_test, s = 'lambda.min')
 ```
 
-#### Checking Model Assumptions
+#### Model Assumptions
 
 Again we check linear relationship between independent variables and the Logit of the target variable.
 Visually inspecting the results there is a linear trend in the relationship but there are deviations from the straight line in all variables.
@@ -1017,9 +1187,7 @@ ggplot(pred_log_df, aes(index, resid)) +
   theme_bw()
 ```
 
-### 4.2 Model 2 - Stepwise Feature Selection
 
-### 4.3 Model 3 -
 
 ### 4.4 Model selection
 
@@ -1067,12 +1235,16 @@ lasso.r1 <- assess.glmnet(lasso.lm.model,
                                 newy = Y_test )
 lasso.r2 <- glmnet_cv_aicc(lasso.lm.model, 'lambda.min')
 
+```
 
+```{r eval=FALSE}
 multi_metric <- metric_set(mape, smape, mase, mpe, rmse)
 m_df <- pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 
 
+```
 
+```{r}
 results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       Model = "M4.1:Lasso Linear",
                       mape = m_df[[1,3]],
