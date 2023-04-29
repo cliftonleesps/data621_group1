@@ -23,7 +23,7 @@ editor_options:
 ```{r setup, include=FALSE}
 # chunks
 knitr::opts_chunk$set(echo=FALSE, eval=TRUE, include=TRUE, 
-message=FALSE, warning=FALSE, fig.height=5)
+message=FALSE, warning=FALSE, fig.height=5, fig.align='center')
 
 # libraries
 library(tidyverse)
@@ -56,8 +56,8 @@ In order to explore summary stats and distribution characteristics of our datase
 
 ```{r}
 # load data
-df_train <- as.data.frame(read.csv('data/wine-training-data.csv'))
-df_predict <- as.data.frame(read.csv('data/wine-evaluation-data.csv'))
+df_train <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-training-data.csv')
+df_predict <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-evaluation-data.csv')
 
 # fix index name in predict for bind
 df_predict <- df_predict %>% rename(INDEX=IN)
@@ -96,23 +96,26 @@ df_all <- df_all %>% dplyr::select(!index)
 ## Initial Observations
 
 -   The provided dataset contains a single response variable **TARGET**, a numeric variable indicating the number of cases purchased.
-
--   The 'evaluation' dataset contains no values for **TARGET**, suggesting this data might be used for prediction rather than validation and evaluation of model performance.
-    For clarity we'll rename this this dataset 'prediction' instead and create a separate validation hold-out from the training data.
-
+-   The 'evaluation' dataset contains no values for **TARGET**, suggesting this data might be used for prediction rather than validation and evaluation of model performance. For clarity we'll rename this this dataset 'prediction' instead and create a separate validation hold-out from the training data.
 -   There is a numeric INDEX column labeling the observations which can be excluded from the models.
-
 -   `r nrow(df_predict)` observations (or `r round(nrow(df_predict)/nrow(df_all),2)*100`%) of the total dataset have been set aside for prediction.
-
--   The training dataset consists of `r nrow(df_train)` observations containing `r ncol(df_train)-1` predictor variables.
+-   The combined training and prediction datasets consist of `r nrow(df_all)` observations containing `r ncol(df_all)-2` predictor variables:
 
 ```{r}
 # summary stats for all non-dummy variables
-skim(df_all) %>% 
+df_all %>% 
+  dplyr::select(!c(source, target)) %>%
+  skim() %>%
   dplyr::select(skim_variable, complete_rate, n_missing, 
-                numeric.p0, numeric.p100) %>% 
-  arrange(skim_variable) %>%
-  kable() %>% kable_styling()
+                numeric.p0, numeric.p100) %>%
+  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  mutate(complete_rate=round(complete_rate,2), 
+         min=round(min,2), max=round(max,2)) %>%
+  arrange(variable) %>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
 ```
 
 ```{r summary1}
@@ -143,6 +146,7 @@ Considering that we are analyzing very tiny amounts of chemical compounds, we mi
 numeric_cols <- sapply(df_all, is.numeric)
 
 df_all[,numeric_cols] %>%
+  dplyr::select(!target) %>%
   pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
   ggplot(aes(x=values)) +
   geom_histogram(alpha=0.5, colour='black', size=0.2) +
@@ -156,7 +160,7 @@ We played with exponentiation of these variables by the natural log and other va
 ### Handling Missing Data
 
 Next we'll find and impute any missing data.
-There are 8 predictor variables that contain NAs:
+There are 8 predictor variables that contain NAs.
 
 ```{r}
 # working copy
@@ -171,7 +175,10 @@ x[x>0] %>% as.data.frame() %>%
   setNames('is_na') %>% 
   mutate(pct = round(is_na/nrow(df_prep),2)) %>%
   arrange(desc(pct)) %>%
-  kable() %>% kable_styling()
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
 ```
 
 Heeding the warning in the assignment, *"sometimes, the fact that a variable is missing is actually predictive of the target"*, we'll consider each of these variables carefully.
@@ -198,10 +205,9 @@ df_prep <- df_prep %>%
 
 Next we consider some of the missing chemical compounds in our wines; alcohol, sugars, chlorides, sulfites and sulfates, and measures such as `ph`.
 
-First, can safely assume that all wines in this dataset had an actual `ph` score greater than zero, which is the most acidic rank, on the scale of powerful industrial acids.
-We'll want to impute reasonable values for these.
+First, can safely assume that all wines in this dataset had an actual `ph` score greater than zero (which would represent the most acidic rank, such as powerful industrial acids.) We'll want to impute more reasonable values for these.
 
-Based on some reading into the organic wines segment, where there is a growing demand in the market for specialty products such as low-sulfite, low-sugar and low-alcohol wines.
+Based on some reading into the organic wines segment, there is a growing demand in the market for specialty products such as low-sulfite, low-sugar and low-alcohol wines.
 However, this still represents a very small segment of the overall market, and chemically it's not likely for these compounds to be completely absent from the final product.
 
 Additionally, the predictors `freesulfurdioxide` and `totalsulfurdioxide` are linked - the amount of 'Free' SO2 in wine is always a subset of the 'Total' S02 present.
@@ -243,26 +249,36 @@ df_prep_imputed <- df_prep_imputed %>%
   mutate(labelappeal = as.factor(labelappeal))
 ```
 
+::
+
 #### Examine Final Dataset
 
 We now have reasonably imputed values, and nearly-normal distributions for our numeric predictors.
 Of special note is the preponderance of zero values for `stars` (indicating the absence of a review) which might benefit from the use of zero-inflated models in the following sections.
 
 ```{r}
+df_prep_imputed %>%
+  dplyr::select(!c(source, target)) %>%
+  skim() %>%
+  dplyr::select(skim_variable, complete_rate, n_missing) %>%
+  rename(variable=skim_variable) %>%
+  mutate(complete_rate=round(complete_rate,2)) %>%
+  arrange(variable) %>%
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
+```
+
+```{r}
 numeric_cols <- sapply(df_prep_imputed, is.numeric)
 
 df_prep_imputed[,numeric_cols] %>%
+  dplyr::select(!target) %>%
   pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
   ggplot(aes(x=values)) +
   geom_histogram(alpha=0.5, colour='black', size=0.2) +
   facet_wrap(vars(variables), scales="free")
-```
-
-```{r}
-skim(df_prep_imputed) %>% 
-  dplyr::select(skim_variable, complete_rate, n_missing) %>%
-  arrange(skim_variable) %>%
-  kable() %>% kable_styling()
 ```
 
 #### Split Datasets
@@ -293,7 +309,7 @@ pr1 <- glm(target ~ ., family = 'poisson', data = df_train)
 summary(pr1)
 ```
 
-```{r, fig.show="hold", out.width="50%", fig.height=4}
+```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
 pr1_valid <- predict(pr1, newdata = df_valid)
 pr1_eval <- bind_cols(target = df_valid$target, predicted= pr1_valid)
 pr1_eval[is.na(pr1_eval)] <- 0
@@ -316,7 +332,6 @@ pr1_eval %>%
 ## Poisson Regression 2
 
 Zero-inflated model?
-
 
 ------------------------------------------------------------------------
 
@@ -352,7 +367,7 @@ Zero-inflated model?
 
 ## References
 
-**'Total Sulfur Dioxide -- Why it Matters, Too!'** \
+**'Total Sulfur Dioxide -- Why it Matters, Too!'**\
 Iowa State University\
 <https://www.extension.iastate.edu/wine/total-sulfur-dioxide-why-it-matters-too/>
 
