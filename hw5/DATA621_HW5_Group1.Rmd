@@ -1,0 +1,359 @@
+---
+title: 'Homework #5: Count Regression (Wines)'
+subtitle: 'Critical Thinking Group 1'
+author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks'
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+  pdf_document:
+    toc: yes
+editor_options:
+  chunk_output_type: console
+  markdown: 
+    wrap: sentence
+---
+
+```{r, include=FALSE}
+# if error for kableExtra, do
+# devtools::install_github("kupietz/kableExtra")
+```
+
+```{r setup, include=FALSE}
+# chunks
+knitr::opts_chunk$set(echo=FALSE, eval=TRUE, include=TRUE, 
+message=FALSE, warning=FALSE, fig.height=5)
+
+# libraries
+library(tidyverse)
+library(kableExtra)
+library(MASS)
+library(mice)
+library(pscl) # zeroinfl()
+library(skimr)
+
+# ggplot
+theme_set(theme_minimal())
+
+```
+
+```{r common functions}
+
+```
+
+# Assignment
+
+*In this homework assignment, you will explore, analyze and model a data set containing information on approximately 12,000 commercially available wines. The variables are mostly related to the chemical properties of the wine being sold. The response variable is the number of sample cases of wine that were purchased by wine distribution companies after sampling a wine. Your objective is to build a count regression model to predict the number of cases of wine that will be sold given certain properties of the wine.*
+
+We'll build two poisson regressions, two negative binomial regressions, and two multivariate linear regression models.
+
+------------------------------------------------------------------------
+
+# Data Exploration
+
+In order to explore summary stats and distribution characteristics of our dataset, we'll need to first conduct some basic transformations and cleanup:
+
+```{r}
+# load data
+df_train <- as.data.frame(read.csv('data/wine-training-data.csv'))
+df_predict <- as.data.frame(read.csv('data/wine-evaluation-data.csv'))
+
+# fix index name in predict for bind
+df_predict <- df_predict %>% rename(INDEX=IN)
+
+# union for exploration and prep
+df_train <- df_train %>% mutate(source='train')
+df_predict <- df_predict %>% mutate(source='predict')
+df_all <- bind_rows(df_train, df_predict)
+
+# fix column labels
+names(df_all) <- str_to_lower(str_replace_all(names(df_all), c(" " = "_" , "," = "", "\\*" = "", "\\(" = "", "\\)" = "", "`" = "", "\\/" = "_")))
+
+# drop un-necessary columns
+df_all <- df_all %>% dplyr::select(!index)
+```
+
+#### Definitions
+
+-   `AcidIndex`: Proprietary method of testing total acidity of wine by using a weighted average
+-   `Alcohol`: Alcohol Content
+-   `Chlorides`: Chloride content of wine
+-   `CitricAcid`: Citric Acid Content
+-   `Density`: Density of Wine
+-   `FixedAcidity`: Fixed Acidity of Wine
+-   `FreeSulfurDioxide`: Sulfur Dioxide content of wine
+-   `LabelAppeal`: Marketing Score indicating the appeal of label design for consumers. High numbers suggest customers like the label design. Negative numbers suggest customers don't like the design.
+-   `ResidualSugar`: Residual Sugar of wine
+-   `Stars`: Wine rating by a team of experts. 4 Stars = Excellent, 1 Star = Poor. A high number of stars suggests high sales
+-   `Sulphates`: Sulfate content of wine
+-   `TotalSulfurDioxide`: Total Sulfur Dioxide of Wine
+-   `VolatileAcidity`: Volatile Acid content of wine
+-   `pH`: pH of wine
+
+------------------------------------------------------------------------
+
+## Initial Observations
+
+-   The provided dataset contains a single response variable **TARGET**, a numeric variable indicating the number of cases purchased.
+
+-   The 'evaluation' dataset contains no values for **TARGET**, suggesting this data might be used for prediction rather than validation and evaluation of model performance.
+    For clarity we'll rename this this dataset 'prediction' instead and create a separate validation hold-out from the training data.
+
+-   There is a numeric INDEX column labeling the observations which can be excluded from the models.
+
+-   `r nrow(df_predict)` observations (or `r round(nrow(df_predict)/nrow(df_all),2)*100`%) of the total dataset have been set aside for prediction.
+
+-   The training dataset consists of `r nrow(df_train)` observations containing `r ncol(df_train)-1` predictor variables.
+
+```{r}
+# summary stats for all non-dummy variables
+skim(df_all) %>% 
+  dplyr::select(skim_variable, complete_rate, n_missing, 
+                numeric.p0, numeric.p100) %>% 
+  arrange(skim_variable) %>%
+  kable() %>% kable_styling()
+```
+
+```{r summary1}
+# DT::datatable(
+#       df_all[1:25,],
+#       extensions = c('Scroller'),
+#       options = list(scrollY = 350,
+#                      scrollX = 500,
+#                      deferRender = TRUE,
+#                      scroller = TRUE,
+#                      dom = 'lBfrtip',
+#                      fixedColumns = TRUE, 
+#                      searching = FALSE), 
+#       rownames = FALSE) 
+```
+
+------------------------------------------------------------------------
+
+#### Transformed Variables?
+
+One of the first characteristics that stand out is the presence of negative values for many chemical compounds, and the relative normality of their distributions.
+This suggests they have been power-transformed to produce normal distributions for modeling.
+
+Variables related to sugars, chlorides, acidity, sulfides and sulfates all seem to fall in this category.
+Considering that we are analyzing very tiny amounts of chemical compounds, we might assume their natural distributions may be highly skewed.
+
+```{r}
+numeric_cols <- sapply(df_all, is.numeric)
+
+df_all[,numeric_cols] %>%
+  pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
+  ggplot(aes(x=values)) +
+  geom_histogram(alpha=0.5, colour='black', size=0.2) +
+  facet_wrap(vars(variables), scales="free")
+```
+
+We played with exponentiation of these variables by the natural log and other values, but did not arrive at an obvious or consistent transformation approach - so we may not be able to interpret model results on the scale of the original values for these variables.
+
+------------------------------------------------------------------------
+
+### Handling Missing Data
+
+Next we'll find and impute any missing data.
+There are 8 predictor variables that contain NAs:
+
+```{r}
+# working copy
+df_prep <- df_all
+
+# find columns with NAs
+x <- df_prep %>%
+  dplyr::select(!target) %>%
+  apply(2, function(col) sum(is.na(col)))
+
+x[x>0] %>% as.data.frame() %>% 
+  setNames('is_na') %>% 
+  mutate(pct = round(is_na/nrow(df_prep),2)) %>%
+  arrange(desc(pct)) %>%
+  kable() %>% kable_styling()
+```
+
+Heeding the warning in the assignment, *"sometimes, the fact that a variable is missing is actually predictive of the target"*, we'll consider each of these variables carefully.
+While there may be data "missing completely at random" (MCAR) that we wish to impute, this may not always be the case.
+
+#### Stars
+
+The predictor `Stars` suggests that out of 16,000 wine samples, about 25% have never been professionally reviewed.
+If we assume that the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model.
+
+To enable further analysis we'll convert `stars` from a numeric to a factor, with a level '0' representing our NA values.
+We'll also represent the presence or absence of a review with a new boolean variable `has_review`.
+
+```{r}
+df_prep <- df_prep %>%
+  mutate(stars = as.factor(ifelse(is.na(stars),0,stars)))
+
+# Create boolean for presence of review
+df_prep <- df_prep %>%
+  mutate(has_review = as.factor(ifelse(stars == 0, 0, 1)))
+```
+
+#### Chemical Compounds
+
+Next we consider some of the missing chemical compounds in our wines; alcohol, sugars, chlorides, sulfites and sulfates, and measures such as `ph`.
+
+First, can safely assume that all wines in this dataset had an actual `ph` score greater than zero, which is the most acidic rank, on the scale of powerful industrial acids.
+We'll want to impute reasonable values for these.
+
+Based on some reading into the organic wines segment, where there is a growing demand in the market for specialty products such as low-sulfite, low-sugar and low-alcohol wines.
+However, this still represents a very small segment of the overall market, and chemically it's not likely for these compounds to be completely absent from the final product.
+
+Additionally, the predictors `freesulfurdioxide` and `totalsulfurdioxide` are linked - the amount of 'Free' SO2 in wine is always a subset of the 'Total' S02 present.
+We only identified 59 cases where both these values were NA, while over 1500 cases had missing values for only one or the other.
+
+Based on these observations, we'll use the MICE imputation method to predict and impute the missing values for `residualsugar`, `chlorides`, `freesulphurdioxide`, `totalsulfurdioxide`, `sulphates`, `alchohol` and `ph`.
+
+Target/source labels and non-chemical predictors `labelappeal` and `stars` were excluded as predictors for the imputation.
+
+```{r}
+# MICE setup
+init = mice(df_prep, maxit=0) 
+meth = init$method
+predM = init$predictorMatrix
+
+# omit from MICE predictors
+predM[, c('target','labelappeal','stars','source')] = 0
+
+# omit from MICE imputation
+meth[c('target','labelappeal','stars','source')] = ''
+```
+
+```{r, include=FALSE}
+set.seed(42)
+impute = mice(df_prep, method=meth, predictorMatrix=predM, m=5)
+df_prep_imputed <- complete(impute)
+```
+
+------------------------------------------------------------------------
+
+### Additional Data Prep
+
+#### Factors
+
+We'll transform `labelappeal` from a numeric to a factor as well.
+
+```{r}
+df_prep_imputed <- df_prep_imputed %>%
+  mutate(labelappeal = as.factor(labelappeal))
+```
+
+#### Examine Final Dataset
+
+We now have reasonably imputed values, and nearly-normal distributions for our numeric predictors.
+Of special note is the preponderance of zero values for `stars` (indicating the absence of a review) which might benefit from the use of zero-inflated models in the following sections.
+
+```{r}
+numeric_cols <- sapply(df_prep_imputed, is.numeric)
+
+df_prep_imputed[,numeric_cols] %>%
+  pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
+  ggplot(aes(x=values)) +
+  geom_histogram(alpha=0.5, colour='black', size=0.2) +
+  facet_wrap(vars(variables), scales="free")
+```
+
+```{r}
+skim(df_prep_imputed) %>% 
+  dplyr::select(skim_variable, complete_rate, n_missing) %>%
+  arrange(skim_variable) %>%
+  kable() %>% kable_styling()
+```
+
+#### Split Datasets
+
+With transformations complete, we split back into training and prediction datasets based on our `source_flag`, and create a 15% validation hold-out from the training data.
+
+```{r}
+# split back to train and test, remove source flag
+df_train_all <- df_prep_imputed %>% filter(source == 'train') %>% dplyr::select(!source)
+df_predict <- df_prep_imputed %>% filter(source == 'predict') %>% dplyr::select(!source)
+
+# create a validation holdout from the training dataset
+set.seed(123)
+row_sample <- sample(c(TRUE,FALSE), nrow(df_train_all), replace=TRUE, prob=c(0.85,0.15))
+
+df_train <- df_train_all[row_sample,]
+df_valid <- df_train_all[!row_sample,]
+```
+
+------------------------------------------------------------------------
+
+# Build Models
+
+## Poisson Regression 1
+
+```{r}
+pr1 <- glm(target ~ ., family = 'poisson', data = df_train)
+summary(pr1)
+```
+
+```{r, fig.show="hold", out.width="50%", fig.height=4}
+pr1_valid <- predict(pr1, newdata = df_valid)
+pr1_eval <- bind_cols(target = df_valid$target, predicted= pr1_valid)
+pr1_eval[is.na(pr1_eval)] <- 0
+
+plot(fitted(pr1), resid(pr1))
+
+pr1_eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE)
+
+pr1_eval %>%
+  ggplot() + 
+  geom_density(aes(x=target), fill='green', alpha=0.25) +
+  geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
+```
+
+------------------------------------------------------------------------
+
+## Poisson Regression 2
+
+Zero-inflated model?
+
+
+------------------------------------------------------------------------
+
+## Negative Binomial Regression 1
+
+------------------------------------------------------------------------
+
+## Negative Binomial Regression 2
+
+------------------------------------------------------------------------
+
+## Multiple Linear Regression 1
+
+------------------------------------------------------------------------
+
+## Multiple Linear Regression 1
+
+------------------------------------------------------------------------
+
+# Model Evaluation
+
+------------------------------------------------------------------------
+
+# Predictions
+
+------------------------------------------------------------------------
+
+# Conclusion
+
+------------------------------------------------------------------------
+
+# Appendix
+
+## References
+
+**'Total Sulfur Dioxide -- Why it Matters, Too!'** \
+Iowa State University\
+<https://www.extension.iastate.edu/wine/total-sulfur-dioxide-why-it-matters-too/>
+
+## R Code
