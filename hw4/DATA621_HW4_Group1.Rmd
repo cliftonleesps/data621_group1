@@ -166,29 +166,35 @@ skim_without_charts(train_df)
 ```{r prep}
 # Drop INDEX
 train_df <- train_df %>% dplyr::select(-INDEX)
+eval_df <- eval_df %>% dplyr::select(-INDEX)
 
 ## Remove z_ from character class values
 z_vars <- c("MSTATUS","SEX","JOB","CAR_TYPE","URBANICITY","EDUCATION")
 for (v in z_vars) {
   train_df <- train_df %>% mutate(!!v := str_replace(get(v),"z_",""))
+  eval_df <- eval_df %>% mutate(!!v := str_replace(get(v),"z_",""))
 }
 
 # Update RED_CAR, replace [no,yes] values with [No, Yes] values
 train_df <- train_df %>% mutate( RED_CAR = ifelse(RED_CAR == "no","No","Yes"))
+eval_df <- eval_df %>% mutate( RED_CAR = ifelse(RED_CAR == "no","No","Yes"))
 
 # Instead of level "" will be "Unknown"
 train_df$JOB[train_df$JOB==""] <- "Unknown"
+eval_df$JOB[eval_df$JOB==""] <- "Unknown"
 
 # Convert currency columns from character class to integer
 dollar_vars <- c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM")
 for (v in dollar_vars) {
   train_df <- train_df %>% mutate(!!v := str_replace(get(v),"[\\$,]",""))
+  eval_df <- eval_df %>% mutate(!!v := str_replace(get(v),"[\\$,]",""))
 }
 
 currency_vars <- c("INCOME","HOME_VAL","BLUEBOOK","OLDCLAIM")
 
 for (v in currency_vars) {
   train_df <- train_df %>% mutate(!!v := parse_number(get(v)))
+  eval_df <- eval_df %>% mutate(!!v := parse_number(get(v)))
 }
 
 ```
@@ -210,7 +216,7 @@ prop.table(table(train_df$TARGET_FLAG)) %>%
     kable_styling(full_width = F) 
 ```
 
-Many of these distributions seem highly skewed and non-normal.
+Many of these distributions for the numeric variables seem highly skewed and non-normal.
 As part of our data preparation we'll use power transformations to find whether transforming variables to more normal distributions improves our models' efficacy.
 
 ```{r, cache=TRUE}
@@ -225,6 +231,41 @@ dist_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) +
   facet_wrap(~variable, scales = 'free',  ncol = 4) + 
   theme_bw()
 ```
+
+By checking the frequency of the variables that have very few unique values (`HOMEKIDS`, `KIDSDRIV`, `CLM_FREQ`), we can assume that these variables better be transformed to binary (1 if the value is greater than 0). As the see the percentage below, more than 50% of the data for these variables is 0, the rest some over few values.
+```{r}
+train_df[,c("HOMEKIDS","KIDSDRIV", "CLM_FREQ")] %>%
+gather("variable","value") %>%
+group_by(variable) %>%
+count(value) %>%
+mutate(value = factor(value,levels=5:0)) %>%
+mutate(percent = n*100/8161) %>%
+ggplot(.,
+aes(variable,percent)) +
+geom_bar(stat = "identity", aes(fill = value)) +
+xlab("Variable") +
+ylab("Percent of records") +
+theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+scale_fill_manual(values = rev(c("#999999","#E69F00", "#56B4E9", "#009E73", "#F0E442","#CC79A7")))
+```
+
+
+```{r}
+train_df[,c("Commercial_vehicle","Married","Single_parent","Red_car","Revoked","Sex_male","Urban_not_rural","TARGET_FLAG")] %>%
+gather("variable","value") %>%
+group_by(variable) %>%
+count(value) %>%
+mutate(value = factor(value)) %>%
+mutate(percent = n*100/8161) %>%
+ggplot(.,
+aes(variable,percent)) +
+geom_bar(stat = "identity", aes(fill = value)) +
+xlab("Variable") +
+ylab("Percent of records") +
+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
 
 ### 1.3 Box Plots
 
@@ -274,11 +315,7 @@ In order to work with our training dataset, we'll need to first convert some var
 ```{r}
 # Other changes applied in Section 1.
 
-# Convert these character variables to factors
-# factor_vars <- c("TARGET_FLAG","PARENT1","CAR_TYPE","JOB","CAR_USE",
-#                  "URBANICITY","RED_CAR","REVOKED","MSTATUS","EDUCATION","SEX")
-
-factor_vars <- c("PARENT1","CAR_TYPE","JOB","CAR_USE",
+factor_vars <- c("TARGET_FLAG", "PARENT1","CAR_TYPE","JOB","CAR_USE",
                  "URBANICITY","RED_CAR","REVOKED","MSTATUS","EDUCATION","SEX")
 
 
@@ -287,6 +324,22 @@ for (v in factor_vars) {
   train_df <- train_df %>% mutate(!!v := factor(get(v)))
 }
 
+```
+
+
+```{r}
+colnames(train_df) <- plyr::mapvalues(colnames(insurance),
+	from=c("HOMEKIDS","KIDSDRIV"),
+	to=c("Kids","Driving_kids"))
+colnames(evaluation) <- plyr::mapvalues(colnames(evaluation),
+	from=c("HOMEKIDS","KIDSDRIV"),
+	to=c("Kids","Driving_kids"))
+
+for(var in c("Kids","Driving_kids"))
+{
+train_df[,var] <- ifelse(train_df[,var] > 0,1,0)
+eval_df[,var] <- ifelse(eval_df[,var] > 0,1,0)
+}
 ```
 
 
@@ -301,6 +354,7 @@ First, we'll apply transformations to clean up and align formatting of our varia
 -   Remove "\$" from the numeric values (`INCOME`, `HOME_VAL`, `BLUEBOOK`, `OLDCLAIM`).
 -   Update RED_CAR, replace [no,yes] values with [No, Yes] values.
 -   Replace `JOB` blank values with 'Unknown'.
+-   Transform variables `HOMEKIDS`, `KIDSDRIV`, `CLM_FREQ` to binary, the value is TRUE if the original value is greater than 0.
 
 Next, we'll manually adjust two special cases of missing or outlier values.
 
@@ -317,6 +371,23 @@ train_df <- train_df %>%
   mutate(INCOME = ifelse(YOJ == 0 & is.na(INCOME), 0, INCOME))
 ```
 
+```{r}
+
+
+for(var in c("EDUCATION","CAR_TYPE","JOB"))
+{
+frequency_per_level <- data.frame(table(train_df[,var]))
+colnames(frequency_per_level) <- c("value","n")
+print(ggplot(frequency_per_level,
+aes(value,n*100/8161)) +
+geom_bar(stat = "identity",col="black",fill="darkgrey") +
+xlab("") +
+ylab("Percent of records") +
+ggtitle(var) +
+theme(axis.text.x = element_text(angle = 90, hjust = 1)))
+}
+```
+
 We'll use MICE to impute our remaining variables with missing values - `AGE`, `YOJ`, `CAR_AGE`, `INCOME` and `HOME_VALUE`:
 
 -   We might reasonably assume that relationships exist between these variables (older, more years on the job may correlate with higher income and home value). Taking simple means or medians might suppress those features, but MICE should provide a better imputation.
@@ -326,6 +397,65 @@ We'll use MICE to impute our remaining variables with missing values - `AGE`, `Y
 imputed_Data <- mice(train_df, m=5, maxit = 20, method = 'pmm', seed = 500, printFlag=FALSE)
 train_df <- complete(imputed_Data)
 ```
+
+
+To give our models more variables to work with, we'll engineer some additional features:
+
+-   Create bin values for `CAR_AGE`, `HOME_VAL` and `TIF`.
+-   Create dummy variables for two-level factors, `MALE`, `MARRIED`, `LIC_REVOKED`, `CAR_RED`, `PRIVATE_USE`, `SINGLE_PARENT` and `URBAN`.
+
+```{r dummy_vars}
+## Create Dummy Variables for factors with two levels
+dummy_vars <- function(df){
+  df %>%
+    mutate(
+      MALE = factor(ifelse(SEX=="M", 1, 0)), 
+      MARRIED = factor(ifelse(MSTATUS=="Yes", 1, 0)),
+      LIC_REVOKED = factor(ifelse(REVOKED =="Yes", 1, 0)),
+      CAR_RED = factor(ifelse(RED_CAR =="Yes", 1, 0)),
+      PRIVATE_USE = factor(ifelse(CAR_USE =="Private", 1, 0)),
+      SINGLE_PARENT = factor(ifelse(PARENT1 =="Yes", 1, 0)),
+      URBAN = factor(ifelse(URBANICITY =="Highly Urban/ Urban", 1, 0))
+    ) %>% 
+    dplyr::select(-c(SEX, MSTATUS, REVOKED, RED_CAR, CAR_USE, PARENT1, URBANICITY))
+      }
+
+train_df <- dummy_vars(train_df)
+```
+
+
+```{r}
+train_df[,c("MALE", "MARRIED", "LIC_REVOKED", "CAR_RED", "PRIVATE_USE","SINGLE_PARENT", "URBAN","TARGET_FLAG")] %>%
+gather("variable","value") %>%
+group_by(variable) %>%
+count(value) %>%
+mutate(value = factor(value)) %>%
+mutate(percent = n*100/8161) %>%
+ggplot(.,
+aes(variable,percent)) +
+geom_bar(stat = "identity", aes(fill = value)) +
+xlab("Variable") +
+ylab("Percent of records") +
+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r}
+## put into bins:  TIF; CAR_AGE; HOMEKIDS; HOME_VAL
+q <- quantile(transformed_df$CAR_AGE)
+q <- c(-1,  1,  8, 12, 28)
+transformed_df <- transformed_df %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
+
+q <- quantile(transformed_df$HOME_VAL)
+q[1] <- -1
+transformed_df <- transformed_df%>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
+
+q <- quantile(transformed_df$TIF); 
+q[1] <- -1
+transformed_df <- transformed_df %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
+```
+
+
+
 
 Next we'll want to consider any power transformations for variables that have skewed distributions.
 For example, our numeric response variable `TARGET_AMT` is a good candidate for transformation as its distribution is very highly skewed, and the assumption of normality is required in order to apply linear regression.
@@ -360,44 +490,8 @@ transformed_df$TIF <- tif_trans
 ```
 
 
-To give our models more variables to work with, we'll engineer some additional features:
 
--   Create bin values for `CAR_AGE`, `HOME_VAL` and `TIF`.
--   Create dummy variables for two-level factors, `MALE`, `MARRIED`, `LIC_REVOKED`, `CAR_RED`, `PRIVATE_USE`, `SINGLE_PARENT` and `URBAN`.
 
-```{r}
-## put into bins:  TIF; CAR_AGE; HOMEKIDS; HOME_VAL
-q <- quantile(transformed_df$CAR_AGE)
-q <- c(-1,  1,  8, 12, 28)
-transformed_df <- transformed_df %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
-
-q <- quantile(transformed_df$HOME_VAL)
-q[1] <- -1
-transformed_df <- transformed_df%>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
-
-q <- quantile(transformed_df$TIF); 
-q[1] <- -1
-transformed_df <- transformed_df %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
-```
-
-```{r dummy_vars}
-## Create Dummy Variables for factors with two levels
-dummy_vars <- function(df){
-  df %>%
-    mutate(
-      MALE = factor(ifelse(SEX=="M", 1, 0)), 
-      MARRIED = factor(ifelse(MSTATUS=="Yes", 1, 0)),
-      LIC_REVOKED = factor(ifelse(REVOKED =="Yes", 1, 0)),
-      CAR_RED = factor(ifelse(RED_CAR =="Yes", 1, 0)),
-      PRIVATE_USE = factor(ifelse(CAR_USE =="Private", 1, 0)),
-      SINGLE_PARENT = factor(ifelse(PARENT1 =="Yes", 1, 0)),
-      URBAN = factor(ifelse(URBANICITY =="Highly Urban/ Urban", 1, 0))
-    ) %>% 
-    dplyr::select(-c(SEX, MSTATUS, REVOKED, RED_CAR, CAR_USE, PARENT1, URBANICITY))
-      }
-
-transformed_df <- dummy_vars(transformed_df)
-```
 
 We can examine our final, transformed training dataset and distributions below (with a temporary numeric variable `CAR_CRASH` to represent the response variable for visualization purposes.)
 
