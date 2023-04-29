@@ -38,6 +38,10 @@ theme_set(theme_minimal())
 
 ```
 
+```{css}
+h4,h5 {margin-top: 20px;}
+```
+
 ```{r common functions}
 
 ```
@@ -248,8 +252,6 @@ We'll transform `labelappeal` from a numeric to a factor as well.
 df_prep_imputed <- df_prep_imputed %>%
   mutate(labelappeal = as.factor(labelappeal))
 ```
-
-::
 
 #### Examine Final Dataset
 
