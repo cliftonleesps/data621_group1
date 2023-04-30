@@ -1317,9 +1317,7 @@ lassoPred <- predict(
   lasso.lm.model, 
   newx = X_test,
   type = "response",
-  s = 'lambda.1se')
-
-lassoPred <- exp(lassoPred) - 0.001
+  s = 'lambda.min')
 
 pred_ln_df <- linear_valid_data %>% drop_na()
 pred_ln_df$TARGET_AMT_PRED_RAW <- lassoPred[,1]
@@ -1329,7 +1327,7 @@ pred_ln_df$TARGET_AMT_PRED <- ifelse(lassoPred > 100, lassoPred, 0)[,1]
 Using the yardstick package to measure model performance, mape, smape and mpe return NaNs while the `mase` = 0.578 and `rmse` = 4984.
 
 ```{r eval=FALSE}
-multi_metric <- metric_set(mape, smape, mase, mpe, rmse)
+multi_metric <- metric_set(mape, smape, mase, mpe, yardstick::rmse)
 pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 ```
 
