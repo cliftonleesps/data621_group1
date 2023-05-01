@@ -84,7 +84,7 @@ theme_set(theme_bw())
 #' @export
 #'
 #' @examples
-glmnet_cv_aicc <- function(fit, lambda = 'lambda.1se'){
+glmnet_cv_aicc <- function(fit, lambda = 'lambda.min'){
   whlm <- which(fit$lambda == fit[[lambda]])
   with(fit$glmnet.fit,
        {
@@ -1191,7 +1191,7 @@ For this model there are 25 non-zero coefficients and it has an AIC of 44.23
 
 The coefficients extracted using lambda.1se results in the lowest AIC (highest model performance) with fewer predictor variables.
 
-```{r eval=FALSE}
+```{r}
 # filter the target data
 t_df <- linear_train_data %>% dplyr::select(-c(TARGET_FLAG))
 
@@ -1209,7 +1209,7 @@ prop_1 <- w[2] / (w[1] + w[2])
 #weights_lm  <- ifelse(linear_train_data$TARGET_FLAG == 0,  prop_1/n, prop_0/n)
 ```
 
-```{r eval=FALSE}
+```{r}
 lasso.lm.model <- cv.glmnet(
   x=X,y=Y, # Y already logged in prep
   family = "gaussian",
@@ -1225,7 +1225,7 @@ l.min <- lasso.lm.model$lambda.min
 l.1se <- lasso.lm.model$lambda.1se
 ```
 
-```{r eval=FALSE}
+```{r}
 par(mfrow=c(2,2))
 
 plot(lasso.lm.model)
@@ -1233,7 +1233,7 @@ plot(lasso.lm.model$glmnet.fit, xvar="lambda", label=TRUE)
 plot(lasso.lm.model$glmnet.fit, xvar='dev', label=TRUE)
 ```
 
-```{r eval=FALSE}
+```{r}
 assess.glmnet(lasso.lm.model,           
               newx = X,              
               newy = Y,
@@ -1264,7 +1264,7 @@ Some of the notable coefficients that drop out of the model include:
 -   `CAR_AGE`
 -   `CAR_RED`
 
-```{r eval=FALSE}
+```{r}
 coef(lasso.lm.model, s = "lambda.min")
 ```
 
@@ -1281,10 +1281,10 @@ coef(lasso.lm.model, s = "lambda.min")
 
 ```
 
-```{r fig.show="hold", out.width="50%", fig.height=6, eval=FALSE}
+```{r fig.show="hold", out.width="50%", fig.height=6}
 vip(lasso.lm.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
 
-coeffs.table <- coeff2dt(fitobject = lasso.lm.model, s = "lambda.1se")
+coeffs.table <- coeff2dt(fitobject = lasso.lm.model, s = "lambda.min")
 
 coeffs.table %>% mutate(name = fct_reorder(name, desc(coefficient))) %>%
 ggplot() +
@@ -1308,7 +1308,7 @@ Since
 In the training data 337.50 was the lowest crash cost included in the dataset.
 We used 100 as the measurement threshold and assume that all predicted costs below 100 dollars are effectively 0.
 
-```{r eval=FALSE}
+```{r}
 t0_df <- linear_valid_data %>% dplyr::select(-c(TARGET_FLAG)) 
 X_test <- model.matrix(TARGET_AMT ~ ., data=t0_df)[,-1]
 Y_test <- t0_df[,"TARGET_AMT"] 
@@ -1326,7 +1326,7 @@ pred_ln_df$TARGET_AMT_PRED <- ifelse(lassoPred > 100, lassoPred, 0)[,1]
 
 Using the yardstick package to measure model performance, mape, smape and mpe return NaNs while the `mase` = 0.578 and `rmse` = 4984.
 
-```{r eval=FALSE}
+```{r}
 multi_metric <- metric_set(mape, smape, mase, mpe, yardstick::rmse)
 pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 ```
@@ -1335,7 +1335,7 @@ Analyzing a scatter plot of the prediction errors vs measured costs and a compar
 The model consistently predicts crash costs lower than the actual measured crash costs.
 The gap is more pronounced when looking at predicted and ??????
 
-```{r fig.show="hold", out.width="50%", fig.height=6, eval=FALSE}
+```{r fig.show="hold", out.width="50%", fig.height=6}
 n <- nrow(t0_df)
 x <- t0_df$TARGET_AMT
 e <- lassoPred - t0_df$TARGET_AMT
@@ -1367,13 +1367,13 @@ This is a good solution when each predictor contributes to predict the dependent
 
 The Standardized Residuals plot shows increasing variance at higher values of the response variable.
 
-```{r eval=FALSE}
+```{r}
 pred_ln_df$PER_ERR <- (pred_ln_df$TARGET_AMT_PRED - pred_ln_df$TARGET_AMT)
 ```
 
 The lasso regression solves the multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero.
 
-```{r eval=FALSE}
+```{r}
 pred_ln_df %>% ggplot(aes(x=TARGET_AMT, colour=TARGET_AMT_PRED, y=PER_ERR)) +
   geom_point()
 ```
@@ -1386,7 +1386,7 @@ pred_ln_df %>% ggplot(aes(x=TARGET_AMT, colour=TARGET_AMT_PRED, y=PER_ERR)) +
 
 \*\* Model 4.3: Lasso Linear Regression \*\*
 
-```{r eval=FALSE}
+```{r}
 
 # build X matrix and Y vector
 t0_df <- linear_valid_data %>% dplyr::select(-c(TARGET_FLAG)) %>% drop_na()
@@ -1402,14 +1402,25 @@ lasso.r2 <- glmnet_cv_aicc(lasso.lm.model, 'lambda.min')
 
 ```
 
-```{r eval=FALSE}
-multi_metric <- metric_set(mape, smape, mase, mpe, rmse)
+```{r}
+multi_metric <- metric_set(mape, smape, mase, mpe, yardstick::rmse)
 m_df <- pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 
 
 ```
 
-```{r eval=FALSE}
+```{r}
+
+results_lm_tbl <- tibble(
+                      Model = character(),
+                      mape = numeric(), 
+                      smape = numeric(), 
+                      mase = numeric(), 
+                      mpe = numeric(), 
+                      rmse = numeric(),
+                      AIC = numeric()
+                )
+
 results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       Model = "M4.1:Lasso Linear",
                       mape = m_df[[1,3]],
@@ -1427,7 +1438,7 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
 
 Regression
 
-```{r eval=FALSE}
+```{r}
 
 #t1 <- as_tibble(cbind(variables = names(results_tbl), t(results_tbl)))
 
