@@ -39,7 +39,7 @@ theme_set(theme_minimal())
 ```
 
 ```{css}
-h4,h5 {margin-top: 20px;}
+#h4, h5 {margin-top: 20px;}
 ```
 
 ```{r common functions}
@@ -78,30 +78,9 @@ names(df_all) <- str_to_lower(str_replace_all(names(df_all), c(" " = "_" , "," =
 df_all <- df_all %>% dplyr::select(!index)
 ```
 
-#### Definitions
-
--   `AcidIndex`: Proprietary method of testing total acidity of wine by using a weighted average
--   `Alcohol`: Alcohol Content
--   `Chlorides`: Chloride content of wine
--   `CitricAcid`: Citric Acid Content
--   `Density`: Density of Wine
--   `FixedAcidity`: Fixed Acidity of Wine
--   `FreeSulfurDioxide`: Sulfur Dioxide content of wine
--   `LabelAppeal`: Marketing Score indicating the appeal of label design for consumers. High numbers suggest customers like the label design. Negative numbers suggest customers don't like the design.
--   `ResidualSugar`: Residual Sugar of wine
--   `Stars`: Wine rating by a team of experts. 4 Stars = Excellent, 1 Star = Poor. A high number of stars suggests high sales
--   `Sulphates`: Sulfate content of wine
--   `TotalSulfurDioxide`: Total Sulfur Dioxide of Wine
--   `VolatileAcidity`: Volatile Acid content of wine
--   `pH`: pH of wine
-
-------------------------------------------------------------------------
-
-## Initial Observations
-
--   The provided dataset contains a single response variable **TARGET**, a numeric variable indicating the number of cases purchased.
--   The 'evaluation' dataset contains no values for **TARGET**, suggesting this data might be used for prediction rather than validation and evaluation of model performance. For clarity we'll rename this this dataset 'prediction' instead and create a separate validation hold-out from the training data.
--   There is a numeric INDEX column labeling the observations which can be excluded from the models.
+-   The provided dataset contains a single response variable `target`, a numeric variable indicating the number of cases purchased.
+-   The 'evaluation' dataset contains no values for `target`, suggesting this data might be used for prediction rather than validation and evaluation of model performance. For clarity we'll rename this this dataset 'prediction' instead and create a separate validation hold-out from the training data.
+-   There is a numeric `index` column labeling the observations which can be excluded from the models.
 -   `r nrow(df_predict)` observations (or `r round(nrow(df_predict)/nrow(df_all),2)*100`%) of the total dataset have been set aside for prediction.
 -   The combined training and prediction datasets consist of `r nrow(df_all)` observations containing `r ncol(df_all)-2` predictor variables:
 
@@ -135,6 +114,23 @@ df_all %>%
 #                      searching = FALSE), 
 #       rownames = FALSE) 
 ```
+
+#### Definitions
+
+-   `AcidIndex`: Proprietary method of testing total acidity of wine by using a weighted average
+-   `Alcohol`: Alcohol Content
+-   `Chlorides`: Chloride content of wine
+-   `CitricAcid`: Citric Acid Content
+-   `Density`: Density of Wine
+-   `FixedAcidity`: Fixed Acidity of Wine
+-   `FreeSulfurDioxide`: Sulfur Dioxide content of wine
+-   `LabelAppeal`: Marketing Score indicating the appeal of label design for consumers. High numbers suggest customers like the label design. Negative numbers suggest customers don't like the design.
+-   `ResidualSugar`: Residual Sugar of wine
+-   `Stars`: Wine rating by a team of experts. 4 Stars = Excellent, 1 Star = Poor. A high number of stars suggests high sales
+-   `Sulphates`: Sulfate content of wine
+-   `TotalSulfurDioxide`: Total Sulfur Dioxide of Wine
+-   `VolatileAcidity`: Volatile Acid content of wine
+-   `pH`: pH of wine
 
 ------------------------------------------------------------------------
 
@@ -194,22 +190,21 @@ The predictor `Stars` suggests that out of 16,000 wine samples, about 25% have n
 If we assume that the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model.
 
 To enable further analysis we'll convert `stars` from a numeric to a factor, with a level '0' representing our NA values.
-We'll also represent the presence or absence of a review with a new boolean variable `has_review`.
 
 ```{r}
 df_prep <- df_prep %>%
   mutate(stars = as.factor(ifelse(is.na(stars),0,stars)))
 
-# Create boolean for presence of review
-df_prep <- df_prep %>%
-  mutate(has_review = as.factor(ifelse(stars == 0, 0, 1)))
+# Create boolean for presence of review ..removed, linearly related in model
+# df_prep <- df_prep %>%
+#   mutate(has_review = as.factor(ifelse(stars == 0, 0, 1)))
 ```
 
 #### Chemical Compounds
 
 Next we consider some of the missing chemical compounds in our wines; alcohol, sugars, chlorides, sulfites and sulfates, and measures such as `ph`.
 
-First, can safely assume that all wines in this dataset had an actual `ph` score greater than zero (which would represent the most acidic rank, such as powerful industrial acids.) We'll want to impute more reasonable values for these.
+First, can safely assume that all wines in this dataset have an actual `ph` score greater than zero (which would represent the most acidic rank, such as powerful industrial acids.) We'll want to impute more reasonable values for these.
 
 Based on some reading into the organic wines segment, there is a growing demand in the market for specialty products such as low-sulfite, low-sugar and low-alcohol wines.
 However, this still represents a very small segment of the overall market, and chemically it's not likely for these compounds to be completely absent from the final product.
@@ -306,25 +301,64 @@ df_valid <- df_train_all[!row_sample,]
 
 ## Poisson Regression 1
 
-```{r}
+Poisson Regression assumes that the variance and mean of our dependent variable `target` are roughly equal, otherwise we may be looking at over- or under-dispersion.
+In our training and validation dataset, the mean is `r round(mean(df_train_all$target),2)` and the variance is `r round(var(df_train_all$target),2)`, suggesting our data is roughly equally dispersed.
+
+```{r, echo=TRUE}
 pr1 <- glm(target ~ ., family = 'poisson', data = df_train)
 summary(pr1)
 ```
 
+We note that our model has generated 'dummies' from our categorical variables `labelappeal` and `stars`, and of the 20 total predictors, all but five have statistical significance.
+
+```{r}
+# pearson resids, dispersion parameter, log-likelihood, AIC
+pr1_pres <- resid(pr1, 'pearson')
+pr1_disp <- sum(pr1_pres^2)/pr1$df.residual
+pr1_loglik <- logLik(pr1)
+pr1_aic <- AIC(pr1)
+```
+
+### Diagnostics
+
+While our Dispersion Parameter is less than one (`r round(pr1_disp,3)`), by graphing our target values (green) against our predicted values (blue) we can easily see this model tends to under-predict the higher count levels, and over-predict the lower count levels.
+
+```{r}
+# table
+pr1_diag_tbl <- matrix(c(round(pr1_aic,3), round(pr1_disp,3), round(pr1_loglik,3)))
+rownames(pr1_diag_tbl) <- c('AIC','Dispersion','LogLik')
+pr1_diag_tbl %>% kable %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
+```
+
 ```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
+# predict based on our validation holdout
 pr1_valid <- predict(pr1, newdata = df_valid)
+
+# bind the predicted and actuals for comparison
 pr1_eval <- bind_cols(target = df_valid$target, predicted= pr1_valid)
 pr1_eval[is.na(pr1_eval)] <- 0
 
-plot(fitted(pr1), resid(pr1))
+# Diagnostic plots
 
+# xy plot of model fitted and residuals
+bind_cols(fitted=unname(fitted(pr1)), resid=unname(resid(pr1))) %>%
+  ggplot(aes(x=fitted, y=resid)) +
+  geom_point(alpha = .3) +
+  geom_hline(yintercept=2, linetype='dashed') +
+  geom_hline(yintercept=-2, linetype='dashed')
+
+# xy plot of validation predictions and targets
 pr1_eval %>%
   ggplot(aes(x = target, y = predicted)) +
   geom_point(alpha = .3) +
   geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE)
 
+# density plot of validation predictions and targets
 pr1_eval %>%
-  ggplot() + 
+  ggplot() +
   geom_density(aes(x=target), fill='green', alpha=0.25) +
   geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
 ```
@@ -335,13 +369,197 @@ pr1_eval %>%
 
 Zero-inflated model?
 
+```{r, echo=TRUE}
+pr2 <- zeroinfl(target ~ . | ., data=df_train, dist = 'poisson')
+summary(pr2)
+```
+
+...
+
+```{r}
+# pearson resids, dispersion parameter, log-likelihood, AIC
+pr2_pres <- resid(pr2, 'pearson')
+pr2_disp <- sum(pr2_pres^2)/pr1$df.residual
+pr2_loglik <- logLik(pr2)
+pr2_aic <- AIC(pr2)
+```
+
+### Diagnostics
+
+...
+
+```{r}
+# table
+pr2_diag_tbl <- matrix(c(round(pr2_aic,3), round(pr2_disp,3), round(pr2_loglik,3)))
+rownames(pr2_diag_tbl) <- c('AIC','Dispersion','LogLik')
+
+pr2_diag_tbl %>% kable %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
+```
+
+```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
+# predict based on our validation holdout
+pr2_valid <- predict(pr2, newdata = df_valid)
+
+# bind the predicted and actuals for comparison
+pr2_eval <- bind_cols(target = df_valid$target, predicted= pr2_valid)
+pr2_eval[is.na(pr2_eval)] <- 0
+
+# Diagnostic plots
+
+# xy plot of model fitted and residuals
+bind_cols(fitted=unname(fitted(pr2)), resid=unname(resid(pr2))) %>%
+  ggplot(aes(x=fitted, y=resid)) +
+  geom_point(alpha = .3) +
+  geom_hline(yintercept=2, linetype='dashed') +
+  geom_hline(yintercept=-2, linetype='dashed')
+
+# xy plot of validation predictions and targets
+pr2_eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE)
+
+# density plot of validation predictions and targets
+pr2_eval %>%
+  ggplot() +
+  geom_density(aes(x=target), fill='green', alpha=0.25) +
+  geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
+```
+
 ------------------------------------------------------------------------
 
 ## Negative Binomial Regression 1
 
+...
+
+```{r, echo=TRUE}
+nb1 <- glm.nb(target ~ ., data = df_train)
+summary(nb1)
+```
+
+...
+
+```{r}
+# pearson resids, dispersion parameter, log-likelihood, AIC
+nb1_pres <- resid(nb1, 'pearson')
+nb1_disp <- sum(nb1_pres^2)/nb1$df.residual
+nb1_loglik <- logLik(nb1)
+nb1_aic <- AIC(nb1)
+```
+
+### Diagnostics
+
+...
+
+```{r}
+# table
+nb1_diag_tbl <- matrix(c(round(nb1_aic,3), round(nb1_disp,3), round(nb1_loglik,3)))
+rownames(nb1_diag_tbl) <- c('AIC','Dispersion','LogLik')
+
+nb1_diag_tbl %>% kable %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
+```
+
+```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
+# predict based on our validation holdout
+nb1_valid <- predict(nb1, newdata = df_valid)
+
+# bind the predicted and actuals for comparison
+nb1_eval <- bind_cols(target = df_valid$target, predicted= nb1_valid)
+nb1_eval[is.na(nb1_eval)] <- 0
+
+# Diagnostic plots
+
+# xy plot of model fitted and residuals
+bind_cols(fitted=unname(fitted(nb1)), resid=unname(resid(nb1))) %>%
+  ggplot(aes(x=fitted, y=resid)) +
+  geom_point(alpha = .3) +
+  geom_hline(yintercept=2, linetype='dashed') +
+  geom_hline(yintercept=-2, linetype='dashed')
+
+# xy plot of validation predictions and targets
+nb1_eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE)
+
+# density plot of validation predictions and targets
+nb1_eval %>%
+  ggplot() +
+  geom_density(aes(x=target), fill='green', alpha=0.25) +
+  geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
+```
+
 ------------------------------------------------------------------------
 
 ## Negative Binomial Regression 2
+
+Zero-inflated model?
+
+```{r, echo=TRUE}
+nb2 <- zeroinfl(target ~ . | ., data=df_train, dist = 'negbin')
+summary(nb2)
+```
+
+...
+
+```{r}
+# pearson resids, dispersion parameter, log-likelihood, AIC
+nb2_pres <- resid(nb2, 'pearson')
+nb2_disp <- sum(nb2_pres^2)/pr1$df.residual
+nb2_loglik <- logLik(nb2)
+nb2_aic <- AIC(nb2)
+```
+
+### Diagnostics
+
+...
+
+```{r}
+# table
+nb2_diag_tbl <- matrix(c(round(nb2_aic,3), round(nb2_disp,3), round(nb2_loglik,3)))
+rownames(nb2_diag_tbl) <- c('AIC','Dispersion','LogLik')
+
+nb2_diag_tbl %>% kable %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
+```
+
+```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
+# predict based on our validation holdout
+nb2_valid <- predict(nb2, newdata = df_valid)
+
+# bind the predicted and actuals for comparison
+nb2_eval <- bind_cols(target = df_valid$target, predicted= nb2_valid)
+nb2_eval[is.na(nb2_eval)] <- 0
+
+# Diagnostic plots
+
+# xy plot of model fitted and residuals
+bind_cols(fitted=unname(fitted(nb2)), resid=unname(resid(nb2))) %>%
+  ggplot(aes(x=fitted, y=resid)) +
+  geom_point(alpha = .3) +
+  geom_hline(yintercept=2, linetype='dashed') +
+  geom_hline(yintercept=-2, linetype='dashed')
+
+# xy plot of validation predictions and targets
+nb2_eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE)
+
+# density plot of validation predictions and targets
+nb2_eval %>%
+  ggplot() +
+  geom_density(aes(x=target), fill='green', alpha=0.25) +
+  geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
+```
 
 ------------------------------------------------------------------------
 
