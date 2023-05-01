@@ -814,25 +814,16 @@ The following attribute settings were selected for the model:
 -   family = binomial - For Logistic Regression, the family attribute of the function is set to binomial.
 -   link = logit - For this model, we choose the default link function for a logistic model.
 -   alpha =1 - The alpha value of 1 sets the variable shrinkage method to lasso.
--   weights = a weight of 0.2638 / n for observation with a 0 `TARGET_FLAG` and 0.7362 / n observations with a 1 value of `TARGET_FLAG`.
 -   standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling.
 
 
 ```{r}
-t_df <- train_data #%>% dplyr::select(-c(TARGET_AMT)) %>% drop_na()
+t_df <- train_data
 
 # build X matrix and Y vector
 X <- model.matrix(TARGET_FLAG ~ ., data=t_df)[,-1]
 Y <- t_df[,"TARGET_FLAG"] 
 
-# calculate weights
-w <- table(train_data$TARGET_FLAG)
-n <- length(Y)
-prop_0 <- w[1] / (w[1] + w[2])
-prop_1 <- w[2] / (w[1] + w[2])
-  
-# calculate weight vector 
-weights_log  <- ifelse(train_data$TARGET_FLAG == 0,  prop_1 / n, prop_0 / n)
 ```
 
 ```{r}
@@ -855,13 +846,13 @@ l.1se <- lasso.log.model$lambda.1se
 
 The resulting model is explored by extracting coefficients at two different values for lambda, lambda.min and lambda.1se respectively.
 
--   The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model includes 35 non zero coefficients and has an AIC of -1605.418.
--   The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). The resulting model includes 25 no zero coefficients and has an AIC of -1503.695,
+-   The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model includes 35 non zero coefficients and has an AIC of -1519.116.
+-   The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). The resulting model includes 29 no zero coefficients and has an AIC of -1495.889,
 
 The coefficients extracted using lambda.min results in the lowest AIC and highest performance model.
 
 The coefficients extracted at the lambda.min value are used to predict the likelihood of an accident.
-The confusion matrix highlights an accuracy of 73.7%.
+The confusion matrix highlights an accuracy of 79.8%.
 
 ```{r}
 # drop TARGET_AMT
@@ -918,7 +909,7 @@ lasso.r1 <- assess.glmnet(lasso.log.model,
 lasso.r2 <- glmnet_cv_aicc(lasso.log.model, 'lambda.min')
 
 
-results_log <- rbind(results_log,tibble(Model = "Model #3: Lasso", Accuracy="", 
+results_log <- rbind(results_log,tibble(Model = "Model #3: Lasso", Accuracy=lasso.r1$auc[1], 
                   "Classification error rate" = 1 - lasso.r1$auc[1],
                   F1 = conf_matrix_3$byClass[7],
                   Deviance=lasso.r1$deviance[[1]], 
@@ -947,16 +938,18 @@ plot(rocs,type="l")
 
 
 
-A closer look at the remaining 36 non-zero coefficients for the selected lambda value of lambda.min we can observe the `URBANICITY Highly Urban/ Urban` predictor variable has the largest impact on the prediction of a car crash by a factor of three.
+A closer look at the remaining 35 non-zero coefficients for the selected lambda value of lambda.min we can observe the `URBAN1` predictor variable has the largest impact on the prediction of a car crash by a factor of 2.5 times.
 Reviewing the top 5 predictor variables that impact likelihood and cost associated with an accident:
 
--   `URBANICITY Highly Urban/ Urban` - working or living in an urban neighborhood increase expected cost associated with a crash
--   `CAR_USE Private` - using a car for private activities reduces
+-   `URBAN1` - working or living in an urban neighborhood increase expected cost associated with a crash
+-   `CAR_TYPESports Car` - sports cars increase the cost associated with a crash 
+-   `LIC_REVOKED1` - a history of having a revoked license increases the expected costs associated with a crash
 -   `JOB Manager` - being a manager reduces the expected costs associated with a crash
--   `REVOKED Yes` - a history of having a revoked license increases the expected costs associated with a crash
--   `JOB Doctor` - being a doctor reduces the expected costs associated with a crash
+-   `PRIVATE_USE1` - using a car for private activities reduces
 
-The JOBStudent coefficient is the only predictor variable that drops out, however several variable including INCOME, HOME_VAL and OLDCLAIM are shrunk substantially.
+
+The `CAR_RED1`and `EDUCATIONPhD` predictor variables drop out of the final model. 
+
 
 ```{r}
 coef(lasso.log.model, s = "lambda.min" )
@@ -1006,8 +999,9 @@ We'll use Multiple Linear Regression to model the `TARGET_AMT` response variable
 As the first step, we are going to build the linear model based on the original training dataset with some variables transformed to categorical/numeric if needed, with no missing values. First, we include all variables and use Stepwise approach to select variables for the model.
 
 ```{r model_1}
- df_train <- linear_train_data%>% dplyr::select(-c(TARGET_FLAG))
+df_train <- linear_train_data%>% dplyr::select(-c(TARGET_FLAG))
 df_test <- linear_valid_data%>% dplyr::select(-c(TARGET_FLAG))
+
 # build model
 model_1 <- lm(TARGET_AMT ~ ., data = df_train)
 
@@ -1172,24 +1166,22 @@ vif_values %>%
 
 ### 4.3 Model 3 - Lasso Regression
 
-The `cv.glmnet()` function was used to perform k-fold cross-validation with variable selection using lasso regularization.
-The following attribute settings were selected for the model:
+The `cv.glmnet()` function was used to perform k-fold cross-validation with variable selection using lasso regularization.  The following attribute settings were selected for the model:
 
 -   type.measure = "mse" - The type.measure is set to minimize the Mean Squared Error for the model.
 -   nfold = 10 - Given the size of the dataset we defaulted to 10-fold cross-validation.
 -   family = gaussian - For Linear Regression
 -   alpha = 1 - The alpha value of 1 sets the variable shrinkage method to lasso.
--   weights = a weight of 0.2638 / n for observation with a 0 `TARGET_AMT` and 0.7362 / n for all observations with all other values of `TARGET_AMT.`
 -   standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling.
 
 The resulting model is explored by extracting coefficients at two different values for lambda, lambda.min and lambda.1se respectively.
 
 The coefficients extracted using lambda.min minimizes the mean cross-validated error.
-The resulting model includes 33 non-zero coefficients and has an AIC of 60.08.
-The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum).
-For this model there are 25 non-zero coefficients and it has an AIC of 44.23
+The resulting model includes 1 non-zero coefficients and has an AIC of -1584023783.
+The coefficients extracted using lambda.1se does not produce a valid model. All variables drop out of the model at a coefficient of lambda.1se. 
 
-The coefficients extracted using lambda.1se results in the lowest AIC (highest model performance) with fewer predictor variables.
+The coefficients extracted using lambda.min results in the only valid model for the linear regression. 
+
 
 ```{r}
 # filter the target data
@@ -1199,14 +1191,6 @@ t_df <- linear_train_data %>% dplyr::select(-c(TARGET_FLAG))
 X <- model.matrix(TARGET_AMT ~ ., data=t_df)[,-1]
 Y <- t_df[,"TARGET_AMT"] 
 
-# calculate the weights for the target flag
-w <- table(linear_train_data$TARGET_FLAG)
-n <- length(Y)
-prop_0 <- w[1] / (w[1] + w[2])
-prop_1 <- w[2] / (w[1] + w[2])
-
-# calculate the weights vector
-#weights_lm  <- ifelse(linear_train_data$TARGET_FLAG == 0,  prop_1/n, prop_0/n)
 ```
 
 ```{r}
@@ -1216,7 +1200,6 @@ lasso.lm.model <- cv.glmnet(
   type.measure="mse",
   standardize = TRUE, # standardize
   nfold = 10,
-  #weights = weights_lm,
   alpha=1) # alpha=1 is lasso
 
 lasso.lm.model
@@ -1244,42 +1227,13 @@ print(glmnet_cv_aicc(lasso.lm.model, 'lambda.min'))
 print(glmnet_cv_aicc(lasso.lm.model, 'lambda.1se'))
 ```
 
-A closer look at the remaining 37 non-zero coefficients for the selected lambda value of lambda.min (r round(lasso.lm.model$lambda.min,3)) we can observe the top predictor variables `URBANICITY Highly Urban/ Urban` predictor variable has the largest impact on the response variable `TARGET_AMT`.
+A closer look at the final model shows that, once an accident has been predicted the only variable that impacts the cost the accident is the `BLUEBOOK`. This model formulation is intuitive theoretically however I had imagined that other variable would factor into the relative cost of an accident.
 
-In the lasso model the coefficient for `URBANICITY Highly Urban/ Urban` home work area is biggest contributor to the cost estimates of a car crash by a factor of 2.
-
-Reviewing the top 5 predictor variables that impact likelihood and cost associated with an accident:
-
--   `URBANICITY Highly Urban/ Urban` - working or living in an urban neighborhood increase expected cost associated with a crash
--   `JOB Doctor` - being a doctor reduces the expected costs associated with a crash
--   `JOB Manager` - being a manager reduces the expected costs associated with a crash
--   `CAR_TYPE Sports Car` - owning a sports car increases the expected costs associated with a crash
--   `CAR_USE Private` - using a car for private activities reduces the expected costs associated with a crash
--   `REVOKED Yes` - a history of having a revoked license increases the expected costs associated with a crash
-
-Some of the notable coefficients that drop out of the model include:
-
--   `HOME_VAL`
--   `JOB Professional`
--   `CAR_AGE`
--   `CAR_RED`
 
 ```{r}
 coef(lasso.lm.model, s = "lambda.min")
 ```
 
-```{r eval=FALSE}
-# # test
-# tbl <- data.matrix(coef(lasso.lm.model, s = "lambda.min"))
-# 
-# tbl <- data.matrix(tbl[order(tbl, decreasing=TRUE),])
-# 
-# kable(
-#   list(tbl[1:20,], tbl[21:41,]),
-#   booktabs = TRUE
-# ) %>% kable_styling()
-
-```
 
 ```{r fig.show="hold", out.width="50%", fig.height=6}
 vip(lasso.lm.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
@@ -1300,13 +1254,7 @@ The lasso regression approaches this issue by selecting the variable with the hi
 
 #### Model Performance
 
-The lasso model using coefficients extracted at lambda.1se was used to predict the 60,421 test cases and comparing the predicted insurance AMT to the actual cost of a car crash.
-The predicted cost of the crash include negative numbers that are effectively 0.
-We selected a threshold cost and assigning 0 to all amounts below that threshold value.
-Since
-
-In the training data 337.50 was the lowest crash cost included in the dataset.
-We used 100 as the measurement threshold and assume that all predicted costs below 100 dollars are effectively 0.
+The lasso model using coefficients extracted at lambda.min was used to predict the 536 test cases and comparing the predicted insurance AMT to the actual cost of a car crash.
 
 ```{r}
 t0_df <- linear_valid_data %>% dplyr::select(-c(TARGET_FLAG)) 
@@ -1324,16 +1272,15 @@ pred_ln_df$TARGET_AMT_PRED_RAW <- lassoPred[,1]
 pred_ln_df$TARGET_AMT_PRED <- ifelse(lassoPred > 100, lassoPred, 0)[,1]
 ```
 
-Using the yardstick package to measure model performance, mape, smape and mpe return NaNs while the `mase` = 0.578 and `rmse` = 4984.
+Using the yardstick package to measure model performance, mape, smape and mpe return NaNs while the `mase` = 0.696 and `rmse` = 6614.
 
 ```{r}
 multi_metric <- metric_set(mape, smape, mase, mpe, yardstick::rmse)
 pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 ```
 
-Analyzing a scatter plot of the prediction errors vs measured costs and a comparative histogram of the predicted and measured costs highlights a shortcoming of the lasso model.
-The model consistently predicts crash costs lower than the actual measured crash costs.
-The gap is more pronounced when looking at predicted and ??????
+Analyzing a scatter plot of the prediction errors vs measured costs and a comparative histogram of the predicted and measured costs highlights a shortcoming of the lasso model. The model fails to predict any costs less than 1000 dollars. 
+
 
 ```{r fig.show="hold", out.width="50%", fig.height=6}
 n <- nrow(t0_df)
