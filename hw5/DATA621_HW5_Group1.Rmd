@@ -28,22 +28,46 @@ message=FALSE, warning=FALSE, fig.height=5, fig.align='center')
 # libraries
 library(tidyverse)
 library(kableExtra)
-library(MASS)
+library(MASS) # glm.nb()
 library(mice)
 library(pscl) # zeroinfl()
 library(skimr)
 
 # ggplot
-theme_set(theme_minimal())
+theme_set(theme_light())
 
+# random seed
+set.seed(42)
 ```
 
 ```{css}
-#h4, h5 {margin-top: 20px;}
+h4, h5 {margin-top: 20px;}
 ```
 
 ```{r common functions}
+nice_table <- function(df){
+  table <- df %>% kable %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
+  return(table)
+}
 
+model_diag <- function(model){
+  model_sum <- summary(model)
+  aic <- AIC(model)
+  ar2 <- model_sum$adj.r.squared
+  disp <- sum(resid(model,'pearson')^2)/model$df.residual
+  loglik <- logLik(model)
+  
+  vec <- c(ifelse(is.null(aic), NA, aic),
+           ifelse(is.null(ar2), NA, ar2),
+           ifelse(is.null(disp), NA, disp),
+           ifelse(is.null(loglik), NA, loglik))
+  
+  names(vec) <- c('AIC','Adj R2','Dispersion','Log-Lik')
+  return(vec)
+}
 ```
 
 # Assignment
@@ -95,10 +119,7 @@ df_all %>%
   mutate(complete_rate=round(complete_rate,2), 
          min=round(min,2), max=round(max,2)) %>%
   arrange(variable) %>%
-  kable() %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
+  nice_table()
 ```
 
 ```{r summary1}
@@ -137,7 +158,7 @@ df_all %>%
 #### Transformed Variables?
 
 One of the first characteristics that stand out is the presence of negative values for many chemical compounds, and the relative normality of their distributions.
-This suggests they have been power-transformed to produce normal distributions for modeling.
+This suggests they have already been power-transformed to produce normal distributions for modeling.
 
 Variables related to sugars, chlorides, acidity, sulfides and sulfates all seem to fall in this category.
 Considering that we are analyzing very tiny amounts of chemical compounds, we might assume their natural distributions may be highly skewed.
@@ -153,14 +174,14 @@ df_all[,numeric_cols] %>%
   facet_wrap(vars(variables), scales="free")
 ```
 
-We played with exponentiation of these variables by the natural log and other values, but did not arrive at an obvious or consistent transformation approach - so we may not be able to interpret model results on the scale of the original values for these variables.
+We tried exponentiation of these variables by the natural log and other values, but did not arrive at an obvious or consistent transformation approach - so we may not be able to interpret model results on the scale of the original values for these variables.
 
 ------------------------------------------------------------------------
 
 ### Handling Missing Data
 
 Next we'll find and impute any missing data.
-There are 8 predictor variables that contain NAs.
+There are 8 predictor variables that contain NAs:
 
 ```{r}
 # working copy
@@ -175,16 +196,13 @@ x[x>0] %>% as.data.frame() %>%
   setNames('is_na') %>% 
   mutate(pct = round(is_na/nrow(df_prep),2)) %>%
   arrange(desc(pct)) %>%
-  kable() %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
+  nice_table()
 ```
 
 Heeding the warning in the assignment, *"sometimes, the fact that a variable is missing is actually predictive of the target"*, we'll consider each of these variables carefully.
 While there may be data "missing completely at random" (MCAR) that we wish to impute, this may not always be the case.
 
-#### Stars
+#### Missing Data - Stars
 
 The predictor `Stars` suggests that out of 16,000 wine samples, about 25% have never been professionally reviewed.
 If we assume that the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model.
@@ -194,13 +212,9 @@ To enable further analysis we'll convert `stars` from a numeric to a factor, wit
 ```{r}
 df_prep <- df_prep %>%
   mutate(stars = as.factor(ifelse(is.na(stars),0,stars)))
-
-# Create boolean for presence of review ..removed, linearly related in model
-# df_prep <- df_prep %>%
-#   mutate(has_review = as.factor(ifelse(stars == 0, 0, 1)))
 ```
 
-#### Chemical Compounds
+#### Missing Data - Chemical Compounds
 
 Next we consider some of the missing chemical compounds in our wines; alcohol, sugars, chlorides, sulfites and sulfates, and measures such as `ph`.
 
@@ -230,41 +244,41 @@ meth[c('target','labelappeal','stars','source')] = ''
 ```
 
 ```{r, include=FALSE}
-set.seed(42)
 impute = mice(df_prep, method=meth, predictorMatrix=predM, m=5)
 df_prep_imputed <- complete(impute)
 ```
 
-------------------------------------------------------------------------
+#### Data Sparseness - Label Appeal
 
-### Additional Data Prep
+`labelappeal` is a numeric score of consumer ratings for a wine brand's label design.
+It has also been pre-transformed to produce a normal distribution for modeling; however this is a very sparse variable with nearly half the cases having a value of zero.
 
-#### Factors
-
-We'll transform `labelappeal` from a numeric to a factor as well.
+This may be candidate for handling with Zero-Inflated models.
+We won't change the values here, but will convert `labelappeal` from a numeric to a factor.
 
 ```{r}
 df_prep_imputed <- df_prep_imputed %>%
   mutate(labelappeal = as.factor(labelappeal))
 ```
 
+------------------------------------------------------------------------
+
 #### Examine Final Dataset
 
-We now have reasonably imputed values, and nearly-normal distributions for our numeric predictors.
-Of special note is the preponderance of zero values for `stars` (indicating the absence of a review) which might benefit from the use of zero-inflated models in the following sections.
+We now have reasonably imputed values, and nearly-normal distributions for our numeric predictors, taking special note of the frequency of zero values for `labelappeal` and `stars`.
 
 ```{r}
-df_prep_imputed %>%
-  dplyr::select(!c(source, target)) %>%
-  skim() %>%
-  dplyr::select(skim_variable, complete_rate, n_missing) %>%
-  rename(variable=skim_variable) %>%
-  mutate(complete_rate=round(complete_rate,2)) %>%
-  arrange(variable) %>%
-  kable() %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
+n_missing <- apply(df_prep_imputed, 2, function(col) sum(is.na(col)))
+n_zero <- colSums(df_prep_imputed==0)
+
+df <- data.frame(n_missing, n_zero)
+df <- cbind(variable=rownames(df),df)
+rownames(df) <- NULL
+
+df %>% 
+  dplyr::filter(variable != 'source' & variable != 'target') %>%
+  arrange(variable) %>% 
+  nice_table()
 ```
 
 ```{r}
@@ -285,10 +299,10 @@ With transformations complete, we split back into training and prediction datase
 ```{r}
 # split back to train and test, remove source flag
 df_train_all <- df_prep_imputed %>% filter(source == 'train') %>% dplyr::select(!source)
+
 df_predict <- df_prep_imputed %>% filter(source == 'predict') %>% dplyr::select(!source)
 
 # create a validation holdout from the training dataset
-set.seed(123)
 row_sample <- sample(c(TRUE,FALSE), nrow(df_train_all), replace=TRUE, prob=c(0.85,0.15))
 
 df_train <- df_train_all[row_sample,]
@@ -302,36 +316,27 @@ df_valid <- df_train_all[!row_sample,]
 ## Poisson Regression 1
 
 Poisson Regression assumes that the variance and mean of our dependent variable `target` are roughly equal, otherwise we may be looking at over- or under-dispersion.
-In our training and validation dataset, the mean is `r round(mean(df_train_all$target),2)` and the variance is `r round(var(df_train_all$target),2)`, suggesting our data is roughly equally dispersed.
 
 ```{r, echo=TRUE}
 pr1 <- glm(target ~ ., family = 'poisson', data = df_train)
+```
+
+```{r}
 summary(pr1)
+
+pr1_diag <- model_diag(pr1)
+
+pr1_diag[c('AIC','Dispersion','Log-Lik')] %>% 
+  round(2) %>% nice_table()
 ```
 
 We note that our model has generated 'dummies' from our categorical variables `labelappeal` and `stars`, and of the 20 total predictors, all but five have statistical significance.
 
-```{r}
-# pearson resids, dispersion parameter, log-likelihood, AIC
-pr1_pres <- resid(pr1, 'pearson')
-pr1_disp <- sum(pr1_pres^2)/pr1$df.residual
-pr1_loglik <- logLik(pr1)
-pr1_aic <- AIC(pr1)
-```
+Notably, our Dispersion Parameter is `r round(pr1_diag['Dispersion'],2)`, which suggests a degree of under-dispersion in the data.
 
 ### Diagnostics
 
-While our Dispersion Parameter is less than one (`r round(pr1_disp,3)`), by graphing our target values (green) against our predicted values (blue) we can easily see this model tends to under-predict the higher count levels, and over-predict the lower count levels.
-
-```{r}
-# table
-pr1_diag_tbl <- matrix(c(round(pr1_aic,3), round(pr1_disp,3), round(pr1_loglik,3)))
-rownames(pr1_diag_tbl) <- c('AIC','Dispersion','LogLik')
-pr1_diag_tbl %>% kable %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
-```
+By graphing our target values (green) against our predicted values (blue) we can easily see this model tends to under-predict the higher count levels, and wildly over-predict the lower count levels.
 
 ```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
 # predict based on our validation holdout
@@ -367,37 +372,27 @@ pr1_eval %>%
 
 ## Poisson Regression 2
 
-Zero-inflated model?
+We'll build a Zero-Inflated Poisson model to handle the large number of zero values in our `labelappeal` and `stars` predictors, to see if we can improve model accuracy.
 
 ```{r, echo=TRUE}
 pr2 <- zeroinfl(target ~ . | ., data=df_train, dist = 'poisson')
-summary(pr2)
 ```
 
-...
-
 ```{r}
-# pearson resids, dispersion parameter, log-likelihood, AIC
-pr2_pres <- resid(pr2, 'pearson')
-pr2_disp <- sum(pr2_pres^2)/pr1$df.residual
-pr2_loglik <- logLik(pr2)
-pr2_aic <- AIC(pr2)
+summary(pr2)
+
+pr2_diag <- model_diag(pr2)
+
+pr2_diag[c('AIC','Dispersion','Log-Lik')] %>% 
+  round(2) %>% nice_table()
 ```
 
 ### Diagnostics
 
-...
+Using a Zero-Inflated model, the Dispersion Parameter drops significantly, but we are getting a better overall result for counts of 3 or more.
+By graphing our target values (green) against our predicted values (blue) we can see we are getting much greater accuracy rate for most of the mid- and upper counts.
 
-```{r}
-# table
-pr2_diag_tbl <- matrix(c(round(pr2_aic,3), round(pr2_disp,3), round(pr2_loglik,3)))
-rownames(pr2_diag_tbl) <- c('AIC','Dispersion','LogLik')
-
-pr2_diag_tbl %>% kable %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
-```
+Notably, we are still under-predicting counts of 1-2, and greatly over-predicting counts of zero.
 
 ```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
 # predict based on our validation holdout
@@ -433,37 +428,24 @@ pr2_eval %>%
 
 ## Negative Binomial Regression 1
 
-...
+Generally, we would use Negative Binomial Regression in cases of over-dispersion (where the variance of our dependent variable is significantly greater than the mean.) This does not appear to be the case with our dataset, but we'll apply it here and examine the results:
 
 ```{r, echo=TRUE}
 nb1 <- glm.nb(target ~ ., data = df_train)
-summary(nb1)
 ```
 
-...
-
 ```{r}
-# pearson resids, dispersion parameter, log-likelihood, AIC
-nb1_pres <- resid(nb1, 'pearson')
-nb1_disp <- sum(nb1_pres^2)/nb1$df.residual
-nb1_loglik <- logLik(nb1)
-nb1_aic <- AIC(nb1)
+summary(nb1)
+
+nb1_diag <- model_diag(nb1)
+
+nb1_diag[c('AIC','Dispersion','Log-Lik')] %>% 
+  round(2) %>% nice_table()
 ```
 
 ### Diagnostics
 
-...
-
-```{r}
-# table
-nb1_diag_tbl <- matrix(c(round(nb1_aic,3), round(nb1_disp,3), round(nb1_loglik,3)))
-rownames(nb1_diag_tbl) <- c('AIC','Dispersion','LogLik')
-
-nb1_diag_tbl %>% kable %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
-```
+As expected, the Negative Binomial Regression does not outperform the Poisson.
 
 ```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
 # predict based on our validation holdout
@@ -499,37 +481,24 @@ nb1_eval %>%
 
 ## Negative Binomial Regression 2
 
-Zero-inflated model?
+We'll build a Zero-Inflated Negative Binomial model to handle the large number of zero values in our `labelappeal` and `stars` predictors, to see if we can improve model accuracy.
 
 ```{r, echo=TRUE}
 nb2 <- zeroinfl(target ~ . | ., data=df_train, dist = 'negbin')
-summary(nb2)
 ```
 
-...
-
 ```{r}
-# pearson resids, dispersion parameter, log-likelihood, AIC
-nb2_pres <- resid(nb2, 'pearson')
-nb2_disp <- sum(nb2_pres^2)/pr1$df.residual
-nb2_loglik <- logLik(nb2)
-nb2_aic <- AIC(nb2)
+summary(nb2)
+
+nb2_diag <- model_diag(nb2)
+
+nb2_diag[c('AIC','Dispersion','Log-Lik')] %>% 
+  round(2) %>% nice_table()
 ```
 
 ### Diagnostics
 
-...
-
-```{r}
-# table
-nb2_diag_tbl <- matrix(c(round(nb2_aic,3), round(nb2_disp,3), round(nb2_loglik,3)))
-rownames(nb2_diag_tbl) <- c('AIC','Dispersion','LogLik')
-
-nb2_diag_tbl %>% kable %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
-```
+The Zero-Inflated Negative Binomial model sees similar improvement as with the Zero-Inflated Poisson, but as before does not outperform the Poisson.
 
 ```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
 # predict based on our validation holdout
@@ -565,9 +534,82 @@ nb2_eval %>%
 
 ## Multiple Linear Regression 1
 
+For our first Multiple Linear Regression, we'll use all predictors.
+
+```{r, echo=TRUE}
+lm1 <- lm(target ~ ., data=df_train)
+```
+
+```{r}
+summary(lm1)
+
+lm1_diag <- model_diag(lm1)
+
+lm1_diag[c('AIC','Adj R2')] %>% 
+  round(2) %>% nice_table()
+```
+
+### Diagnostics
+
+...
+
+```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=5}
+# residual plots
+plot(lm1)
+
+# validate and calculate RMSE
+lm1_valid <- predict(lm1, newdata = df_valid)
+lm1_eval <- bind_cols(target = df_valid$target, predicted=lm1_valid)
+lm1_rmse <- sqrt(mean((lm1_eval$target - lm1_eval$predicted)^2)) 
+
+# plot targets vs predicted
+lm1_eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
+  labs(title=paste('RMSE:',round(lm1_rmse,1)))
+```
+
 ------------------------------------------------------------------------
 
-## Multiple Linear Regression 1
+## Multiple Linear Regression 2
+
+For our second Multiple Linear Regression, we'll add stepwise feature selection.
+
+```{r, echo=TRUE}
+lm2_all <- lm(target ~ ., data=df_train)
+lm2 <- stepAIC(lm2_all, trace=FALSE, direction='both')
+```
+
+```{r}
+summary(lm2)
+
+lm2_diag <- model_diag(lm2)
+
+lm2_diag[c('AIC','Adj R2')] %>% 
+  round(2) %>% nice_table()
+```
+
+### Diagnostics
+
+...
+
+```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=5}
+# residual plots
+plot(lm2)
+
+# validate and calculate RMSE
+lm2_valid <- predict(lm2, newdata = df_valid)
+lm2_eval <- bind_cols(target = df_valid$target, predicted=lm2_valid)
+lm2_rmse <- sqrt(mean((lm2_eval$target - lm2_eval$predicted)^2)) 
+
+# plot targets vs predicted
+lm2_eval %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
+  labs(title=paste('RMSE:',round(lm2_rmse,1)))
+```
 
 ------------------------------------------------------------------------
 
