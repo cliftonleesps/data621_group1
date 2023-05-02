@@ -41,7 +41,8 @@ set.seed(42)
 ```
 
 ```{css}
-h4, h5 {margin-top: 20px;}
+# only required for final knit
+#h4, h5 {margin-top: 20px;}
 ```
 
 ```{r common functions}
@@ -556,7 +557,9 @@ lm1_diag[c('AIC','Adj R2')] %>%
 ```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=5}
 # residual plots
 plot(lm1)
+```
 
+```{r}
 # validate and calculate RMSE
 lm1_valid <- predict(lm1, newdata = df_valid)
 lm1_eval <- bind_cols(target = df_valid$target, predicted=lm1_valid)
@@ -597,7 +600,9 @@ lm2_diag[c('AIC','Adj R2')] %>%
 ```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=5}
 # residual plots
 plot(lm2)
+```
 
+```{r}
 # validate and calculate RMSE
 lm2_valid <- predict(lm2, newdata = df_valid)
 lm2_eval <- bind_cols(target = df_valid$target, predicted=lm2_valid)
