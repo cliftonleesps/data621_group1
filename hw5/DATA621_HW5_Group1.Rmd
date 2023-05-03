@@ -339,7 +339,7 @@ Notably, our Dispersion Parameter is `r round(pr1_diag['Dispersion'],2)`, which 
 
 By graphing our target values (green) against our predicted values (blue) we can easily see this model tends to under-predict the higher count levels, and wildly over-predict the lower count levels.
 
-```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
+```{r, fig.align='default', out.width="50%", fig.height=4}
 # predict based on our validation holdout
 pr1_valid <- predict(pr1, newdata = df_valid)
 
@@ -395,7 +395,7 @@ By graphing our target values (green) against our predicted values (blue) we can
 
 Notably, we are still under-predicting counts of 1-2, and greatly over-predicting counts of zero.
 
-```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
+```{r, fig.align='default', out.width="50%", fig.height=4}
 # predict based on our validation holdout
 pr2_valid <- predict(pr2, newdata = df_valid)
 
@@ -448,7 +448,7 @@ nb1_diag[c('AIC','Dispersion','Log-Lik')] %>%
 
 As expected, the Negative Binomial Regression does not outperform the Poisson.
 
-```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
+```{r, fig.align='default', out.width="50%", fig.height=4}
 # predict based on our validation holdout
 nb1_valid <- predict(nb1, newdata = df_valid)
 
@@ -501,7 +501,7 @@ nb2_diag[c('AIC','Dispersion','Log-Lik')] %>%
 
 The Zero-Inflated Negative Binomial model sees similar improvement as with the Zero-Inflated Poisson, but as before does not outperform the Poisson.
 
-```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=4}
+```{r, fig.align='default', out.width="50%", fig.height=4}
 # predict based on our validation holdout
 nb2_valid <- predict(nb2, newdata = df_valid)
 
@@ -554,7 +554,7 @@ lm1_diag[c('AIC','Adj R2')] %>%
 
 ...
 
-```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=5}
+```{r, fig.align='default', out.width="50%", fig.height=5}
 # residual plots
 plot(lm1)
 ```
@@ -597,7 +597,7 @@ lm2_diag[c('AIC','Adj R2')] %>%
 
 ...
 
-```{r, fig.align='default',fig.show="hold", out.width="50%", fig.height=5}
+```{r, fig.align='default',out.width="50%", fig.height=5}
 # residual plots
 plot(lm2)
 ```
