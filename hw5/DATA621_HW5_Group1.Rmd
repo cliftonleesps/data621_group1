@@ -32,6 +32,7 @@ library(MASS) # glm.nb()
 library(mice)
 library(pscl) # zeroinfl()
 library(skimr)
+library(sjPlot)
 
 # ggplot
 theme_set(theme_light())
@@ -619,6 +620,37 @@ lm2_eval %>%
 ------------------------------------------------------------------------
 
 # Model Evaluation
+
+
+
+```{r}
+
+tab_model(pr1, nb1,
+          dv.labels = c('Poisson','Negative Binomial'),
+          show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, 
+          show.ci=FALSE, show.p = TRUE,show.stat=TRUE, digits.p=4)
+
+```
+
+
+```{r}
+tab_model(lm1, lm2,
+          dv.labels = c('Multiple Linear Regression 1','Multiple Linear Regression 2'),
+          show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, 
+          show.ci=FALSE, show.p = TRUE,show.stat=TRUE, digits.p=4)
+```
+
+
+```{r}
+
+tab_model(pr2, nb2,
+          dv.labels = c( 'Poisson zeroinfl', 'Negative Binomial zeroinfl'),
+          show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, 
+          show.zeroinf = TRUE, show.p = TRUE, show.ci=FALSE, show.stat=TRUE, 
+          digits.p=4)
+
+```
+
 
 ------------------------------------------------------------------------
 
