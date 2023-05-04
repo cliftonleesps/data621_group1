@@ -62,11 +62,9 @@ library(car)
 
 ## To load the below libraries you might have to do the following in the console first:
 ####  install.packages("devtools")
+####  install.packages("see")
 ####  devtools::install_github("haleyjeppson/ggmosaic")
 ####  devtools::install_github("thomasp85/patchwork")
-
-
-
 
 
 # ggplot
@@ -1044,7 +1042,7 @@ model_1_aic %>% tidy() %>%
 ```{r}
 # validate and calculate RMSE
 model_1_aic.valid <- predict(model_1_aic, newdata = df_test)
-model_1_aic.eval <- bind_cols(target = df_test$TARGET_AMT, predicted=model_1_aic.valid)
+model_1_aic.eval <- bind_cols(target = df_test$TARGET_AMT, predicted=unname(model_1_aic.valid))
 model_1_aic.rmse <- sqrt(mean((model_1_aic.eval$target - model_1_aic.eval$predicted)^2)) 
 
 # plot targets vs predicted
@@ -1055,14 +1053,13 @@ model_1_aic.eval %>%
   labs(title=paste('RMSE:',round(model_1_aic.rmse,1)))
 ```
 
-
 ```{r}
 multi_metric <- metric_set(mape, smape, mase, mpe, yardstick::rmse)
-model1_df <-model_1_aic.eval %>% multi_metric(truth=model_1_aic.eval$target, estimate=model_1_aic.eval$predicted)
-
+model1_df <- model_1_aic.eval %>% multi_metric(truth=target, estimate=predicted)
 a <- summary(model_1_aic)
+```
 
-
+```{r}
 results_lm_tbl <- tibble(
                       Model = character(),
                       mape = numeric(), 
@@ -1074,7 +1071,6 @@ results_lm_tbl <- tibble(
                       "Adjusted R2" = numeric(),
                       "F-statistic" = numeric()
                 )
-
 
 results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       Model = "Model 1: Original data",
@@ -1091,8 +1087,6 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
 
 ```
 
-
-
 #### Model Assumptions
 
 We evaluate the linear modeling assumptions using standard diagnostic plots, and Variance Inflation Factor (VIF) to assess collinearity.
@@ -1108,7 +1102,6 @@ check_model(model_1_aic, check=c('ncv','qq','homogeneity','outliers'))
 
 
 ```{r vif_lm1}
-
 vif_values <- vif(model_1_aic)
 vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
 
@@ -1182,7 +1175,7 @@ model_2_aic.eval %>%
 
 
 ```{r}
-model2_df <-model_2_aic.eval %>% multi_metric(truth=model_2_aic.eval$target, estimate=model_2_aic.eval$predicted)
+model2_df <-model_2_aic.eval %>% multi_metric(truth=target, estimate=predicted)
 
 b <- summary(model_2_aic)
 
@@ -1460,28 +1453,27 @@ kable(results_lm_tbl, digits=4) %>%
 ## 5. Predictions
 
 
-Using the selected Lasso  binary logistic regression model we will predict the `TARGET_FLAG` variable (the probability that a person will crash their car) for the eval dataset. The matrix used in the predict() function requires a target variable so we will create a dummy variable for these purposes and set it to 0. The prediction function will generate a vector of obliterates that we will use to calculate a binomial prediction (using a threshold of 0.5). The data used for predictions has some variables turned to factors, without NAs. The transformations applied to the train dataset were applied to the evaluation data as well.
+Using the selected Lasso binary logistic regression model we will predict the `TARGET_FLAG` variable (the probability that a person will crash their car) for the eval dataset. The matrix used in the predict() function requires a target variable so we will create a dummy variable for these purposes and set it to 0. The prediction function will generate a vector of obliterates that we will use to calculate a binomial prediction (using a threshold of 0.5). The data used for predictions has some variables turned to factors, without NAs. The transformations applied to the train dataset were applied to the evaluation data as well.
 
 With the selected Stepwise multiple linear regression model and the predicted `TARGET_FLAG=1` by the Lasso binary model, we are going to predict the `TARGET_AMT` variable (the amount of money it will cost if the person does crash their car). The stepAIC linear model predicts predictions=ln(TARGET_AMT), to get back to the original target value, we take exp(predictions). The evaluation data for the linear model has additional transformations (bin values added, boxcox/log transformations).
 The results of the prediction will be written to the `eval_predictions.csv` and loaded to the [GitHub repo](https://github.com/cliftonleesps/data621_group1/tree/main/hw4).
 
 ```{r}
-
 # build X matrix and Y vector
 eval_df$TARGET_FLAG <- 0
-
-
 X_eval <- model.matrix(TARGET_FLAG ~ ., data=eval_df)[,-1]
+```
 
+```{r}
 # predict using coefficients at lambda.min
 lassoPred <- predict(lasso.log.model, newx = X_eval, type = "response", s = 'lambda.min')
+```
 
+```{r}
 eval_pred_df <- eval_df
 eval_pred_df$TARGET_FLAG_PROB <- lassoPred[,1]
 eval_pred_df$TARGET_FLAG_PRED <- ifelse(lassoPred > 0.5, 1, 0)[,1]
-
 eval_pred_df <- subset(eval_pred_df, select = -c(TARGET_FLAG))
-
 ```
 
 ```{r}
