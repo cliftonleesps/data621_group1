@@ -57,7 +57,7 @@ With the exception of **gpahrs** for AM, all variables are available for all nin
 ---
 #### 3. Data Preparation Notes
 
-- Create Unique Student ID across all datasets (recommend school abbreviation + studentid)
+- (**DONE**) Create Unique Student ID across all datasets (recommend school abbreviation + studentid)
 	- "Student identifiers are not unique across institutions. If building a dataset with application records from more than one institution, creation of an institutionid variable is recommended.  However this School-based ID will be needed to join Application Data with associated Transcript Data."
 	  
 	- "It is not possible to track transfers within this group of nine universities." (does this mean that all prior transcript information transfers to the 'final university'?)
