@@ -2,7 +2,6 @@
 https://opr.princeton.edu/archive/theop/
 
 ## Data
-There are two distinct datasets that are a part of this study; **Administrative** data that summarize student-level admissions and academic performance from nine Texas public colleges and universitites, and longitudinal **Survey** data of Texas high school sophmores and seniors exploring their post-high school goals and activities.
 
 ### Administrative Data
 **Adminstrative** data are split into two groups:  **applications** and **transcripts**.   One of each dataset is provided for 8 Texas colleges, for 16 datasets in total.
