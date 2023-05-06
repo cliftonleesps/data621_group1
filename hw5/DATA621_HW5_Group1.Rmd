@@ -33,6 +33,7 @@ library(mice)
 library(pscl) # zeroinfl()
 library(skimr)
 library(sjPlot)
+library(mpath)
 
 # ggplot
 theme_set(theme_light())
@@ -616,6 +617,57 @@ lm2_eval %>%
   geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
   labs(title=paste('RMSE:',round(lm2_rmse,1)))
 ```
+
+
+
+## Lasso
+
+Fit zero-inflated regression models for count data via penalized maximum likelihood.
+
+
+
+```{r}
+fit.lasso <- zipath(target~.|.,data = df_train, family = "negbin")
+
+
+```
+
+
+```{r}
+minBic <- which.min(BIC(fit.lasso))
+coef(fit.lasso, minBic)
+```
+
+
+### Diagnostics
+
+```{r}
+
+#lasso_valid <- predict(fit.lasso, newdata=df_valid, which=fit.lasso$lambda.which)
+lasso_valid <- predict(fit.lasso, newdata=df_valid, which=minBic)
+lasso_valid <- data.frame(lasso_valid)
+colnames(lasso_valid) <- c('predicted')
+lasso_valid$target <- df_valid$target
+lasso_eval <- bind_cols(target = df_valid$target, predicted=lasso_valid)
+lasso_rmse <- sqrt(mean((lasso_eval$target - lasso_eval$predicted)^2)) 
+
+
+# plot targets vs predicted
+lasso_valid %>%
+  ggplot(aes(x = target, y = predicted)) +
+  geom_point(alpha = .3) +
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
+  labs(title=paste('RMSE:',round(lasso_rmse,1)))
+
+```
+
+
+
+
+
+
+
+
 
 ------------------------------------------------------------------------
 
