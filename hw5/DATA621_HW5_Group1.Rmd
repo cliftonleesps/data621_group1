@@ -557,7 +557,7 @@ lm1_diag[c('AIC','Adj R2')] %>%
 
 ```{r, fig.align='default', out.width="50%", fig.height=5}
 # residual plots
-plot(lm1)
+plot(lm1,ask=FALSE)
 ```
 
 ```{r}
