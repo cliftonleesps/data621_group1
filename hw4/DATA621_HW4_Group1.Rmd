@@ -1,5 +1,5 @@
 ---
-title: 'Homework #4:  Multiple linear regression and Binary logistic regression'
+title: 'Homework #4: Multiple Linear & Binary logistic Regression (Car Insurance)'
 subtitle: 'Critical Thinking Group 1'
 author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks'
 output:
@@ -18,7 +18,7 @@ editor_options:
 ```{r setup, include=FALSE}
 # chunks
 knitr::opts_chunk$set(echo=FALSE, eval=TRUE, include=TRUE, 
-message=FALSE, warning=FALSE, fig.height=5)
+message=FALSE, warning=FALSE, fig.align='center', fig.height=5)
 
 # libraries
 library(yardstick)
@@ -59,19 +59,31 @@ library(sjPlot)
 library(olsrr) 
 library(car)
 
-
 ## To load the below libraries you might have to do the following in the console first:
 ####  install.packages("devtools")
 ####  install.packages("see")
 ####  devtools::install_github("haleyjeppson/ggmosaic")
 ####  devtools::install_github("thomasp85/patchwork")
 
-
 # ggplot
 theme_set(theme_bw())
 ```
 
 ```{r common functions}
+#' nice_table
+#' 
+#' @param df
+#' @param fw
+nice_table <- function(df, cap=NULL, cols=NULL, dig=3, fw=F){
+  if (is.null(cols)) {c <- colnames(df)} else {c <- cols}
+  table <- df %>% 
+    kable(caption=cap, col.names=c, digits=dig) %>% 
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      html_font = 'monospace',
+      full_width = fw)
+  return(table)
+}
 
 #' glmnet_cv_aicc
 #'
@@ -94,7 +106,6 @@ glmnet_cv_aicc <- function(fit, lambda = 'lambda.min'){
        })
 }
 
-
 #' coeff2dt
 #'
 #' @param fitobject 
@@ -111,7 +122,11 @@ coeff2dt <- function(fitobject, s) {
   # reorder the variables in term of coefficients
   return(coeffs.dt[order(coeffs.dt$coefficient, decreasing = T),])
 }
+```
 
+```{css}
+# only required for final knit
+h4, h5, .h4, .h5 {margin-top: 20px !important;}
 ```
 
 ```{r data}
@@ -122,31 +137,31 @@ eval_df <- read.csv("https://raw.githubusercontent.com/cliftonleesps/data621_gro
 
 ## Overview
 
-In this homework assignment, we will explore, analyze and model a data set containing approximately 8000 records representing customers at an auto insurance company.
-We will build multiple linear regression models on the continuous variable `TARGET_AMT` and binary logistic regression model on the boolean variable `TARGET_FLAG` to predict the probability that a person will crash their car, and to predict the associated costs.
+In this homework assignment, we explored, analyzed and modeled a dataset containing approximately 8000 records representing customers at an auto insurance company.
 
-We are going to build several models using different techniques and variable selection.
-In order to best assess our predictive models, we will create a validation set within our training data along an 80/20 training/testing proportion, before applying the finalized models to a separate evaluation dataset that does not contain the target.
+We built multiple linear regression models on the continuous variable `TARGET_AMT` and binary logistic regression models on the boolean variable `TARGET_FLAG` to predict the probability that a person will crash their car and to predict the associated costs.
+
+We built several models using different techniques and variable selection.
+To best assess our predictive models, we created a hold-out validation set from our training data, before making predictions on a separate evaluation dataset that did not contain the targets.
+
+------------------------------------------------------------------------
 
 ## 1. Data Exploration
 
-The insurance training dataset contains 8161 observations of 26 variables, each record represents a customer.
-The evaluation dataset contains 2141 observations of 26 variables.
-These include demographic measures such as age and gender, socioeconomic measures such as education and household income, and vehicle-specific metrics such as car model, age and assessed value.
+The **training** dataset contained 8161 observations of 26 predictor variables, where each record represented an individual customer.
+These variables included demographic measures such as age and gender, socioeconomic measures such as education and household income, and vehicle-specific metrics such as car model, age, and assessed value.
+
+The **evaluation** dataset contained 2141 observations over the same predictor variables.
 
 <img src="https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw4/hw4_variables.png" width="1200" style="display: block; margin-left: auto; margin-right: auto; width: 100%;"/>
 
-
 ### 1.1 Summary Statistics
 
-Each record also has two response variables.
-The first response variable, `TARGET_FLAG`, is a boolean where "1" means that the person was in a car crash.
-The second response variable, `TARGET_AMT` is a numeric indicating the (positive) cost if a car crash occurred; this value is zero if the person did not crash their car.
+Each record in the training dataset also included two response variables.
+The first response variable, `TARGET_FLAG`, was a boolean where "1" indicated the person was in a car crash.
+The second response variable, `TARGET_AMT` was a numeric indicating the cost if a car crash occurred; this value was zero if the person did not crash their car.
 
-We can explore a sample of the training data here, and make some initial observations:
-
--   Some currency variables are strings with '\$' symbols instead of numerics (e.g.`OLDCLAIM`, `BLUEBOOK`).
--   Some character variables include a prefix `z_` that could be removed for readability (`EDUCATION`, `JOB`).
+A sample of the training data appears in the following table:
 
 ```{r summary1}
 DT::datatable(
@@ -162,20 +177,31 @@ DT::datatable(
       rownames = FALSE) 
 ```
 
-The table below provides valuable descriptive statistics about the training data.
+While exploring this data, we made the following observations:
 
-Based on this summary table and exploration of the data, we can make the following observations:
+-   14 variables were categorical, and 12 were numeric.
+-   There was no missing data for character variables.
+-   Some currency variables were strings with '\$' symbols instead of numerics (`OLDCLAIM`, `BLUEBOOK`).
+-   Some character variables included prefixes that could be removed for readability (`EDUCATION`, `JOB`).
+-   Numeric variables with missing values included `YOJ` (6%), `INCOME` (5%), `HOME_VAL` (6%), `CAR_AGE` (6%), and `AGE` (1%).
+-   Most of the numeric variables had a minimum of zero.
+-   One variable, `CAR_AGE` had a negative value of -3, which didn't make intuitive sense.
+-   Some character variables should have been numeric and vice-versa.
 
--   14 variables are categorical, 12 are numeric.
--   There is no missing data for character variables.
--   Numeric variables with missing values include `YOJ` (6%), `INCOME` (5%), `HOME_VAL` (6%), `CAR_AGE` (6%), and `AGE` (1%).
--   Most of the numeric variables have a minimum of zero.
--   One variable, `CAR_AGE` has a negative value of -3, which doesn't make intuitive sense. We'll handle this below.
--   Some of the variables are character though they should be numeric and vice-versa.
+```{r summary-traindf}
+skim_without_charts(train_df) %>%
+  dplyr::select(c(skim_variable, skim_type, n_missing, complete_rate,
+                  numeric.p0, numeric.p100, numeric.mean)) %>%
+  nice_table(cap='Summary: Training Dataset',cols=c('variable','type','missing',
+                                    'complete%','min','max','mean'))
+```
 
-```{r summary}
-skim_without_charts(train_df)
-skim_without_charts(eval_df)
+```{r summary-evaldf}
+skim_without_charts(eval_df) %>%
+  dplyr::select(c(skim_variable, skim_type, n_missing, complete_rate,
+                  numeric.p0, numeric.p100, numeric.mean)) %>%
+  nice_table(cap='Summary: Evaluation Dataset',cols=c('variable','type','missing',
+                                      'complete%','min','max','mean'))
 ```
 
 ```{r prep}
@@ -211,30 +237,16 @@ for (v in currency_vars) {
   train_df <- train_df %>% mutate(!!v := parse_number(get(v)))
   eval_df <- eval_df %>% mutate(!!v := parse_number(get(v)))
 }
-
-
 ```
 
+------------------------------------------------------------------------
 
 ### 1.2 Distributions
 
-Before building a model, we need to make sure that we have both classes equally represented in our `TARGET_FLAG` variable.
-Class `1` takes 26% and class `0` takes 74% of the target variable.
-As a result, we have unbalanced class distribution for our target variable that we have to deal with, we have to take some additional steps (bootstrapping, etc) before using logistic regression.
+Many of these distributions for the numeric variables seemed highly skewed and non-normal.
+As part of our data preparation, we used power transformations to find whether transforming variables to more normal distributions improved our models' efficacy.
 
-```{r balance}
-prop.table(table(train_df$TARGET_FLAG)) %>% 
-  kable(label = "Distribution of Target Flag", 
-        caption = "Distribution of Target Flag", 
-        col.names = c("Value", "%"), 
-        digits = 2) %>% 
-    kable_styling(full_width = F) 
-```
-
-Many of these distributions for the numeric variables seem highly skewed and non-normal.
-As part of our data preparation we'll use power transformations to find whether transforming variables to more normal distributions improves our models' efficacy.
-
-```{r, cache=TRUE}
+```{r}
 dist_df <- train_df %>% dplyr::select(where(is.numeric)) %>%
   pivot_longer(!c(TARGET_FLAG,TARGET_AMT), 
                names_to = 'variable', 
@@ -247,30 +259,33 @@ dist_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) +
   theme_bw()
 ```
 
-By checking the frequency of the variables that have very few unique values (`HOMEKIDS`, `KIDSDRIV`, `CLM_FREQ`), we can assume that these variables better be transformed to binary (1 if the value is greater than 0). As the see the percentage below, more than 50% of the data for these variables is 0, the rest some over few values.
+By checking the frequency of the variables with few unique values (`HOMEKIDS`, `KIDSDRIV`, `CLM_FREQ`), we assumed that these variables might perform better if transformed to binary (1 if the value is greater than 0).
+As demonstrated by the graph below, more than 50% of the data for these variables was 0:
+
 ```{r discrete_plot}
 train_df[,c("HOMEKIDS","KIDSDRIV", "CLM_FREQ")] %>%
-gather("variable","value") %>%
-group_by(variable) %>%
-count(value) %>%
-mutate(value = factor(value,levels=5:0)) %>%
-mutate(percent = n*100/8161) %>%
-ggplot(.,
-aes(variable,percent)) +
-geom_bar(stat = "identity", aes(fill = value)) +
-xlab("Variable") +
-ylab("Percentage") +
-theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-scale_fill_manual(values = rev(c("#003f5c","#58508d", "#bc5090", "#ff6361", "#ffa600","#CC79a7")))
+  gather("variable","value") %>%
+  group_by(variable) %>%
+  count(value) %>%
+  mutate(value = factor(value,levels=5:0)) %>%
+  mutate(percent = n*100/8161) %>%
+  ggplot(.,
+  aes(variable,percent)) +
+  geom_bar(stat = "identity", aes(fill = value)) +
+  xlab("Variable") +
+  ylab("Percentage") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_fill_manual(values = rev(c("#003f5c","#58508d", "#bc5090", "#ff6361", "#ffa600","#CC79a7")))
 ```
 
-The distribution of factor variables can help us to determine if any transformations should be applied (to binary, new variables based on the current ones). For example, variable `PARENT1` can become binary, `EDUCATION` can be transformed to `If Higher education` with 1 for education above Bachelor.
-Also it tells us that having more than one parent results in more crush or that High Schoolers, blue collar employees, SUV cars, revoked drivers are more likely to be in a car crash. 
+We found that the distribution of factor variables could help determine if transformations should be applied.
+For example, variable PARENT1 could become binary, and `EDUCATION` could be transformed to `If Higher education` with 1 for education above Bachelor's.
+
+This analysis also suggested that having more than one parent was correlated with crashes and that High School students, blue-collar employees, SUV cars, and revoked drivers were also more likely to be in a car crash.
+
 ```{r vars_to_factors}
 factor_vars <- c("PARENT1","CAR_TYPE","JOB","CAR_USE",
                  "URBANICITY","RED_CAR","REVOKED","MSTATUS","EDUCATION","SEX")
-
-
 
 for (v in factor_vars) {
   train_df <- train_df %>% mutate(!!v := factor(get(v)))
@@ -281,87 +296,95 @@ train_df$TARGET_FLAG <- as.factor(train_df$TARGET_FLAG)
 ```
 
 ```{r}
-train_df[,c("PARENT1","CAR_TYPE","JOB","CAR_USE", "URBANICITY","RED_CAR","REVOKED","MSTATUS","EDUCATION","SEX")] %>%
-gather("variable","value") %>%
-group_by(variable) %>%
-count(value) %>%
-mutate(value = factor(value)) %>%
-mutate(percent = n*100/8161) %>%
-ggplot(.,
-aes(variable,percent)) +
-geom_bar(stat = "identity", aes(fill = value)) +
-xlab("Variable") +
-ylab("Percent") +
-theme(axis.text.x = element_text(angle = 90, hjust = 1))
+train_df[,factor_vars] %>%
+  gather("variable","value") %>%
+  group_by(variable) %>%
+  count(value) %>%
+  mutate(value = factor(value)) %>%
+  mutate(percent = n*100/8161) %>%
+  ggplot(.,
+  aes(variable,percent)) +
+  geom_bar(stat = "identity", aes(fill = value)) +
+  xlab("Variable") +
+  ylab("Percent") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
 
+------------------------------------------------------------------------
 
 ### 1.3 Box Plots
 
-This is born out in the box plots, in which we do see quite a variable range for `INCOME`, `KIDSDRIV`, and `OLDCLAIM`among others.
-`BLUEBOOK`, `INCOME`, `OLDCLAIM`, `TRAVTIME` have high number of outliers comparing to other variables. In addition, it seems that people with higher income/car age/ home value less likely to get in a car crash.
-```{r boxplot, cache=TRUE}
+We observed large ranges for `INCOME`, `KIDSDRIV`, and `OLDCLAIM`.
+`BLUEBOOK`, `INCOME`, `OLDCLAIM`, `TRAVTIME` seemed to have a high frequency of outliers.
+Additionally, it seemed that people with higher income, car age and home values were less likely to get into a car crash.
+
+```{r boxplot}
 dist_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) + 
   geom_boxplot(color='#023020') + 
   facet_wrap(~variable, scales = 'free',  ncol = 4) + 
   theme_bw()
 ```
 
-### 1.4 Scatter Plot
+------------------------------------------------------------------------
 
-Interestingly, none of our predictors appear to have strong linear relationships to our `TARGET_AMT` response variable, which is a primary assumption of linear regression.
-This suggests that alternative methods might be more successful in modeling the relationships.
+### 1.4 Scatter Plots
 
-```{r scatterplot, cache=TRUE}
+Interestingly, none of our predictors appeared to have strong linear relationships to our `TARGET_AMT` response variable, which is a primary assumption of linear regression.
+This suggested that alternative methods might be more successful in modeling the relationships.
+
+```{r scatterplot}
 dist_df %>% drop_na() %>% ggplot(aes(x=value, y=TARGET_AMT)) + 
   geom_smooth(method='glm', se=TRUE, na.rm=TRUE) +
-  geom_point(color='#023020') + 
+  geom_point(color='#023020', alpha=0.5) + 
   facet_wrap(~variable, scales = 'free',  ncol = 4) + 
   theme_bw()
 ```
 
+------------------------------------------------------------------------
+
 ### 1.5 Correlation Matrix
 
-We see this also born out in the correlation matrix, in which the highest coefficient is 0.58, with others averaging much lower.
+We observed substantial multi-collinearity in our training data, especially between `INCOME` and `HOME_VAL` (+58%), `OLDCLAIM` and `CLAIM_FREQ` (+50%), `KIDSDRIV` and `HOMEKIDS` (+46%), and `AGE` and `HOMEKIDS` (-45%).
+In building our models, we explored methods for reducing these effects.
 
-```{r corr, cache=TRUE}
+```{r corr}
 rcore <- rcorr(as.matrix(train_df %>% dplyr::select(where(is.numeric))))
 coeff <- rcore$r
 corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "black",
-         type="upper", order="hclust",
-         diag=FALSE)
-
-
+         type="upper", order="hclust", number.cex=0.7, diag=FALSE)
 ```
 
-## 2. Data preparation
+------------------------------------------------------------------------
+
+## 2. Data Preparation
 
 ### 2.1 Data types
 
-In order to work with our training and evaluation datasets, we'll need to first convert some variables to more useful data types:
+In order to work with our training and evaluation datasets, we needed to first convert some variables to more useful data types:
 
 -   Convert currency columns from character to integer: `INCOME`,`HOME_VAL`,`BLUEBOOK` and `OLDCLAIM`.
 -   Convert character columns to factors: `TARGET_FLAG`, `CAR_TYPE`, `CAR_USE`, `EDUCATION`, `JOB`, `MSTATUS`, `PARENT1`, `RED_CAR`, `REVOKED`, `SEX` and `URBANICITY`.
 
-
+------------------------------------------------------------------------
 
 ### 2.2 Transformations, Outliers and Missing Values
 
-Before we go further, we need to identify and handle any missing, NA or negative data values so we can perform log transformations and regression. We perform the mentioned operations on both datasets (training/evaluation).
+Before we went further, we needed to identify and handle any missing, NA or negative data values so we could perform log transformations and regression.
+We performed these operations on both the training and evaluation datasets.
 
-First, we'll apply transformations to clean up and align formatting of our variables:
+First, we applied transformations to clean up and align formatting of our variables:
 
--   Drop the `INDEX` variable.
--   Remove "z\_" from all character class values (`MSTATUS`, `SEX`, `JOB`, `CAR_TYPE`, `URBANICITY`, `EDUCATION`)
--   Remove "\$" from the numeric values (`INCOME`, `HOME_VAL`, `BLUEBOOK`, `OLDCLAIM`).
--   Update RED_CAR, replace [no,yes] values with [No, Yes] values.
--   Replace `JOB` blank values with 'Unknown'.
--   Transform variables `HOMEKIDS`, `KIDSDRIV` to binary, the value is TRUE if the original value is greater than 0.
+-   Dropped the `INDEX` variable.
+-   Removed "z\_" from all character class values (`MSTATUS`, `SEX`, `JOB`, `CAR_TYPE`, `URBANICITY`, `EDUCATION`)
+-   Removed "\$" from the numeric values (`INCOME`, `HOME_VAL`, `BLUEBOOK`, `OLDCLAIM`).
+-   Updated RED_CAR, replace [no,yes] values with [No, Yes] values.
+-   Replaced `JOB` blank values with 'Unknown'.
+-   Transformed variables `HOMEKIDS`, `KIDSDRIV` to binary; the value is TRUE if the original value is greater than 0.
 
-Next, we'll manually adjust two special cases of missing or outlier values.
+Next, we manually adjusted two special cases of missing or outlier values.
 
--   In cases where `YOJ` is zero and `INCOME` is NA, we'll set `INCOME` to zero to avoid imputing new values over legitimate instances of non-employment.
--   There is also at least one value of `CAR_AGE` that is less than zero in the training data - we'll assume this is a data collection error and set it to zero (representing a brand-new car.)
+-   In cases where `YOJ` is zero and `INCOME` is NA, we set `INCOME` to zero to avoid imputing new values over legitimate instances of non-employment.
+-   There was also at least one value of `CAR_AGE` less than zero in the training data - we assumed this was a data collection error and set it to zero (representing a brand-new car.)
 
 ```{r}
 ## Check JOB values where YOJ==0 and INCOME is NA
@@ -376,22 +399,11 @@ eval_df <- eval_df %>%
   mutate(INCOME = ifelse(YOJ == 0 & is.na(INCOME), 0, INCOME))
 ```
 
+We used MICE to impute our remaining variables with missing values - `AGE`, `YOJ`, `CAR_AGE`, `INCOME` and `HOME_VALUE`:
 
-```{r}
-#`HOMEKIDS`, `KIDSDRIV` to binary, the value is TRUE if the original value is greater than 0
+-   It was reasonable to assume that relationships exist between these variables (older, more years on the job may correlate with higher income and home value). Taking simple means or medians might have suppressed those features, and MICE provided a better imputation.
 
-for(var in c("HOMEKIDS","KIDSDRIV"))
-{
-train_df[,var] <- factor(ifelse(train_df[,var] > 0,1,0))
-eval_df[,var] <- factor(ifelse(eval_df[,var] > 0,1,0))
-}
-```
-
-We'll use MICE to impute our remaining variables with missing values - `AGE`, `YOJ`, `CAR_AGE`, `INCOME` and `HOME_VALUE`:
-
--   We might reasonably assume that relationships exist between these variables (older, more years on the job may correlate with higher income and home value). Taking simple means or medians might suppress those features, but MICE should provide a better imputation.
-
-```{r impute, cache=TRUE}
+```{r impute}
 # MICE imputation of missing values
 imputed_Data <- mice(train_df, m=5, maxit = 20, method = 'pmm', seed = 500, printFlag=FALSE)
 train_df <- complete(imputed_Data)
@@ -400,24 +412,26 @@ eval_imputed_Data <- mice(eval_df, m=5, maxit = 20, method = 'pmm', seed = 500, 
 eval_df <- complete(eval_imputed_Data)
 ```
 
+To give our models more variables to work with, we engineered some additional features:
 
-To give our models more variables to work with, we'll engineer some additional features:
-
--   Create bin values for `CAR_AGE`, `HOME_VAL` and `TIF`.
--   Create dummy variables for two-level factors, `MALE`, `MARRIED`, `LIC_REVOKED`, `CAR_RED`, `PRIVATE_USE`, `SINGLE_PARENT` and `URBAN`.
+-   Created bin values for `CAR_AGE`, `HOME_VAL` and `TIF`.
+-   Created two-level factors for `HOMEKIDS` and `KIDSDRIV`
+-   Created dummy variables for two-level factors, `MALE`, `MARRIED`, `LIC_REVOKED`, `CAR_RED`, `PRIVATE_USE`, `SINGLE_PARENT` and `URBAN`.
 
 ```{r dummy_vars}
-## Create Dummy Variables for factors with two levels
+## Dummy Variables for factors with two levels
 dummy_vars <- function(df){
   df %>%
     mutate(
-      MALE = factor(ifelse(SEX=="M", 1, 0)), 
-      MARRIED = factor(ifelse(MSTATUS=="Yes", 1, 0)),
-      LIC_REVOKED = factor(ifelse(REVOKED =="Yes", 1, 0)),
-      CAR_RED = factor(ifelse(RED_CAR =="Yes", 1, 0)),
-      PRIVATE_USE = factor(ifelse(CAR_USE =="Private", 1, 0)),
-      SINGLE_PARENT = factor(ifelse(PARENT1 =="Yes", 1, 0)),
-      URBAN = factor(ifelse(URBANICITY =="Highly Urban/ Urban", 1, 0))
+      MALE = factor(ifelse(SEX == "M", 1, 0)), 
+      MARRIED = factor(ifelse(MSTATUS == "Yes", 1, 0)),
+      LIC_REVOKED = factor(ifelse(REVOKED == "Yes", 1, 0)),
+      CAR_RED = factor(ifelse(RED_CAR == "Yes", 1, 0)),
+      PRIVATE_USE = factor(ifelse(CAR_USE == "Private", 1, 0)),
+      SINGLE_PARENT = factor(ifelse(PARENT1 == "Yes", 1, 0)),
+      URBAN = factor(ifelse(URBANICITY == "Highly Urban/ Urban", 1, 0)),
+      KIDSDRIV = factor(ifelse(KIDSDRIV > 0, 1, 0)),
+      HOMEKIDS = factor(ifelse(HOMEKIDS > 0, 1, 0))
     ) %>% 
     dplyr::select(-c(SEX, MSTATUS, REVOKED, RED_CAR, CAR_USE, PARENT1, URBANICITY))
       }
@@ -426,51 +440,53 @@ train_df <- dummy_vars(train_df)
 eval_df <- dummy_vars(eval_df)
 ```
 
-
 ```{r}
-#keep original datasets for further lasso models, use transformed df for further transformations
+# keep original datasets for further lasso models, use transformed df for further transformations
 train_transformed <- train_df
 eval_transformed <- eval_df
 ```
 
 ```{r bin_vars}
-## put into bins:  TIF; CAR_AGE; HOME_VAL
+## bin TIF, CAR_AGE, HOME_VAL
 q <- quantile(train_transformed$CAR_AGE)
 q <- c(-1,  1,  8, 12, 28)
-train_transformed <- train_transformed %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
+train_transformed <- train_transformed %>% 
+  mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
 
 q <- quantile(train_transformed$HOME_VAL)
 q[1] <- -1
-train_transformed <- train_transformed%>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
+train_transformed <- train_transformed%>% 
+  mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
 
-q <- quantile(train_transformed$TIF); 
+q <- quantile(train_transformed$TIF) 
 q[1] <- -1
-train_transformed <- train_transformed %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
-
+train_transformed <- train_transformed %>% 
+  mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
 
 q <- quantile(eval_transformed$CAR_AGE)
 q <- c(-1,  1,  8, 12, 28)
-eval_transformed <- eval_transformed %>% mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
+eval_transformed <- eval_transformed %>% 
+  mutate(CAR_AGE_BIN = cut(CAR_AGE, breaks=q, labels=FALSE))
 
 q <- quantile(eval_transformed$HOME_VAL)
 q[1] <- -1
-eval_transformed <- eval_transformed%>% mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
+eval_transformed <- eval_transformed%>% 
+  mutate(HOME_VAL_BIN = cut(HOME_VAL, breaks=q, labels=FALSE))
 
-q <- quantile(eval_transformed$TIF); 
+q <- quantile(eval_transformed$TIF) 
 q[1] <- -1
-eval_transformed <- eval_transformed %>% mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
+eval_transformed <- eval_transformed %>% 
+  mutate(TIF_BIN = cut(TIF, breaks=q, labels=FALSE))
 ```
 
-Next we'll want to consider any power transformations for variables that have skewed distributions.
-For example, our numeric response variable `TARGET_AMT` is a good candidate for transformation as its distribution is very highly skewed, and the assumption of normality is required in order to apply linear regression.
+Next we wanted to consider any power transformations for variables with skewed distributions.
+For example, our numeric response variable `TARGET_AMT` was a good candidate for transformation as its distribution was very highly skewed, and the assumption of normality is required in order to apply linear regression.
 
--   Log transformation will be applied to variables `TARGET_AMT`, `OLDCLAIM`, `INCOME` to transform their distributions from right-skewed to normally distributed.
--   Similarly, BoxCox transformation will be applied to variables `BLUEBOOK`, `TRAVTIME`, `TIF`, so they also are more normally distributed and to deal with the outliers.
+-   Log transformation applied to variables `TARGET_AMT`, `OLDCLAIM`, `INCOME` to transform their distributions from right-skewed to normally distributed.
+-   BoxCox transformation applied to variables `BLUEBOOK`, `TRAVTIME`, `TIF`.
 
-```{r boxcox, fig.keep="none", cache=TRUE}
-
-
-# use Box-Cox on `BLUEBOOK`, `TRAVTIME`,  `TIF`
+```{r boxcox, fig.keep="none"}
+# use Box-Cox on BLUEBOOK, TRAVTIME, TIF
 bluebook_boxcox <- boxcox(lm(train_transformed$BLUEBOOK ~ 1))
 bluebook_lambda <- bluebook_boxcox$x[which.max(bluebook_boxcox$y)]
 bluebook_trans <- BoxCox(train_transformed$BLUEBOOK, bluebook_lambda)
@@ -480,7 +496,6 @@ bluebook_boxcox <- boxcox(lm(eval_transformed$BLUEBOOK ~ 1))
 bluebook_lambda <- bluebook_boxcox$x[which.max(bluebook_boxcox$y)]
 bluebook_trans <- BoxCox(eval_transformed$BLUEBOOK, bluebook_lambda)
 eval_transformed$BLUEBOOK <- bluebook_trans
-
 
 travtime_boxcox <- boxcox(lm(train_transformed$TRAVTIME ~ 1))
 travtime_lambda <- travtime_boxcox$x[which.max(travtime_boxcox$y)]
@@ -502,186 +517,207 @@ tif_lambda <- tif_boxcox$x[which.max(tif_boxcox$y)]
 tif_trans <- BoxCox(eval_transformed$TIF, tif_lambda)
 eval_transformed$TIF <- tif_trans
 
- ## Use basic log transformation on `TARGET_AMT`, `OLDCLAIM`
-train_transformed <- train_transformed %>% mutate(TARGET_AMT = case_when(TARGET_FLAG==1 ~ log(TARGET_AMT) , TARGET_FLAG==0 ~ TARGET_AMT))
+## Use basic log transformation on TARGET_AMT, OLDCLAIM
+train_transformed <- train_transformed %>% 
+  mutate(TARGET_AMT = case_when(TARGET_FLAG==1 ~ log(TARGET_AMT) , TARGET_FLAG==0 ~ TARGET_AMT))
 train_transformed$OLDCLAIM <- log(train_transformed$OLDCLAIM + 1)
 train_transformed$INCOME <- log(train_transformed$INCOME + 1)
 
-
 eval_transformed$OLDCLAIM <- log(eval_transformed$OLDCLAIM + 1)
 eval_transformed$INCOME <- log(eval_transformed$INCOME + 1)
-
 ```
 
-
-We can examine our final, transformed training dataset and distributions below (with a temporary numeric variable `CAR_CRASH` to represent the response variable for visualization purposes.). As we see on the graphs below, distributions of the transformed variables became closer to normal.
+A summary and distributions of the final, transformed training dataset appears below (with a temporary numeric variable `CAR_CRASH` to represent the response variable for visualization purposes.).
+Post-transformation, distributions for many of the variables became closer to normal.
 
 ```{r}
-skim_without_charts(train_transformed)
+skim_without_charts(train_transformed) %>%
+  dplyr::select(c(skim_variable, skim_type, n_missing, complete_rate,
+                  numeric.p0, numeric.p100, numeric.mean)) %>%
+  nice_table(cap='Summary: Transformed Training Dataset',cols=c('variable','type','missing',
+                                    'complete%','min','max','mean'))
 ```
 
-```{r box_hists, warning=FALSE, message=FALSE}
+```{r box_hists}
 ## Create temporary CAR_CRASH variable from the target_flag for visualization
-#vis_df <- train_transformed %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No'))
+vis_df <- train_transformed %>% 
+  mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 1, 0)) %>% 
+  dplyr::select(where(is.numeric)) %>%
+  dplyr::select(!c(CAR_AGE_BIN, HOME_VAL_BIN, TIF_BIN)) %>% # exclude binned
+  pivot_longer(!c(CAR_CRASH,TARGET_AMT), 
+               names_to = 'variable', 
+               values_to = 'value') %>% 
+  drop_na()
 
-
-vis_df <- train_transformed %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No')) %>% 
-  select_if(is.numeric) %>% 
-  dplyr::select(!(c(AGE, INCOME, YOJ, MVR_PTS))) %>%
-  data.table::melt()
-
-
-a <- vis_df %>% ggplot(aes(x= value)) + 
-geom_density(color='#023020', fill='gray')# + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
-
-
-
-org_df <- train_df %>% mutate(CAR_CRASH = ifelse(TARGET_FLAG == 1, 'Yes', 'No')) %>% 
-  select_if(is.numeric) %>% 
-  dplyr::select(!(c(AGE, INCOME, YOJ, MVR_PTS))) %>%
-  data.table::melt()
-
-b <- org_df %>% ggplot(aes(x= value)) + 
-geom_density(color='#023020', fill='gray')# + facet_wrap(~variable, scales = 'free',  ncol = 1) + theme_bw()
-
-a
-b
-
-#vis_df$SINGLE_PARENT
+vis_df %>% ggplot(aes(x=value, group=CAR_CRASH, fill=CAR_CRASH)) +
+  geom_density(color='#023020') +
+  facet_wrap(~variable, scales = 'free',  ncol = 4) +
+  theme_bw()
 ```
 
+Finally, we split our training data into train (75%) and validation (25%) datasets to evaluate model performance before we proceeded to prediction.
+Slightly different variations were used depending on each model's needs and ability to handle binned variables.
 
-To proceed with modeling, we'll split our training data into train (75%) and validation (25%) datasets. There will be different dataset splits for linear and logistic regression models. The split is necessary to measure models' performances since the evaluation dataset doesn't have the target columns to check how good the models are.
 ```{r split}
 set.seed(1233)
-#sample <- sample.split(train_df$TARGET_FLAG, SplitRatio = 0.8)
-#train_data  <- subset(train_df, sample == TRUE)
-#valid_data   <- subset(train_df, sample == FALSE)
 
-#For Lasso Logistic model, original data without NAs, some vars to factors and opposite
+# For Lasso Logistic model, original data without NAs, some vars to factors and opposite
 log_original <- createDataPartition(train_df$TARGET_FLAG, p=0.75, list = FALSE)
 
 train_data <- train_df[log_original, ] %>% dplyr::select(-c(TARGET_AMT))
 valid_data <- train_df[-log_original, ] %>% dplyr::select(-c(TARGET_AMT))
 
-#For other logistic models, transformed data, removed bin variables
+# For other logistic models, transformed data, removed bin variables
 log_transformed <- createDataPartition(train_transformed$TARGET_FLAG, p=0.75, list = FALSE)
 
-log_train <- train_transformed[log_transformed,] %>% dplyr::select(-c(TARGET_AMT, TIF, CAR_AGE, HOME_VAL))
-log_test <- train_transformed[-log_transformed,] %>% dplyr::select(-c(TARGET_AMT, TIF, CAR_AGE, HOME_VAL))
+log_train <- train_transformed[log_transformed,] %>% 
+  dplyr::select(-c(TARGET_AMT, TIF, CAR_AGE, HOME_VAL))
 
+log_test <- train_transformed[-log_transformed,] %>% 
+  dplyr::select(-c(TARGET_AMT, TIF, CAR_AGE, HOME_VAL))
 
+# For Lasso Linear model, original data without NAs, some vars to factors and opposite, only for TARGET_FLAG=1
+original_yes_crash <- train_df %>% 
+  filter(TARGET_FLAG==1)
 
-#For Lasso Linear model, original data without NAs, some vars to factors and opposite, only for TARGET_FLAG=1
-original_yes_crash <- train_df %>% filter(TARGET_FLAG==1)
-transformed_yes_crash <- train_transformed %>% filter(TARGET_FLAG==1) 
-
+transformed_yes_crash <- train_transformed %>% 
+  filter(TARGET_FLAG==1) 
 
 linear_original <- createDataPartition(original_yes_crash$TARGET_AMT, p=0.75, list = FALSE)
-linear_train_data <- original_yes_crash[linear_original, ] %>% dplyr::select(-c(TARGET_FLAG))
-linear_valid_data <- original_yes_crash[-linear_original, ] %>% dplyr::select(-c(TARGET_FLAG))
 
+linear_train_data <- original_yes_crash[linear_original, ] %>% 
+  dplyr::select(-c(TARGET_FLAG))
 
-#For other linear models, transformed data, removed bin variables
+linear_valid_data <- original_yes_crash[-linear_original, ] %>% 
+  dplyr::select(-c(TARGET_FLAG))
+
+# For other linear models, transformed data, removed bin variables
 linear_transformed <- createDataPartition(transformed_yes_crash$TARGET_AMT, p=0.75, list = FALSE)
-amt_train <- transformed_yes_crash[linear_transformed, ] %>% dplyr::select(-c(TARGET_FLAG, TIF, CAR_AGE, HOME_VAL))
-amt_test <- transformed_yes_crash[-linear_transformed, ] %>% dplyr::select(-c(TARGET_FLAG, TIF, CAR_AGE, HOME_VAL))
-eval_transformed <- eval_transformed %>% dplyr::select(-c(TIF, CAR_AGE, HOME_VAL))
 
+amt_train <- transformed_yes_crash[linear_transformed, ] %>% 
+  dplyr::select(-c(TARGET_FLAG, TIF, CAR_AGE, HOME_VAL))
+
+amt_test <- transformed_yes_crash[-linear_transformed, ] %>% 
+  dplyr::select(-c(TARGET_FLAG, TIF, CAR_AGE, HOME_VAL))
+
+eval_transformed <- eval_transformed %>% 
+  dplyr::select(-c(TIF, CAR_AGE, HOME_VAL))
 ```
+
+------------------------------------------------------------------------
 
 ## 3. Binary Logistic Regression
 
-We'll use Binary Logistic Regression to classify our response variable `TARGET_FLAG`, the probability of a car crash for a given observation.
+We used Binary Logistic Regression to classify our response variable `TARGET_FLAG`, the probability of a car crash for a given observation.
 
-### 3.1 Model 1 - Original data
+### 3.1 Logistic Model 1 - Original Data
 
-As the first step, we are going to build the generalized linear model based on the original training dataset with some variables transformed to categorical/numeric if needed, with no missing values. Since our dependent variable takes only two values (0 and 1), we will use logistic regression. To do so, the function `glm()` with `family=binomial` is used. At the beginning, all variables are included.
+Our first step was to build a logistic regression based on the original training dataset with minimal cleanup and imputation of missing values but without any power transformations for normal distributions.
+
+We applied Stepwise feature selection using stepAIC to reduce multicollinearity and optimize performance.
 
 ```{r log_model1, warning=FALSE, message=FALSE}
 log_model_1 <- glm(train_data, formula = TARGET_FLAG ~ ., family = binomial(link = "logit"))
 ```
 
-
-With stepAIC, we can try to see what variables should be included in our model to increase the performance. 
-Based on the the results of the function, we will include the variables below.
-
 ```{r log_model1_aic, warning=FALSE, message=FALSE}
 log_model_1_aic <- log_model_1 %>% stepAIC(trace = FALSE)
-summary(log_model_1_aic)
-```
-
-The p-value associated with this Chi-Square statistic is below. The lower the p-value, the better the model is able to fit the dataset compared to a model with just an intercept term.
-```{r chi_model_1}
-1-pchisq(log_model_1_aic$null.deviance-log_model_1_aic$deviance, log_model_1_aic$df.null- log_model_1_aic$df.residual)
+summ(log_model_1_aic)
 ```
 
 #### Model Performance
 
-The coefficients for the model shows us that if you have kids / you are from high school / you are office clerk / you have a sport car or SUV / your license was revoked within the last 7 years/ you are a single parent, there is much higher chance to get in the car crash. These variables have high `positive coefficients`, and they all follow the assumptions we made at the data exploration part. Other variables with positive coefficients have less impact but still follow the common logic (the more claims you filed in the past, the more you are to file in the future, lots of traffic tickets, you tend to get into more crashes, etc).
+The following variables had highly **positive coefficients** in our model, indicating a higher chance to be involved in a car crash:
 
-The `negative coefficients` reduce the chance of a crash. The factors that reduce the chances the most: education should be above high school, profession is doctor or manager, a person should be married, a vehicle should be in a private use. Other variables with negative coeffients have less impact but still follow the common logic (people who have been customers for a long time are more safe, people who stay at a job for a long time are more safe, etc).
+```{r}
+as.data.frame(summ(log_model_1_aic)$coeftable) %>%
+  dplyr::select(Est.,p) %>%
+  filter(p < 0.06 & Est. > 0.2) %>%
+  arrange(desc(Est.)) %>%
+  nice_table(cap='Positive Coefficients', cols=c('Est','p'))
+```
 
-The `null deviance` of `7064.1` defines how well the target variable can be predicted by a model with only an intercept term.
+Variables with highly **negative coefficients** indicated a lower chance to be involved in a car crash:
 
-The `residual deviance` of `5472.0` defines how well the target variable can be predicted by our AIC model that we fit with  predictor variables mentioned above. The lower the value, the better the model is able to predict the value of the response variable.
+```{r}
+as.data.frame(summ(log_model_1_aic)$coeftable) %>%
+  dplyr::select(Est.,p) %>%
+  filter(p < 0.06 & Est. < -0.2) %>%
+  arrange(Est.) %>%
+  nice_table(cap='Negative Coefficients', cols=c('Est','p'))
+```
 
-The p-value associated with this `Chi-Square statistic` is 0 which is less than .05, the model can be useful.
+The `null deviance` of `r round(log_model_1_aic$null.deviance,2)` defined how well the target variable could be predicted by a model with only an intercept term.
 
-The Akaike information criterion (`AIC`) is `5540.0`. We will use this metric to compare the fit of different models.  The lower the value, the better the regression model is able to fit the data.
+The `residual deviance` of `r round(log_model_1_aic$deviance,2)` defined how well the target variable can be predicted by the AIC model that we fit with the predictor variables listed above.
+The lower the value, the better the model's predictions of the response variable.
 
-The `Accuracy` is 0.798, `Sensitivity` is 0.43, `Specificity` is 0.93. We should continue with building another models to increase the accuracy of the predictions. 
+The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
 
+The Akaike information criterion (`AIC`) was `r round(log_model_1_aic$aic,2)`.
+The lower the AIC value, the better the model's ability to fit the data.
+We used this metric to compare the relative performance of the three Logistic models.
 
+The `Accuracy` was 0.798, `Sensitivity` was 0.43, and `Specificity` was 0.93.
 
-```{r log_model_1_confusionMatrix}
+```{r log_model_1_confusionMatrix, fig.height=4}
 log_testing <- valid_data
-#log_testing$model_1 <- ifelse(predict.glm(log_model_1_aic, log_testing, "response") >= 0.5, 1, 0)
 
 log1_pred <- predict.glm(log_model_1_aic, log_testing, "response")
 
-log_testing$prob_model_1  <- log1_pred
+log_testing$prob_model_1 <- log1_pred
 log_testing$pred_model_1 <- ifelse(log1_pred >= 0.5, 1, 0)
 
-
-
-log_matrix_1 <- confusionMatrix(factor(log_testing$pred_model_1), factor(log_testing$TARGET_FLAG), "1")
-
-
-results_log <- tibble(Model = "Model #1: Original data", Accuracy=log_matrix_1$overall["Accuracy"], 
-                  "Classification error rate" = 1 - log_matrix_1$overall["Accuracy"],
-                  F1 = log_matrix_1$byClass[7],
-                  Deviance= log_model_1_aic$deviance, 
-                  R2 = 1 - log_model_1_aic$deviance / log_model_1_aic$null.deviance,
-                  Sensitivity = log_matrix_1$byClass["Sensitivity"],
-                  Specificity = log_matrix_1$byClass["Specificity"],
-                  Precision = precision(factor(log_testing$pred_model_1), factor(log_testing$TARGET_FLAG), "1"),
-                  AUC = auc(log_testing$TARGET_FLAG, log_testing$pred_model_1),
-                  AIC= log_model_1_aic$aic)
+# Confusion Matrix
+log_matrix_1 <- confusionMatrix(factor(log_testing$pred_model_1), 
+                                factor(log_testing$TARGET_FLAG), "1")
 
 log_matrix_1
 
-plot(roc(log_testing$TARGET_FLAG, log_testing$pred_model_1, plot = FALSE,  print.auc = TRUE), quiet=TRUE, main="Model 1 - ROC Curve")
+# Table
+results_log <- tibble(
+  Model = "Model #1: Original data", 
+  Accuracy=log_matrix_1$overall["Accuracy"],
+  "Classification error rate" = 1 - log_matrix_1$overall["Accuracy"],
+  F1 = log_matrix_1$byClass[7],
+  Deviance= log_model_1_aic$deviance,
+  R2 = 1 - log_model_1_aic$deviance / log_model_1_aic$null.deviance,
+  Sensitivity = log_matrix_1$byClass["Sensitivity"],
+  Specificity = log_matrix_1$byClass["Specificity"],
+  Precision = precision(factor(log_testing$pred_model_1), 
+                        factor(log_testing$TARGET_FLAG), "1"),
+  AUC = auc(log_testing$TARGET_FLAG, log_testing$pred_model_1),
+  AIC= log_model_1_aic$aic
+  )
+
+# ROC Curve
+plot(roc(log_testing$TARGET_FLAG, 
+         log_testing$pred_model_1, 
+         plot = FALSE, print.auc = TRUE), 
+     quiet=TRUE, main="Model 1 - ROC Curve")
 ```
-
-
 
 #### Model Assumptions
 
-We evaluate the modeling assumptions using standard diagnostic plots, marginal model plots, and a Variance Inflation Factor (VIF) to assess collinearity.
+We evaluated the modeling assumptions using standard diagnostic plots, marginal model plots, and a Variance Inflation Factor (VIF) to assess collinearity.
 
-The resulting plot 1 below (predicted values vs. residuals) can help us to see if there are any signs of over- or under-predicting. It seems that we are experiencing under-fitting at lower predicted values, with the predicted proportions being larger than the observed proportions. On the other hand, we are over-fitting for a couple of predictor patterns at higher predicted values. The predicted values are much larger than the predicted proportions. The labeled points refer to rows in our data. 
-The Standardized Pearson Residuals plot doesn't follow a Standard Normal distribution if the model fits.  The model seems good until the middle range but there are extremes on the left. Some normality of the residuals for the binomial logistic regression models  is just an evidence of a decent fitting model.
+The resulting plot 1 below (predicted values vs. residuals) helped identify over- or under-predicting.
+It seems that we experienced under-fitting at lower predicted values, with the predicted proportions being larger than the observed proportions.
+
+On the other hand, we saw over-fitting for a couple of predictor patterns at higher predicted values.
+The labeled points refer to rows in our data.
+
+Examining the Standardized Pearson Residuals plot, the model seemed good until the middle range but there were extremes on the left.
+Some normality of the residuals for binomial logistic regression was just evidence of a decent-fitting model.
 
 ```{r check_log1}
 par(mfrow=c(2,2))
 plot(log_model_1_aic)
-
 ```
 
+The Standardized Residuals plot seems to show constant variance, but there are some outliers.
 
-The Standardized Residuals plot seems to have a constant variance though there are some outliers.
-```{r model_1_residuals}
+```{r model_1_residuals, fig.height=4}
 log_model_1_aic.data <- augment(log_model_1_aic) %>% 
   mutate(index = 1:n())
 
@@ -690,55 +726,71 @@ ggplot(log_model_1_aic.data, aes(index, .std.resid)) +
   theme_bw()
 ```
 
-
-The marginal model plot is a very useful graphical method for deciding if a logistic regression model is adequate or not. The marginal model plots below show reasonable agreement across the two sets of fits indicating that log_model_1_aic is a valid model.
+The marginal model plot is a very useful graphical method for deciding whether a logistic regression model is adequate or not.
+The marginal model plots below showed reasonable agreement across the two sets of fits indicating this was a valid model.
 
 ```{r warning=FALSE, message=FALSE}
 car::mmps(log_model_1_aic, span = 3/4, layout = c(2, 2))
 ```
 
-In terms of multicollinearity, all variables have a VIF less than 5 besides for the `JOB` and `EDUCATION`. As a result, multicollinearity between these variables may be a problem for the model. To improve the results, we may consider another way of choosing variables in the future.
+All variables had a VIF less than 5 except `JOB` and `EDUCATION`, indicating that multi-collinearity may still have been a problem for this model.
+
 ```{r log_model_1_vif}
-car::vif(log_model_1_aic)
+as.data.frame(car::vif(log_model_1_aic)) %>% 
+  arrange(desc(GVIF)) %>%
+  nice_table(cap='Variance Inflation Factor', cols=c('GVIF','df','adj'))
 ```
 
+------------------------------------------------------------------------
 
-### 3.2 Model 2 - Transformed data
-Next, we can try to build the generalized linear model based on the dataset with transformations and additional variables. The stepwise selection will help with the variables that should be included in the model for a better performance.
+### 3.2 Logistic Model 2 - Transformed
+
+Next, we built a Logistic regression based on the original training dataset with cleanup and imputation of missing values, plus power transformations for normal distributions.
+
+We applied Stepwise feature selection using stepAIC to reduce multicollinearity and optimize performance.
 
 ```{r general_box, warning=FALSE, message=FALSE}
 log_model_2 <- glm(log_train, formula = TARGET_FLAG ~ . , family = binomial(link = "logit"))
 ```
 
-The stepAIC function tells us to include the variables below.
 ```{r log_model2_aic, warning=FALSE, message=FALSE}
 log_model_2_aic <- log_model_2 %>% stepAIC(trace = FALSE)
-summary(log_model_2_aic)
+summ(log_model_2_aic)
 ```
-
-The p-value associated with this Chi-Square statistic is below. 
-```{r chi_model_2}
-1-pchisq(log_model_2_aic$null.deviance-log_model_2_aic$deviance, log_model_2_aic$df.null- log_model_2_aic$df.residual)
-```
-
 
 #### Model Performance
 
-The coefficients for the model shows us that if you have kids / you have a sport car, SUV, Van / your license was revoked within the last 7 years/ you are from Urban area, there is much higher chance to get in the car crash. These variables have high `positive coefficients`. Other variables with positive coefficients have less impact but still follow the common logic (long drives lead to a greater risk, lots of traffic tickets, you tend to get into more crashes, etc).
+The following variables had highly **positive coefficients** in our model, indicating a much higher chance to be involved in a car crash:
 
-The factors with `negative coefficients` that reduce the chances the most: education should be above high school, profession is doctor or manager,  a vehicle should be in a private use. Other variables with negative coeffients have less impact but still follow the common logic (married people drive more safely, people who have been customers for a long time are more safe, etc).
-The results are similar to the original model.
+```{r}
+as.data.frame(summ(log_model_2_aic)$coeftable) %>%
+  dplyr::select(Est.,p) %>%
+  filter(p < 0.06 & Est. > 0.2) %>%
+  arrange(desc(Est.)) %>%
+  nice_table(cap='Positive Coefficients')
+```
 
-The `residual deviance` is `5427.8`.
+Variables with highly **negative coefficients** indicated a lower chance to be involved in a car crash:
 
-The p-value associated with this Chi-Square statistic is 0 which is less than .05, the model can be useful.
+```{r}
+as.data.frame(summ(log_model_2_aic)$coeftable) %>%
+  dplyr::select(Est.,p) %>%
+  filter(p < 0.06 & Est. < -0.2) %>%
+  arrange(Est.) %>%
+  nice_table(cap='Negative Coefficients')
+```
 
-The Akaike information criterion (`AIC`) is `5495.8`.
+The results were similar to Logistic Model 1.
 
+The `null deviance` was `r round(log_model_2_aic$null.deviance,2)`, and the `residual deviance` was `r round(log_model_2_aic$deviance,2)`.
 
-The `Accuracy` is 0.794, `Sensitivity` is 0.43, `Specificity` is 0.92. We should continue with building another models to increase the accuracy of the predictions.  
+The p-value associated with the `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
 
-```{r log_model_2_confusionMatrix}
+The Akaike information criterion (`AIC`) was `r round(log_model_2_aic$aic,2)`.
+
+The `Accuracy` was 0.794, `Sensitivity` was 0.43, and `Specificity` was 0.92.
+
+```{r log_model_2_confusionMatrix, fig.height=4}
 testing2 <- log_test
 #testing2$model_2 <- ifelse(predict.glm(log_model_2_aic, testing2 , "response") >= 0.5, 1, 0)
 
@@ -748,7 +800,6 @@ testing2$prob_model_2  <- log2_pred
 testing2$pred_model_2 <- ifelse(log2_pred >= 0.5, 1, 0)
 
 log_matrix_2 <- confusionMatrix(factor(testing2$pred_model_2), factor(testing2$TARGET_FLAG), "1")
-
 
 results_log <- rbind(results_log, tibble(Model = "Model #2: Transformed data", Accuracy=log_matrix_2$overall["Accuracy"], 
                   "Classification error rate" = 1 - log_matrix_2$overall["Accuracy"],
@@ -763,25 +814,25 @@ results_log <- rbind(results_log, tibble(Model = "Model #2: Transformed data", A
 
 log_matrix_2
 
-plot(roc(testing2$TARGET_FLAG, testing2$pred_model_2, plot = FALSE,  print.auc = TRUE), quiet=TRUE, main="Model 2 - ROC Curve")
+plot(roc(testing2$TARGET_FLAG, testing2$pred_model_2, plot = FALSE, print.auc = TRUE), 
+     quiet=TRUE, main="Model 2 - ROC Curve")
 ```
-
 
 #### Model Assumptions
 
+The resulting plots were similar to Model 1 with under-fitting at lower predicted values (predicted proportions being larger than the observed proportions) and over-fitting at higher predicted values.
 
-The resulting plots show us similar to model 1 picture: under-fitting at lower predicted values, with the predicted proportions being larger than the observed proportions; over-fitting for a couple of predictor patterns at higher predicted values with the predicted values are much larger than the predicted proportions.
-The Standardized Pearson Residuals plot shows an approximate Standard Normal distribution if the model fits.  The model seems good until the middle range but there are extremes on the left side. Some normality of the residuals for the binomial logistic regression models  is just an evidence of a decent fitting model.
+Examining the Standardized Pearson Residuals plot, the model seemed good until the middle range but there were extremes on the left.
+Some normality of the residuals for binomial logistic regression were just evidence of a decent-fitting model.
 
 ```{r check_log2}
 par(mfrow=c(2,2))
 plot(log_model_2_aic)
-
 ```
 
+The Standardized Residuals plot seemed to have a constant variance, though there are some outliers.
 
-The Standardized Residuals plot seems to have a constant variance though there are some outliers.
-```{r model_2_residuals}
+```{r model_2_residuals, fig.height=4}
 log_model_2_aic.data <- augment(log_model_2_aic) %>% 
   mutate(index = 1:n())
 
@@ -790,34 +841,38 @@ ggplot(log_model_2_aic.data, aes(index, .std.resid)) +
   theme_bw()
 ```
 
-
-The marginal model plots below show reasonable agreement across the two sets of fits indicating that log_model_2_aic is a valid model. The plots look better than for model 1, data and model values match almost everywhere.
+The marginal model plots showed reasonable agreement across the two sets of fits indicating this was a valid model.
+The plots looked better than for Model 1, with data and model values matching almost everywhere.
 
 ```{r warning=FALSE, message=FALSE}
 car::mmps(log_model_2_aic, span = 3/4, layout = c(2, 2))
 ```
 
-In terms of multicollinearity, all variables have a VIF less than 5 besides for the `JOB` and `EDUCATION`. As a result, multicollinearity between these variables may be a problem for the model. To improve the results, we should give up the Stepwise approach in favor of Lasso regression.
+All variables had a VIF less than 5 besides `JOB` and `EDUCATION`, indicating multi-collinearity may still have been a problem for the model.
+
 ```{r log_model_2_vif}
-car::vif(log_model_2_aic)
+as.data.frame(car::vif(log_model_2_aic)) %>% 
+  arrange(desc(GVIF)) %>%
+  nice_table(cap='Variance Inflation Factor', cols=c('GVIF','df','adj'))
 ```
 
-### 3.3 Model 3 - Lasso
+------------------------------------------------------------------------
 
-Lasso Regression may be a good candidate for this dataset, since we are dealing with a large number of complex variables.
-Lasso helps identify the most important variables and reduces the model complexity.
+### 3.3 Logistic Model 3 - Lasso
 
-The cv.glmnet() function was also used as logistic regression model.
-Similar to the regression model k-fold cross-validation was performed with variable selection using lasso regularization.
-The following attribute settings were selected for the model:
+Lasso Regression was a good candidate for this dataset since we were dealing with a large number of complex variables.
+Lasso helps identify the most important variables and reduces the model's complexity.
 
--   type.measure = "class" - The type.measure is set to class to minimize the mis-classification errors of the model since the accurate classification of the validation data set is the desired outcome.
+The cv.glmnet() function was also used for our Logistic regression model.
+K-fold cross-validation was performed with variable selection using Lasso regularization.
+The following attribute settings were selected:
+
+-   type.measure = "class" - The type.measure was set to class to minimize the mis-classification errors of the model since the accurate classification of the validation data set is the desired outcome.
 -   nfold = 10 - Given the size of the training dataset, we opted for 10-fold cross-validation as a default.
--   family = binomial - For Logistic Regression, the family attribute of the function is set to binomial.
+-   family = binomial - For Logistic Regression, the family attribute of the function was set to binomial.
 -   link = logit - For this model, we choose the default link function for a logistic model.
--   alpha =1 - The alpha value of 1 sets the variable shrinkage method to lasso.
--   standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling.
-
+-   alpha =1 - The alpha value of 1 set the variable shrinkage method to lasso.
+-   standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this normalized the prediction variables around a mean of zero and a standard deviation of one before modeling.
 
 ```{r}
 t_df <- train_data
@@ -825,7 +880,6 @@ t_df <- train_data
 # build X matrix and Y vector
 X <- model.matrix(TARGET_FLAG ~ ., data=t_df)[,-1]
 Y <- t_df[,"TARGET_FLAG"] 
-
 ```
 
 ```{r}
@@ -845,16 +899,17 @@ l.1se <- lasso.log.model$lambda.1se
 
 #### Model Performance
 
+We explored model performance by extracting coefficients for values of `lambda.min` and `lambda.1se`.
 
-The resulting model is explored by extracting coefficients at two different values for lambda, lambda.min and lambda.1se respectively.
+-   The coefficients extracted using `lambda.min` minimized the mean cross-validated error.
+    The resulting model included 35 non-zero coefficients and had an AIC of -1514, the lowest AIC and the highest-performing model of the two.
 
--   The coefficients extracted using lambda.min minimizes the mean cross-validated error. The resulting model includes 35 non zero coefficients and has an AIC of -1519.116.
--   The coefficients extracted using lambda.1se produce the most regularized model (cross-validated error is within one standard error of the minimum). The resulting model includes 29 no zero coefficients and has an AIC of -1495.889,
+-   The coefficients extracted using `lambda.1se` produced the most regularized model (cross-validated error was within one standard error of the minimum).
+    The resulting model included 29 non-zero coefficients and had an AIC of -1485.
 
-The coefficients extracted using lambda.min results in the lowest AIC and highest performance model.
+We used the coefficients extracted using `lambda.min` in our predictions.
 
-The coefficients extracted at the lambda.min value are used to predict the likelihood of an accident.
-The confusion matrix highlights an accuracy of 79.8%.
+The confusion matrix highlighted an accuracy of 79.8%.
 
 ```{r}
 # drop TARGET_AMT
@@ -874,7 +929,6 @@ pred_log_df$TARGET_FLAG_PRED <- ifelse(lassoPred > 0.5, 1, 0)[,1]
 
 ```{r}
 confusion.glmnet(lasso.log.model, newx = X_test, newy = Y_test, s = 'lambda.min')
-
 ```
 
 ```{r}
@@ -889,18 +943,14 @@ print(glmnet_cv_aicc(lasso.log.model, 'lambda.min'))
 print(glmnet_cv_aicc(lasso.log.model, 'lambda.1se'))
 ```
 
-
 ```{r}
 
 conf_matrix_3 = confusionMatrix(factor(pred_log_df$TARGET_FLAG_PRED),factor(pred_log_df$TARGET_FLAG), "1")
-
-
 
 # build X matrix and Y vector
 t0_df <- valid_data %>% drop_na()
 X_test <- model.matrix(TARGET_FLAG ~ ., data=t0_df)[,-1]
 Y_test <- t0_df[,"TARGET_FLAG"] 
-
 
 lasso.r1 <- assess.glmnet(lasso.log.model,           
                                 newx = X_test,              
@@ -909,7 +959,6 @@ lasso.r1 <- assess.glmnet(lasso.log.model,
                                 s = 'lambda.min'
                           )   
 lasso.r2 <- glmnet_cv_aicc(lasso.log.model, 'lambda.min')
-
 
 results_log <- rbind(results_log,tibble(Model = "Model #3: Lasso", Accuracy=conf_matrix_3$overall[1], 
                   "Classification error rate" = 1 - conf_matrix_3$overall[1],
@@ -921,11 +970,9 @@ results_log <- rbind(results_log,tibble(Model = "Model #3: Lasso", Accuracy=conf
                   Precision = conf_matrix_3$byClass["Precision"],
                   AUC=lasso.r1$auc[1], 
                   AIC= lasso.r2$AICc))
-
 ```
 
 #### Model Assumptions
-
 
 ```{r}
 par(mfrow=c(2,2))
@@ -938,28 +985,26 @@ rocs <- roc.glmnet(lasso.log.model, newx = X, newy = Y )
 plot(rocs,type="l")  
 ```
 
+Examining the 35 non-zero coefficients for the selected lambda value of `lambda.min`, we observed the `URBAN1` predictor variable had the largest impact on the prediction of a car crash by a factor of 2.5.
+Reviewing the top 5 predictor variables that impacted likelihood and the cost associated with an accident:
 
+-   `URBAN1` - working or living in an urban neighborhood increased the expected costs associated with a crash
+-   `CAR_TYPE Sports Car` - sports cars increased the expected costs
+-   `LIC_REVOKED1` - a history of having a revoked license increased the expected costs
+-   `JOB Manager` - being a manager reduced the expected costs
+-   `PRIVATE_USE1` - using a car for private activities reduced the expected costs
 
-A closer look at the remaining 35 non-zero coefficients for the selected lambda value of lambda.min we can observe the `URBAN1` predictor variable has the largest impact on the prediction of a car crash by a factor of 2.5 times.
-Reviewing the top 5 predictor variables that impact likelihood and cost associated with an accident:
-
--   `URBAN1` - working or living in an urban neighborhood increase expected cost associated with a crash
--   `CAR_TYPESports Car` - sports cars increase the cost associated with a crash 
--   `LIC_REVOKED1` - a history of having a revoked license increases the expected costs associated with a crash
--   `JOB Manager` - being a manager reduces the expected costs associated with a crash
--   `PRIVATE_USE1` - using a car for private activities reduces
-
-
-The `CAR_RED1`and `EDUCATIONPhD` predictor variables drop out of the final model. 
-
+The `AGE`, `JOB Student` and `CAR_RED1` predictor variables dropped out of the final model.
 
 ```{r}
-coef(lasso.log.model, s = "lambda.min" )
+as.data.frame(as.matrix(coef(lasso.log.model, s = "lambda.min"))) %>%
+  arrange(desc(s1)) %>%
+  nice_table(cap='Model Coefficients', cols=c('Est'))
 ```
 
-The lasso regression solves the multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero.
+The Lasso regression helped solve the multi-collinearity issue by selecting the variables with the largest coefficients and scaling the rest to very small values.
 
-```{r fig.show="hold", out.width="50%", fig.height=6}
+```{r, fig.height=4}
 vip(lasso.log.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
 
 coeffs.table <- coeff2dt(fitobject = lasso.log.model, s = "lambda.min")
@@ -973,32 +1018,35 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
 ```
 
+------------------------------------------------------------------------
 
 ### 3.4 Model selection
 
+To choose among our three models for prediction, we focused on performance only - comparing ROC curves, performance statistics and confusion matrices.
 
-To choose which of our three models for prediction, we will focus on performance only. I.e. comparing ROC curves, performance statistics and confusion matrices. We did not have models differ in the amount of predictors.
+The models did not differ in terms of variables selected as predictors.
+Models 1 and 2 were similar as we used Stepwise selection (stepAIC) for both, although the application of BoxCox transformations did lower the AIC result for Model 2.
 
-
-Ideally, all three comparisons favors a single model but they didn't in our case.
-Comparing all the models, we see they are very similar except model 3 has a slightly higher miss rate. 
-
-Even though model 3's accuracy is the lower than for model 1, its AIC is the lowest (-1519 comparing to 5540/5495 for models 1/2) as well as Deviance, so we'll choose it for predictions. Models 1 and 2 are similar as we used stepAIC for both of them when selecting variables but it happened that BoxCox transformations lower AIC result for model 2.
+Even though Model 3's Accuracy was lower than Model 1, its AIC and Deviance were by far the lowest of the three, so we chose it for predictions.
 
 ```{r}
-kable(results_log, digits=4) %>% 
-  kable_styling(bootstrap_options = c("striped", "hover"), position = "center")%>%
-  kableExtra::scroll_box(width = "100%")
+results_log %>% 
+  nice_table(cap='Logistic Model Comparison') %>% 
+  scroll_box(width='100%')
 ```
 
+------------------------------------------------------------------------
 
 ## 4. Multiple Linear Regression
 
-We'll use Multiple Linear Regression to model the `TARGET_AMT` response variable, the estimated cost of a crash for a given observation. The data includes observations only with TARGET_FLAG=1 (the case of the car crash). If there is no crash, no payment will be needed.
+We used Multiple Linear Regression to model the `TARGET_AMT` response variable, the estimated cost of a crash for a given observation.
+We only included observations where `TARGET_FLAG=1` since if there was no crash, then no costs were incurred.
 
-### 4.1 Model 1 - Original data
+### 4.1 Linear Model 1 - Original Data
 
-As the first step, we are going to build the linear model based on the original training dataset with some variables transformed to categorical/numeric if needed, with no missing values. First, we include all variables and use Stepwise approach to select variables for the model.
+Our first step was to build a linear regression based on the original training dataset with minimal cleanup and imputation of missing values but without any power transformations for normal distributions.
+
+We applied Stepwise feature selection using stepAIC to reduce multicollinearity and optimize performance.
 
 ```{r model_1}
 df_train <- linear_train_data
@@ -1006,40 +1054,34 @@ df_test <- linear_valid_data
 
 # build model
 model_1 <- lm(TARGET_AMT ~ ., data = df_train)
-
 ```
 
-With stepAIC, we can try to see what variables should be included in our model to increase the performance. 
-Based on the the results of the function, we will include `BLUEBOOK`, `MVR_PTS`, `MALE1`, `LIC_REVOKED1` variables.
-```{r model_1_aic}
+With stepAIC, we selected variables that contributed the most performance to our model.
+Based on the results of the function, we included `BLUEBOOK`, `MVR_PTS`, `MALE1`, and `LIC_REVOKED1`.
 
+```{r model_1_aic}
 # select features and refit by stepwise selection (AIC)
 model_1_aic <- model_1 %>% stepAIC(trace = FALSE)
 summ(model_1_aic, digits = getOption("jtools-digits", 4))
-
 ```
 
 #### Model Performance
-The F-statistic is `9.18`, the adjusted R-squared is `0.02`, and out of the 24 variables, 2 have statistically significant p-values.
-RMSE is `6621.3`, it shows how far predictions fall from measured true values using Euclidean distance.
-The adjusted R2 indicates that only 2% of the variance in the response variable can be explained by the predictor variables.
-`Positive coefficients` increase the cost of the crash. High number of motor Vehicle Record Points, if a driver is male, these factors increase the cost while `negative` coefficient for a revoked license decreases. The last statement seems strange, we will look intro it in the next model.
 
-The F-statistic is low and the model's p-value is not statistically significant.
-We should probably look at other models for better performance.
+The F-statistic was `9.18`, the adjusted R-squared was `r round(summary(model_1_aic)$adj.r.squared,2)`, and out of the 24 variables, 2 had statistically significant p-values.
 
-```{r}
-cap <- paste('Adjusted R2:',round(summary(model_1_aic)$adj.r.squared,5))
+RMSE was `r round(sqrt(mean(model_1_aic$residuals^2)),2)`, showing how far predictions fell from measured true values using Euclidean distance.
 
-model_1_aic %>% tidy() %>% 
-  dplyr::select(term, estimate, `p.value`) %>%
-  arrange(p.value, desc(abs(estimate))) %>% 
-  # mutate(est_orig = get_boxcox_exp(estimate, lm_bc_lambda)) %>%
-  # relocate(est_orig, .after=estimate) %>%
-  kable(digits = 3, caption=cap)
-```
+The adjusted R2 indicated that only 2% of the variance in the response variable could be explained by the predictor variables.
 
-```{r}
+Positive coefficients indicated an increase in the cost of a crash.
+In this model Males, cars with high Bluebook values, and drivers with a high number of Motor Vehicle Points tended to have more expensive crashes.
+
+Similarly, negative coefficients indicated less-expensive crashes.
+In this model, drivers with License Revocations tended to have less expensive crashes.
+
+The F-statistic was low and the model's overall p-value was not statistically significant.
+
+```{r, fig.height=4}
 # validate and calculate RMSE
 model_1_aic.valid <- predict(model_1_aic, newdata = df_test)
 model_1_aic.eval <- bind_cols(target = df_test$TARGET_AMT, predicted=unname(model_1_aic.valid))
@@ -1083,25 +1125,23 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       "Adjusted R2" = a$adj.r.squared,
                       "F-statistic" = a$fstatistic[1]
                      )
-
-
 ```
 
 #### Model Assumptions
 
-We evaluate the linear modeling assumptions using standard diagnostic plots, and Variance Inflation Factor (VIF) to assess collinearity.
+We evaluated the linear modeling assumptions using standard diagnostic plots, and Variance Inflation Factor (VIF) to assess collinearity.
 
-The initial review of the diagnostic plots for this model shows some deviation from linear modeling assumptions.
-The Q-Q plot shows some deviations from the normal distribution at the left end.
-The residuals-fitted and standardized residuals-fitted plots show a curve in the main cluster, which indicates that we do not have constant variance.
-All the variables included don't show any sign of collinearity.
+Our initial review of the diagnostic plots for this model showed some deviation from linear modeling assumptions.
+The Q-Q plot showed some deviations from the normal distribution at the left end.
+The residuals-fitted and standardized residuals-fitted plots showed a curve in the main cluster, which indicated that we did not have constant variance.
+
+The variables included in our model had a VIF of 1, indicating the variables were not correlated.
 
 ```{r check_lm1}
 check_model(model_1_aic, check=c('ncv','qq','homogeneity','outliers'))
 ```
 
-
-```{r vif_lm1}
+```{r vif_lm1, fig.height=4}
 vif_values <- vif(model_1_aic)
 vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
 
@@ -1110,55 +1150,44 @@ vif_values %>%
   coord_flip() + 
   geom_hline(yintercept=5, linetype="dashed", color = "red") +
   geom_bar(stat = 'identity', width=0.3 ,position=position_dodge()) 
-
-
 ```
 
+------------------------------------------------------------------------
 
-### 4.2 Model 2 - Transformed data
+### 4.2 Linear Model 2 - Transformed
 
-Next, we are going to build the linear model based on the transformed dataset with boxcox, log transformations and some new variables, without any missing values. First, we include all variables and use Stepwise approach to select variables for the model.
+Next, we built a linear model based on the training dataset with cleanup and imputation of missing values, plus power transformations for normal distributions.
+
+We applied Stepwise feature selection using stepAIC to reduce multicollinearity and optimize performance.
 
 ```{r model_2}
-
 # build model
 model_2 <- lm(TARGET_AMT ~ ., data = amt_train)
-
 ```
 
-Based on the the results of the function, we will include `BLUEBOOK`, `MVR_PTS`, `CLM_FREQ `, `SINGLE_PARENT1`, `EDUCATION` variables.
-```{r model_2_aic}
+Based on the the results of the function, we included `BLUEBOOK`, `MVR_PTS`, `CLM_FREQ`, `SINGLE_PARENT1` and `EDUCATION`.
 
+```{r model_2_aic}
 # select features and refit by stepwise selection (AIC)
 model_2_aic <- model_2 %>% stepAIC(trace = FALSE)
 summ(model_2_aic, digits = getOption("jtools-digits", 4))
-
 ```
 
 #### Model Performance
 
-The resulting model is much more parsimonious than the first, with statistically significant results for 5 predictors below.
+The F-statistic was `4.85`, and out of the 24 variables, 2 had statistically significant p-values.
 
-The Adjusted R-Squared is better than Model 1 but still very low (0.019) meaning this model only explains about 2% of the total variance in the response variable `TARGET_AMT`. 
-RMSE is 0.8, the lower, the better.
-The F-statistic is `4.85`, and out of the 24 variables, 2 have statistically significant p-values.
-`Positive coefficients` increase the cost of a crash. As a result, PhDs,  people with Masters degrees, high number of motor Vehicle Record Points, single parent driver have a higher cost of a crash. `Negative` coefficients for claims (Past 5 Years), high school and bachelor students decrease the cost.
-We should try another approach for variable selection. So far not all the results make sense.
+The Adjusted R-Squared of `r round(summary(model_2_aic)$adj.r.squared,2)` was similar to Model 1, only explaining about 2% of the total variance in the response variable `TARGET_AMT`.
 
+The RMSE was `r round(sqrt(mean(model_2_aic$residuals^2)),2)` which was a great improvement over Model 1.
 
-```{r}
-cap <- paste('Adjusted R2:',round(summary(model_2_aic)$adj.r.squared,5))
+Positive coefficients indicated an increase in the cost of a crash.
+In this model Single parents, people with Masters and PhD degrees, and drivers with a high number of Motor Vehicle Points tended to have more expensive crashes.
 
+Similarly, negative coefficients indicate less-expensive crashes.
+In this model, drivers with High School and Bachelor's degrees, and drivers with high numbers of previous claims tended to have less expensive crashes.
 
-model_2_aic %>% tidy() %>% 
-  dplyr::select(term, estimate, `p.value`) %>%
-  arrange(p.value, desc(abs(estimate))) %>% 
-  # mutate(est_orig = get_boxcox_exp(estimate, lm_bc_lambda)) %>%
-  # relocate(est_orig, .after=estimate) %>%
-  kable(digits = 3, caption=cap)
-```
-
-```{r}
+```{r fig.height=4}
 # validate and calculate RMSE
 model_2_aic.valid <- predict(model_2_aic, newdata = amt_test)
 model_2_aic.eval <- bind_cols(target = amt_test$TARGET_AMT, predicted=model_2_aic.valid)
@@ -1172,17 +1201,13 @@ model_2_aic.eval %>%
   labs(title=paste('RMSE:',round(model_2_aic.rmse,1)))
 ```
 
-
-
 ```{r}
 model2_df <-model_2_aic.eval %>% multi_metric(truth=target, estimate=predicted)
 
 b <- summary(model_2_aic)
 
-
-
 results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
-                      Model = "Model 2: Transformed data",
+                      Model = "Model 2: Transforms + Stepwise",
                       mape = model2_df[[1,3]],
                       smape = model2_df[[2,3]],
                       mase = model2_df[[3,3]],
@@ -1192,20 +1217,19 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       "Adjusted R2" = b$adj.r.squared,
                       "F-statistic" = b$fstatistic[1]
                      )
-
-
 ```
 
 #### Model Assumptions
-However, an examination of the residuals indicates most of the key assumptions for linear regression are met - the Residuals vs Fitted plot shows a more constant variability of the residuals, and the Q-Q plot indicates a much better level of normality comparing to model 1.
-All the variables included don't show any sign of collinearity.
+
+An examination of the residuals indicated most of the key assumptions for linear regression wer met - the Residuals vs Fitted plot showed a more constant variability of the residuals, and the Q-Q plot indicated a much better level of normality compaed to Model 1.
+
+The variables included in our model had a VIF of 1 (or slightly above), indicating the variables were not correlated, for the most part.
 
 ```{r check_lm2}
 check_model(model_2_aic, check=c('ncv','qq','homogeneity','outliers'))
 ```
 
-
-```{r vif_lm2}
+```{r vif_lm2, fig.height=4}
 
 vif_values <- vif(model_2_aic)
 vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
@@ -1215,14 +1239,14 @@ vif_values %>%
   coord_flip() + 
   geom_hline(yintercept=5, linetype="dashed", color = "red") +
   geom_bar(stat = 'identity', width=0.3 ,position=position_dodge()) 
-
-
 ```
 
+------------------------------------------------------------------------
 
-### 4.3 Model 3 - Lasso Regression
+### 4.3 Linear Model 3 - Lasso
 
-The `cv.glmnet()` function was used to perform k-fold cross-validation with variable selection using lasso regularization.  The following attribute settings were selected for the model:
+The `cv.glmnet()` function was used to perform k-fold cross-validation with variable selection using lasso regularization.
+The following attribute settings were selected for the model:
 
 -   type.measure = "mse" - The type.measure is set to minimize the Mean Squared Error for the model.
 -   nfold = 10 - Given the size of the dataset we defaulted to 10-fold cross-validation.
@@ -1230,14 +1254,18 @@ The `cv.glmnet()` function was used to perform k-fold cross-validation with vari
 -   alpha = 1 - The alpha value of 1 sets the variable shrinkage method to lasso.
 -   standardize = TRUE - Finally, we explicitly set the standardization attribute to TRUE; this will normalize the prediction variables around a mean of zero and a standard deviation of one before modeling.
 
-The resulting model is explored by extracting coefficients at two different values for lambda, lambda.min and lambda.1se respectively.
+The resulting model was explored by extracting coefficients at two different values for lambda, lambda.min and lambda.1se respectively.
 
-The coefficients extracted using lambda.min minimizes the mean cross-validated error.
-The resulting model includes 1 non-zero coefficients and has an AIC of -1584023783.
-The coefficients extracted using lambda.1se does not produce a valid model. All variables drop out of the model at a coefficient of lambda.1se. 
+The coefficients extracted using lambda.min minimized the mean cross-validated error.
+The resulting model included 1 non-zero coefficient and has an AIC of -1584023783.
 
-The coefficients extracted using lambda.min results in the only valid model for the linear regression. 
+The coefficients extracted using lambda.1se did not produce a valid model - all variables dropped out.
 
+The coefficients extracted using lambda.min resulted in only a single valid variable for the linear regression, `BLUEBOOK`.
+
+This variable made intuitive sense - as the cost of the vehicle increases, so must the cost of the repair.
+However, we had imagined that other variables would factor more significantly into the relative cost of an accident.
+As mentioned earlier, the dataset showed a high degree of multi-collinearity.
 
 ```{r}
 # filter the target data
@@ -1246,7 +1274,6 @@ t_df <- linear_train_data
 # build X matrix and Y vector
 X <- model.matrix(TARGET_AMT ~ ., data=t_df)[,-1]
 Y <- t_df[,"TARGET_AMT"] 
-
 ```
 
 ```{r}
@@ -1283,15 +1310,13 @@ print(glmnet_cv_aicc(lasso.lm.model, 'lambda.min'))
 print(glmnet_cv_aicc(lasso.lm.model, 'lambda.1se'))
 ```
 
-A closer look at the final model shows that, once an accident has been predicted the only variable that impacts the cost the accident is the `BLUEBOOK`. This model formulation is intuitive theoretically however I had imagined that other variable would factor into the relative cost of an accident.
-
-
 ```{r}
-coef(lasso.lm.model, s = "lambda.min")
+as.data.frame(as.matrix(coef(lasso.lm.model, s = "lambda.min"))) %>%
+  arrange(desc(s1)) %>%
+  nice_table(cap='Model Coefficients', cols='Est')
 ```
 
-
-```{r fig.show="hold", out.width="50%", fig.height=6}
+```{r fig.height=3}
 vip(lasso.lm.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
 
 coeffs.table <- coeff2dt(fitobject = lasso.lm.model, s = "lambda.min")
@@ -1305,12 +1330,9 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
 ```
 
-As mentioned earlier, the dataset has a high correlation between predictor variables.
-The lasso regression approaches this issue by selecting the variable with the highest correlation and shrinking the remaining variables (as can be seen in the plot of coefficients).
-
 #### Model Performance
 
-The lasso model using coefficients extracted at lambda.min was used to predict the 536 test cases and comparing the predicted insurance AMT to the actual cost of a car crash.
+The lasso model using coefficients extracted at `lambda.min` was used to predict the 536 test cases and compare the predicted insurance `TARGET_AMT` to the actual cost of a car crash.
 
 ```{r}
 t0_df <- linear_valid_data 
@@ -1328,16 +1350,15 @@ pred_ln_df$TARGET_AMT_PRED_RAW <- lassoPred[,1]
 pred_ln_df$TARGET_AMT_PRED <- ifelse(lassoPred > 100, lassoPred, 0)[,1]
 ```
 
-Using the yardstick package to measure model performance, mape, smape and mpe return NaNs while the `mase` = 0.696 and `rmse` = 6614.
+Using the yardstick package to measure model performance, mape, smape and mpe returned NaNs while the `mase` = 0.696 and `rmse` = 6614.
 
 ```{r}
 pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 ```
 
-Analyzing a scatter plot of the prediction errors vs measured costs and a comparative histogram of the predicted and measured costs highlights a shortcoming of the lasso model. The model fails to predict any costs less than 1000 dollars. 
+By analyzing graphs of our predictions and errors, we discovered a shortcoming of the lasso model - it failed to predict any costs less than \$1,000.
 
-
-```{r fig.show="hold", out.width="50%", fig.height=6}
+```{r fig.height=3}
 n <- nrow(t0_df)
 x <- t0_df$TARGET_AMT
 e <- lassoPred - t0_df$TARGET_AMT
@@ -1362,32 +1383,23 @@ t0_df %>% dplyr::filter(value > 1000) %>%
   ggplot(aes(x=value, fill=variable)) +geom_histogram(bins=100) 
 ```
 
-
-
-
 ```{r}
-
 # build X matrix and Y vector
 t0_df <- linear_valid_data 
 X_test <- model.matrix(TARGET_AMT ~ ., data=t0_df)[,-1]
 Y_test <- t0_df[,"TARGET_AMT"] 
 
-
-
 lasso.r1 <- assess.glmnet(lasso.lm.model,
                                 newx = X_test,
                                 newy = Y_test )
 lasso.r2 <- glmnet_cv_aicc(lasso.lm.model, 'lambda.min')
-
 ```
 
 ```{r}
 m_df <- pred_ln_df %>% multi_metric(truth=TARGET_AMT, estimate=TARGET_AMT_PRED)
 ```
 
-
 ```{r}
-
 results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       Model = "Model 3: Lasso",
                       mape = m_df[[1,3]],
@@ -1399,64 +1411,51 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       "Adjusted R2" = NA,
                       "F-statistic" = NA
                      ))
-
 ```
-
 
 #### Model Assumptions
 
-To reduce multicollinearity we can use regularization that means to keep all the features but reducing the magnitude of the coefficients of the model.
-This is a good solution when each predictor contributes to predict the dependent variable.
+The Lasso method reduced multi-collinearity, keeping all the features but reducing the magnitude of the coefficients.
+This is often a good solution when many predictors contribute some information to the model.
 
-The Standardized Residuals plot shows increasing variance at higher values of the response variable.
+The Standardized Residuals plot shows increasing variance for higher response variable values.
 
 ```{r}
 pred_ln_df$PER_ERR <- (pred_ln_df$TARGET_AMT_PRED - pred_ln_df$TARGET_AMT)
 ```
 
-The lasso regression solves the multicollinearity issue by selecting the variable with the largest coefficient while setting the rest to (nearly) zero.
-
-```{r}
+```{r fig.height=4}
 pred_ln_df %>% ggplot(aes(x=TARGET_AMT, colour=TARGET_AMT_PRED, y=PER_ERR)) +
   geom_point()
 ```
 
+------------------------------------------------------------------------
 
-### 4.4 Model selection
+### 4.4 Linear Model Selection
 
-The table presents an analysis of the performance metrics for each model on the training dataset.
-The results suggest that the model's performance slightly improved after incorporating transformations and selecting significant parameters.
+The following table summarizes performance metrics for each model on the training dataset.
 
-The $R^2$, residual standard error, AIC, F-statistics, and other metrics for each model are below.
-The training data had the best-fitting statistics.
-Though Models 1 and 3 doesn't meet assumption requirements and has high `RMSE` (Root Mean Square Error), 6621/6615 comapring to 0.82 for Model 2. 
-Mean absolute percentage error showed the best result for model 2 (7.3 comparing to 164 for models 1, 3).
-In total, the accuracy results for model 2 are the best comapring to models 1, 3.
+During the exploratory data analysis, some predictor variables displayed signs of multi-collinearity, potentially causing unstable regression fits.
 
-The F-statistic for models 1,2 wasn't too large, with significant p-values.
-During the exploratory data analysis, some of the predictor variables had correlations with each other.
-However, this high correlation between variables could result in multicollinearity, causing unstable regression fits.
-To mitigate this issue, we employed the Variable Inflation Factor (VIF) method in the previous section to identify better models by selecting variables with VIF values less than 5.
+Results suggest that the model performance improved after applying transformations and methods for selecting significant predictor variables, such as Lasso and Variable Inflation Factor.
 
-The residual plots from part 3 showed that models 1,3 doesn't follow the normal distribution with a constant variance. In contrast, residuals for Model 2 seem to follow the normal distribution.
-AIC results for model 1 is higher than for model 2, the 3rd model showed some unusual results (AIC=-1.64e+09).
+-   Models 1 and 3 did not meet the assumption requirements for normal distributions and constant variance. Both had high RMSE.
+-   Model 2 more closely aligned with assumption requirements and performed best for MAPE and Accuracy.
+-   F-statistics for Models 1 and 2 were small, with significant p-values.
+-   AIC was lower for Model 2 than Model 1, while Model 3 produced unusual, negative results.
+-   Model 3 failed to predict costs of less than \$1000.
 
-Model 2 looks like the best fit.
+Overall, Model 2 appeared to produce the best fit.
 
 ```{r}
-
-kable(results_lm_tbl, digits=4) %>% 
-  kable_styling(bootstrap_options = "basic", position = "center")
-
+results_lm_tbl %>% 
+  nice_table(cap='Linear Model Comparison') %>% 
+  scroll_box(width='100%')
 ```
 
+------------------------------------------------------------------------
+
 ## 5. Predictions
-
-
-Using the selected Lasso binary logistic regression model we will predict the `TARGET_FLAG` variable (the probability that a person will crash their car) for the eval dataset. The matrix used in the predict() function requires a target variable so we will create a dummy variable for these purposes and set it to 0. The prediction function will generate a vector of obliterates that we will use to calculate a binomial prediction (using a threshold of 0.5). The data used for predictions has some variables turned to factors, without NAs. The transformations applied to the train dataset were applied to the evaluation data as well.
-
-With the selected Stepwise multiple linear regression model and the predicted `TARGET_FLAG=1` by the Lasso binary model, we are going to predict the `TARGET_AMT` variable (the amount of money it will cost if the person does crash their car). The stepAIC linear model predicts predictions=ln(TARGET_AMT), to get back to the original target value, we take exp(predictions). The evaluation data for the linear model has additional transformations (bin values added, boxcox/log transformations).
-The results of the prediction will be written to the `eval_predictions.csv` and loaded to the [GitHub repo](https://github.com/cliftonleesps/data621_group1/tree/main/hw4).
 
 ```{r}
 # build X matrix and Y vector
@@ -1481,24 +1480,40 @@ eval_transformed$TARGET_FLAG_PRED <- eval_pred_df$TARGET_FLAG_PRED
 eval_transformed$TARGET_FLAG_PROB <- round(eval_pred_df$TARGET_FLAG_PROB, digits=4)
 
 # from predictions by model_2_aic we get ln(TARGET_AMT), to get TARGET_AMT, we take exp() of the predicted values
-
-eval_transformed <- eval_transformed %>% mutate(TARGET_AMT_PRED = case_when(TARGET_FLAG_PRED==1 ~ exp(predict(object = model_2_aic, newdata=eval_transformed)) , TARGET_FLAG_PRED==0 ~ 0))
+eval_transformed <- eval_transformed %>% 
+  mutate(TARGET_AMT_PRED = case_when(TARGET_FLAG_PRED==1 ~ exp(predict(object = model_2_aic, newdata=eval_transformed)), TARGET_FLAG_PRED==0 ~ 0))
 
 eval_transformed$TARGET_AMT_PRED <- round(eval_transformed$TARGET_AMT_PRED, digits=4)
+
+# reorder predictions to front
+eval_transformed <- eval_transformed %>% 
+  relocate(TARGET_FLAG_PRED, TARGET_AMT_PRED, TARGET_FLAG_PROB)
 ```
 
 ```{r}
-predictions <- eval_transformed %>% dplyr::select(c(TARGET_FLAG_PRED, TARGET_FLAG_PROB, TARGET_AMT_PRED))
+predictions <- eval_transformed %>% 
+  dplyr::select(c(TARGET_FLAG_PRED, TARGET_AMT_PRED, TARGET_FLAG_PROB))
 ```
 
-
 ```{r eval=FALSE}
-
 write.csv(eval_transformed, 'eval_predictions.csv', row.names=F)
 write.csv(predictions, 'predictions_only.csv', row.names=F)
 ```
 
+#### Crash Predictions
 
+Using Binary Logistic Regression Model 3 (Transformation + Lasso), we predicted TARGET_FLAG values for the 2141 observations in our evaluation dataset.
+We applied all training data transformations to the evaluation data as well.
+The prediction function generated a vector of probabilities between 0 and 1 that we used to calculate a binomial prediction applying a threshold of 0.5.
+
+#### Cost Predictions
+
+Using Multiple Linear Regression Model 2 (Transformation + Stepwise), we predicted `TARGET_AMT` values for the `r sum(eval_transformed$TARGET_FLAG_PRED)` observations in our evaluation dataset with a TARGET_FLAG of 1.
+
+We applied all training data transformations to the evaluation data as well.
+The prediction function generated a vector of values representing the natural log of their "real world" values - we conducted a final transformation by exponentiation.
+
+We wrote the results to a file "eval_predictions.csv" and saved it to the [GitHub repo](https://github.com/cliftonleesps/data621_group1/tree/main/hw4).
 
 ```{r results_table}
 DT::datatable(
@@ -1514,16 +1529,48 @@ DT::datatable(
       rownames = FALSE) 
 ```
 
+------------------------------------------------------------------------
+
 ## 6. Conclusion
 
-  **ADD TEXT**
+Overall, our approach of subsetting the problem into two separate models seemed to work well.
+We used a Binary Logistic Regression to model the probability of crashes, and a Multiple Linear Regression to model the associated costs when a car crash occurred.
+
+In both cases, we took steps to transform the data and reduce multi-collinearity for optimal results.
+For the Logistic model, Lasso Regression enabled us to keep most of the variables in the model but scale their coefficients according to their relative importance.
+For the Linear model, we used Stepwise feature selection based on AIC to arrive at a minimal feature set, reducing overall error, and producing reasonable outputs.
+
+#### **Crash Factors**
+
+The most important predictive factor of car crashes - by far - was living in a high-density Urban environment.
+Other factors included driving a Sports Car or SUV, having a high number of License Revocations, or having children in the household that drive.
+
+On the other hand, factors that contributed to a lower probability of car crashes included having a Managerial job or being a Doctor, driving a car for Private (non-commercial) uses only, and being Married.
+
+#### **Cost Factors**
+
+The most important predictors for higher repair costs included having a high number of MVR points (moving violations), and a high Bluebook valuation of the vehicle.
+Factors that contributed to a lower predicted cost included a high number of prior Claims, and education levels of Bachelor's or High School.
+
+#### Further Questions
+
+While many of these factors made intuitive sense, some caught our attention as candidates for further research and analysis.
+For example, do drivers with a high number of Claims tend to drive less expensive vehicles, or do they simply tend to get into lots of minor fender-benders instead of major accidents?
+Similarly, what is the relationship between Single Parents and higher crash likelihoods - even if it is not a strong relationship from a statistical significance standpoint?
+
+For future consideration, we might also wish to look at the imbalanced class distribution between "crash" and "non-crash" events in the training data, where "non-crash" occurs about 75% of the time.
+Although we could not explore this further, imbalances like this can introduce additional bias to Logistic Regression models and might be addressed through re-sampling or 'bootstrapping' training data.
+
+------------------------------------------------------------------------
 
 ## 7. References
 
-1. Faraway, J. J. (2014). _Linear Models with R, Second Edition._ CRC Press.
-2. Sheather, S. (2009). _A Modern Approach to Regression with R._ Springer Science & Business Media.
-3. _Detecting Multicollinearity Using Variance Inflation Factors_ | STAT 462. (n.d.). https://online.stat.psu.edu/stat462/node/180/
-4. James, Gareth, Daniela Witten, Trevor Hastie, and Robert Tibshirani. 2014. _An Introduction to Statistical Learning: With Applications in R._ Springer Publishing Company, Incorporated
-5. Faraway, J. J. (2016). _Extending the Linear Model with R: Generalized Linear, Mixed Effects and Nonparametric Regression Models._ CRC Press.
+1.  Faraway, J. J. (2014). *Linear Models with R, Second Edition.* CRC Press.
+2.  Sheather, S. (2009). *A Modern Approach to Regression with R.* Springer Science & Business Media.
+3.  *Detecting Multicollinearity Using Variance Inflation Factors* \| STAT 462. (n.d.). <https://online.stat.psu.edu/stat462/node/180/>
+4.  James, Gareth, Daniela Witten, Trevor Hastie, and Robert Tibshirani. 2014. *An Introduction to Statistical Learning: With Applications in R.* Springer Publishing Company, Incorporated
+5.  Faraway, J. J. (2016). *Extending the Linear Model with R: Generalized Linear, Mixed Effects and Nonparametric Regression Models.* CRC Press.
+
+------------------------------------------------------------------------
 
 ## Appendix: R code
