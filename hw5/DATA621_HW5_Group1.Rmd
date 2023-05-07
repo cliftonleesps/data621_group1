@@ -209,13 +209,12 @@ While there may be data "missing completely at random" (MCAR) that we wish to im
 #### Missing Data - Stars
 
 The predictor `Stars` suggests that out of 16,000 wine samples, about 25% have never been professionally reviewed.
-If we assume that the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model.
+If we assume the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model. Therefore, we'll simply preserve the NAs as the model functions automatically adjust for these observations.
 
-To enable further analysis we'll convert `stars` from a numeric to a factor, with a level '0' representing our NA values.
-
+However, we'll convert `Stars` from a numeric to a factor to enable further analysis.
 ```{r}
 df_prep <- df_prep %>%
-  mutate(stars = as.factor(ifelse(is.na(stars),0,stars)))
+  mutate(stars = as.factor(stars))
 ```
 
 #### Missing Data - Chemical Compounds
@@ -708,7 +707,7 @@ multi_metric <- metric_set(mape, smape, mase, mpe, yardstick::rmse)
 
 
 ```{r}
-
+## Poisson Regression 1
 pr1_df <-pr1_eval %>% multi_metric(truth=target, estimate=predicted)
 b <- summary(pr1)
 
@@ -729,8 +728,8 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
 
 
 ```{r}
+## Poisson Regression 2
 pr2_df <-pr2_eval %>% multi_metric(truth=target, estimate=predicted)
-b <- summary(pr1)
 
 results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       Model = "Poisson Regression 2",
@@ -739,7 +738,7 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       mase = pr2_df[[3,3]],
                       mpe = pr2_df[[4,3]],
                       "RMSE" = pr2_df[[5,3]],
-                      AIC = b$aic,
+                      AIC = AIC(pr2),
                       "Adjusted R2" = NA,
                       "F-statistic" = NA
                      ))
@@ -747,7 +746,78 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
 
 
 ```{r}
+## Negative Binomial 1
+nb1_df <-nb1_eval %>% multi_metric(truth=target, estimate=predicted)
+b <- summary(nb1)
 
+results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
+                      Model = "Negative Binomial 1",
+                      mape = nb1_df[[1,3]],
+                      smape = nb1_df[[2,3]],
+                      mase = nb1_df[[3,3]],
+                      mpe = nb1_df[[4,3]],
+                      "RMSE" = nb1_df[[5,3]],
+                      AIC = b$aic,
+                      "Adjusted R2" = NA,
+                      "F-statistic" = NA
+                     ))
+```
+
+```{r}
+## Negative Binomial 2
+nb2_df <-nb2_eval %>% multi_metric(truth=target, estimate=predicted)
+
+results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
+                      Model = "Negative Binomial 2",
+                      mape = nb2_df[[1,3]],
+                      smape = nb2_df[[2,3]],
+                      mase = nb2_df[[3,3]],
+                      mpe = nb2_df[[4,3]],
+                      "RMSE" = nb2_df[[5,3]],
+                      AIC = AIC(nb2),
+                      "Adjusted R2" = NA,
+                      "F-statistic" = NA
+                     ))
+```
+
+```{r}
+# Multiple Linear Regression 1
+lm1_df <-lm1_eval %>% multi_metric(truth=target, estimate=predicted)
+b <- summary(lm1)
+
+results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
+                      Model = "Multiple Linear Model 1",
+                      mape = lm1_df[[1,3]],
+                      smape = lm1_df[[2,3]],
+                      mase = lm1_df[[3,3]],
+                      mpe = lm1_df[[4,3]],
+                      "RMSE" = nb1_df[[5,3]],
+                      AIC = AIC(lm1),
+                      "Adjusted R2" = b$adj.r.squared,
+                      "F-statistic" = b$fstatistic[[1]]
+                     ))
+```
+
+```{r}
+# Multiple Linear Regression 2
+lm2_df <-lm2_eval %>% multi_metric(truth=target, estimate=predicted)
+b <- summary(lm2)
+
+results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
+                      Model = "Multiple Linear Model 2",
+                      mape = lm2_df[[1,3]],
+                      smape = lm2_df[[2,3]],
+                      mase = lm2_df[[3,3]],
+                      mpe = lm2_df[[4,3]],
+                      "RMSE" = lm2_df[[5,3]],
+                      AIC = AIC(lm2),
+                      "Adjusted R2" = b$adj.r.squared,
+                      "F-statistic" = b$fstatistic[[1]]
+                     ))
+```
+
+```{r}
+# Lasso
 m_df <- lasso_eval %>% multi_metric(truth=target, estimate=predicted)
 
 results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
@@ -806,7 +876,6 @@ tab_model(pr2, nb2,
           digits.p=4)
 
 ```
-
 
 ------------------------------------------------------------------------
 
