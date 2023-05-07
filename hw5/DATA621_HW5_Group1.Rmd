@@ -623,7 +623,7 @@ lm2_eval %>%
 
 ## Lasso
 
-Fit zero-inflated regression models for count data via penalized maximum likelihood.
+We used the zipath() to fit zero-inflated poisson regression models with variable selection using lasso regularization. The count and the logit models both start with all the predictor variables and we used the coefficients parameters that generated the smallest AIC value for the model.
 
 
 
@@ -634,44 +634,109 @@ fit.lasso <- zipath(target~.|.,data = df_train, family = "negbin")
 ```
 
 
-```{r}
+```{r eval=FALSE}
 minBic <- which.min(BIC(fit.lasso))
 coef(fit.lasso, minBic)
 cat("theta estimate", fit.lasso$theta[minBic])
 ```
 
 
+```{r}
+minAic <- which.min(AIC(fit.lasso))
+coef(fit.lasso, minAic)
+cat("theta estimate", fit.lasso$theta[minAic])
+```
 
-```{r, eval=FALSE}
 
-a <- coef(fit.lasso, minBic)
-round(data.frame(a$count),4)
-round(data.frame(a$zero),4)
+
+The coefficients for the count model that survive the regularization process include the dummy variables for `labelappeal`, `stars`, and the variables `density`.
+
+- `labelappeal` - the dummy variables derived from label appeal are strong indicators of the number of cases that will be purchased  
+- `stars` - the dummy variables derived from wine ratings are strong indicators of number of cases that will be purchased
+- `density` - is a negative indicator of the number of cases purchased by distributors suggesting that lighter wines are more popular than full-bodied wines
+- the following variables drop out of the final model `residualsugar`, `totalsulfurdioxide`, `freesulfurdioxide`, and `fixedacidity`
+
+
+
+```{r}
+
+c_df <- data.frame(enframe(coef(fit.lasso, minAic)$count[-1]))  %>% 
+            arrange(value) %>% mutate_if(is.numeric,round, digits = 4)
+
+c_df %>% 
+ggplot() +
+  geom_col(aes(y = reorder(name,value), x=value, fill = {value > 0})) +
+  xlab(label = "") +
+  ggtitle(expression(paste("Lasso Coefficients (Count)"))) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
+
 
 ```
+
+
+The coefficients for the zero inflation model that survice the regularization process include `stars`, `labelappeal-1`, `labelappeal1` ,and `volatileacidity`.
+
+- `stars` - the dummy variables derived from wine ratings are strong indicators of number of cases that will be purchased
+- `labelappeal-1` is negative and `labelappeal1` is positive with no other label related dummy variable being included in the model. This would suggest that label aesthetics only count at the margins between positive and negative customer sentiment. 
+- `volatileacidity` - is the only other variable coefficient that is included in the final model. With a negative coefficient lower volatile acid content is preferred when making a purchasing decision
+
+
+```{r}
+c_df <- data.frame(enframe(coef(fit.lasso, minAic)$zero[-1])) %>% 
+            arrange(value) %>% mutate_if(is.numeric,round, digits = 4)
+
+c_df %>%
+ggplot() +
+  geom_col(aes(y = reorder(name,value), x=value, fill = {value > 0})) +
+  xlab(label = "") +
+  ggtitle(expression(paste("Lasso Coefficients (Zero-Inflation)"))) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
+
+```
+
+
 
 
 ### Diagnostics
 
+
+
+
 ```{r}
 
-lasso_eval <- predict(fit.lasso, newdata=df_valid, which=minBic)
+lasso_eval <- predict(fit.lasso, newdata=df_valid, which=minAic)
 lasso_eval <- data.frame(lasso_eval)
 colnames(lasso_eval) <- c('predicted')
 lasso_eval$target <- df_valid$target
+lasso_eval$resid <- lasso_eval$predicted - lasso_eval$target
 lasso_rmse <- sqrt(mean((lasso_eval$target - lasso_eval$predicted)^2)) 
 
 
-# plot targets vs predicted
+# Diagnostic plots
+
+# xy plot of model fitted and residuals
+lasso_eval %>%
+  ggplot(aes(x=predicted, y=resid)) +
+  geom_point(alpha = .3) +
+  geom_hline(yintercept=2, linetype='dashed') +
+  geom_hline(yintercept=-2, linetype='dashed')
+
+# xy plot of validation predictions and targets
 lasso_eval %>%
   ggplot(aes(x = target, y = predicted)) +
   geom_point(alpha = .3) +
-  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
-  labs(title=paste('RMSE:',round(lasso_rmse,1)))
+  geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE)
+
+# density plot of validation predictions and targets
+lasso_eval %>%
+  ggplot() +
+  geom_density(aes(x=target), fill='green', alpha=0.25) +
+  geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
+
 
 ```
-
-
 
 
 
@@ -757,7 +822,7 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       mase = m_df[[3,3]],
                       mpe = m_df[[4,3]],
                       "RMSE" = m_df[[5,3]],
-                      AIC = as.numeric(AIC(fit.lasso)[minBic]),
+                      AIC = as.numeric(AIC(fit.lasso)[minAic]),
                       "Adjusted R2" = NA,
                       "F-statistic" = NA
                      ))
