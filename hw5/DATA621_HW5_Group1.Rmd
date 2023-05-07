@@ -34,6 +34,7 @@ library(pscl) # zeroinfl()
 library(skimr)
 library(sjPlot)
 library(mpath)
+library(yardstick)
 
 # ggplot
 theme_set(theme_light())
@@ -601,7 +602,7 @@ lm2_diag[c('AIC','Adj R2')] %>%
 
 ```{r, fig.align='default',out.width="50%", fig.height=5}
 # residual plots
-plot(lm2)
+plot(lm2, ask=FALSE)
 ```
 
 ```{r}
@@ -627,8 +628,8 @@ Fit zero-inflated regression models for count data via penalized maximum likelih
 
 
 ```{r}
-fit.lasso <- zipath(target~.|.,data = df_train, family = "negbin")
 
+fit.lasso <- zipath(target~.|.,data = df_train, family = "negbin")
 
 ```
 
@@ -636,6 +637,17 @@ fit.lasso <- zipath(target~.|.,data = df_train, family = "negbin")
 ```{r}
 minBic <- which.min(BIC(fit.lasso))
 coef(fit.lasso, minBic)
+cat("theta estimate", fit.lasso$theta[minBic])
+```
+
+
+
+```{r, eval=FALSE}
+
+a <- coef(fit.lasso, minBic)
+round(data.frame(a$count),4)
+round(data.frame(a$zero),4)
+
 ```
 
 
@@ -643,17 +655,15 @@ coef(fit.lasso, minBic)
 
 ```{r}
 
-#lasso_valid <- predict(fit.lasso, newdata=df_valid, which=fit.lasso$lambda.which)
-lasso_valid <- predict(fit.lasso, newdata=df_valid, which=minBic)
-lasso_valid <- data.frame(lasso_valid)
-colnames(lasso_valid) <- c('predicted')
-lasso_valid$target <- df_valid$target
-lasso_eval <- bind_cols(target = df_valid$target, predicted=lasso_valid)
+lasso_eval <- predict(fit.lasso, newdata=df_valid, which=minBic)
+lasso_eval <- data.frame(lasso_eval)
+colnames(lasso_eval) <- c('predicted')
+lasso_eval$target <- df_valid$target
 lasso_rmse <- sqrt(mean((lasso_eval$target - lasso_eval$predicted)^2)) 
 
 
 # plot targets vs predicted
-lasso_valid %>%
+lasso_eval %>%
   ggplot(aes(x = target, y = predicted)) +
   geom_point(alpha = .3) +
   geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE) +
@@ -675,7 +685,101 @@ lasso_valid %>%
 
 
 
+
 ```{r}
+
+results_lm_tbl <- tibble(
+                      Model = character(),
+                      mape = numeric(), 
+                      smape = numeric(), 
+                      mase = numeric(), 
+                      mpe = numeric(), 
+                      "RMSE" = numeric(),
+                      AIC = numeric(),
+                      "Adjusted R2" = numeric(),
+                      "F-statistic" = numeric()
+                )
+
+
+multi_metric <- metric_set(mape, smape, mase, mpe, yardstick::rmse)
+
+
+```
+
+
+```{r}
+
+pr1_df <-pr1_eval %>% multi_metric(truth=target, estimate=predicted)
+b <- summary(pr1)
+
+results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
+                      Model = "Poisson Regression 1",
+                      mape = pr1_df[[1,3]],
+                      smape = pr1_df[[2,3]],
+                      mase = pr1_df[[3,3]],
+                      mpe = pr1_df[[4,3]],
+                      "RMSE" = pr1_df[[5,3]],
+                      AIC = b$aic,
+                      "Adjusted R2" = NA,
+                      "F-statistic" = NA
+                     ))
+
+```
+
+
+
+```{r}
+pr2_df <-pr2_eval %>% multi_metric(truth=target, estimate=predicted)
+b <- summary(pr1)
+
+results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
+                      Model = "Poisson Regression 2",
+                      mape = pr2_df[[1,3]],
+                      smape = pr2_df[[2,3]],
+                      mase = pr2_df[[3,3]],
+                      mpe = pr2_df[[4,3]],
+                      "RMSE" = pr2_df[[5,3]],
+                      AIC = b$aic,
+                      "Adjusted R2" = NA,
+                      "F-statistic" = NA
+                     ))
+```
+
+
+```{r}
+
+m_df <- lasso_eval %>% multi_metric(truth=target, estimate=predicted)
+
+results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
+                      Model = "Lasso",
+                      mape = m_df[[1,3]],
+                      smape = m_df[[2,3]],
+                      mase = m_df[[3,3]],
+                      mpe = m_df[[4,3]],
+                      "RMSE" = m_df[[5,3]],
+                      AIC = as.numeric(AIC(fit.lasso)[minBic]),
+                      "Adjusted R2" = NA,
+                      "F-statistic" = NA
+                     ))
+```
+
+
+
+
+
+```{r}
+
+kable(results_lm_tbl, digits=4) %>% 
+  kable_styling(bootstrap_options = "basic", position = "center")
+
+```
+
+
+
+
+
+
+```{r, eval=FALSE}
 
 tab_model(pr1, nb1,
           dv.labels = c('Poisson','Negative Binomial'),
@@ -685,7 +789,7 @@ tab_model(pr1, nb1,
 ```
 
 
-```{r}
+```{r, eval=FALSE}
 tab_model(lm1, lm2,
           dv.labels = c('Multiple Linear Regression 1','Multiple Linear Regression 2'),
           show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, 
@@ -693,7 +797,7 @@ tab_model(lm1, lm2,
 ```
 
 
-```{r}
+```{r, eval=FALSE}
 
 tab_model(pr2, nb2,
           dv.labels = c( 'Poisson zeroinfl', 'Negative Binomial zeroinfl'),
