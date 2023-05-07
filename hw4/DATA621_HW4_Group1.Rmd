@@ -986,13 +986,13 @@ plot(rocs,type="l")
 ```
 
 Examining the 35 non-zero coefficients for the selected lambda value of `lambda.min`, we observed the `URBAN1` predictor variable had the largest impact on the prediction of a car crash by a factor of 2.5.
-Reviewing the top 5 predictor variables that impacted likelihood and the cost associated with an accident:
+Reviewing the top 5 predictor variables that impacted the likelihood associated with an accident:
 
--   `URBAN1` - working or living in an urban neighborhood increased the expected costs associated with a crash
--   `CAR_TYPE Sports Car` - sports cars increased the expected costs
--   `LIC_REVOKED1` - a history of having a revoked license increased the expected costs
--   `JOB Manager` - being a manager reduced the expected costs
--   `PRIVATE_USE1` - using a car for private activities reduced the expected costs
+-   `URBAN1` - working or living in an urban neighborhood increased the likelihood associated with a crash
+-   `CAR_TYPE Sports Car` - sports cars increased the likelihood
+-   `LIC_REVOKED1` - a history of having a revoked license increased the likelihood
+-   `JOB Manager` - being a manager reduced the likelihood
+-   `PRIVATE_USE1` - using a car for private activities reduced the likelihood
 
 The `AGE`, `JOB Student` and `CAR_RED1` predictor variables dropped out of the final model.
 
