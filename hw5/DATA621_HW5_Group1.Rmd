@@ -85,24 +85,35 @@ model_diag <- function(model){
 #knitr::knit_exit()
 ```
 
+```{r data_load}
+# load data
+df_train <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-training-data.csv')
+df_predict <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-evaluation-data.csv')
+```
+
 ## Overview
 
-In this homework assignment, we will explore, analyze and model a data set containing information on approximately 12,000 commercially available wines. The variables are mostly related to the chemical properties of the wine being sold. The response variable is the number of sample cases of wine that were purchased by wine distribution companies after sampling a wine. 
+In this homework assignment we explored, analyzed and modeled a data set containing information on approximately 12,000 commercially available wines.
+The variables were mostly related to the chemical properties of the wine being sold.
+The response variable was the number of sample cases of wine that were purchased by wine distribution companies after a sample.
 
-Initially, we will examine the data for any problems that may exist, such as missing data, outliers, multicollinearity. After, we'll take the necessary steps to clean the data, and build two poisson regressions, two negative binomial regressions, and two multivariate linear regression models using the training dataset. We will train the models and evaluate them based on how well they perform against the provided evaluation data. Finally, we will select a final model that provides the best balance between accuracy and simplicity to predict the number of cases of wine that will be sold given certain properties of the wine.
+Initially, we examined the data for any problems that may have existed, such as missing data, outliers, and multi-collinearity.
+Next we took the necessary steps to clean the data, and built two poisson regressions, two negative binomial regressions, and two multivariate linear regression models using the training dataset.
 
+We trained the models and evaluated them based on how well they performed against the provided evaluation data.
+Finally, we selected a final model that provided the best balance between accuracy and simplicity to predict the number of cases of wine sold given certain properties of the wine.
 
 ------------------------------------------------------------------------
 
 ## 1. Data Exploration
 
-The **training** dataset contained 12795 observations of 17 predictor variables, where each record represented a commercially available wine.
-These variables included  **ADD TEXT**
+The **training** dataset contained `r nrow(df_train)` observations of 17 predictor variables, where each record represented a commercially available wine.
 
-The **evaluation** dataset contained 3335 observations over the same predictor variables.
+These variables included measures of acidity and amounts of various chemical compounds, as well as qualitative and marketing-related data such as reviewer starts and consumer responses to label design.
 
+The **prediction** dataset contained `r nrow(df_predict)` observations over the same predictor variables.
 
--   `Target`: Number of Cases Purchased 
+-   `Target`: Number of Cases Purchased
 -   `AcidIndex`: Proprietary method of testing total acidity of wine by using a weighted average
 -   `Alcohol`: Alcohol Content
 -   `Chlorides`: Chloride content of wine
@@ -120,28 +131,20 @@ The **evaluation** dataset contained 3335 observations over the same predictor v
 
 ### 1.1 Summary Statistics
 
-In order to explore summary stats and distribution characteristics of our dataset, we'll need to first conduct some basic transformations and cleanup:
+In order to explore summary stats and distribution characteristics of our dataset, we needed to first conduct some basic transformations and cleanup:
 
--   The provided dataset contains a single response variable `target`, a numeric variable indicating the number of cases purchased.
--   The 'evaluation' dataset contains no values for `target`, suggesting this data might be used for prediction rather than validation and evaluation of model performance. For clarity we'll rename this this dataset 'prediction' instead and create a separate validation hold-out from the training data.
--   There is a numeric `index` column labeling the observations which can be excluded from the models.
--   `r nrow(df_predict)` observations (or `r round(nrow(df_predict)/nrow(df_all),2)*100`%) of the total dataset have been set aside for prediction.
+-   The 'training' dataset contained a single response variable `target`, a numeric variable indicating the number of cases purchased.
+-   The 'prediction' dataset contained no values for `target`, suggesting this data might be used for prediction rather than validation and evaluation of model performance. For clarity we'll renamed this this dataset 'prediction' instead and created a separate validation hold-out from the training data.
+-   There was a numeric `index` column labeling the observations which could be excluded from the models.
+-   `r nrow(df_predict)` observations (or `r round(nrow(df_predict)/nrow(df_all),2)*100`%) of the total dataset had been set aside for prediction.
 -   The combined training and prediction datasets consist of `r nrow(df_all)` observations containing `r ncol(df_all)-2` predictor variables.
-
 
 While exploring this data, we made the following observations:
 
--   Data contains only numerical values
--   4 variables are discrete (`stars`, `labelappeal`, `acidindex`, `target`)
--   8 variables out of 14 contain missing values
--   `target` (number of cases purchased) varies between 0 and 8
-
-```{r data_load}
-# load data
-df_train <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-training-data.csv')
-df_predict <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-evaluation-data.csv')
-```
-
+-   Data contained only numeric values.
+-   4 variables were discrete (`stars`, `labelappeal`, `acidindex`, `target`).
+-   8 variables out of 14 contained missing values.
+-   `target` (number of cases purchased) varied between 0 and 8.
 
 ```{r clean_data}
 # fix index name in predict for bind
@@ -159,8 +162,6 @@ names(df_all) <- str_to_lower(str_replace_all(names(df_all), c(" " = "_" , "," =
 df_all <- df_all %>% dplyr::select(!index)
 ```
 
-
-
 ```{r summary}
 # summary stats for all non-dummy variables
 df_all %>% 
@@ -175,17 +176,17 @@ df_all %>%
   nice_table(cap='Summary Statistics')
 ```
 
-
+------------------------------------------------------------------------
 
 ### 1.2 Distribution
 
-One of the first characteristics that stand out is the presence of negative values for many chemical compounds, and the relative normality of their distributions.
-This suggests they have already been power-transformed to produce normal distributions for modeling.
+One of the first characteristics that stood out was the presence of negative values for many chemical compounds, and the relative normality of their distributions.
+This suggested they had already been power-transformed to produce normal distributions for modeling.
 
-Variables related to sugars, chlorides, acidity, sulfides and sulfates all seem to fall in this category.
-Considering that we are analyzing very tiny amounts of chemical compounds, we might assume their natural distributions may be highly skewed.
+Variables related to sugars, chlorides, acidity, sulfides and sulfates all seemed to fall in this category.
+Considering that were are analyzing very tiny amounts of chemical compounds, we might correctly assume their natural distributions may be highly skewed.
 
-Variables `acidindex` (proprietary method of testing total acidity of wine by using a weighted average) seem to be slightly right-skewed.
+The variables `acidindex` (proprietary method of testing total acidity of wine by using a weighted average) seemed to be slightly right-skewed.
 
 ```{r distrib}
 numeric_cols <- sapply(df_all, is.numeric)
@@ -199,10 +200,17 @@ df_all[,numeric_cols] %>%
   facet_wrap(vars(variables), scales="free")
 ```
 
+------------------------------------------------------------------------
+
 ### 1.3 Boxplots
 
-The boxplots below don't show any outliers that we need to deal with. 
-We also see the relationship between `stars`/`labelappeal`and `target`  variables. If `labelappeal` increases, `target` variable also goes up (if score indicating the appeal of label design for consumers increases, number of cases purchased increases as well). `stars=NA`correlates to low values for `target`. We may use the hint from from the assignment that a variable is missing is actually predictive of the target, and won't get rid of the missing values for `stars`.
+Graphing our variables distributions with boxplots didn't identify any outliers we needed to deal with.
+
+We did see a relationship between `stars`/`labelappeal`and the `target` variable.
+As `labelappeal` increased, the `target` variable also went up - suggesting a positive relationship between label design appeal and cases purchased.
+
+We also noticed that missing/NA values for `stars` was associated with low values for `target`.
+Using the hint from from the assignment that "sometimes, the fact that a variable is missing is actually predictive of the target", we won't discard or impute over the missing values for `stars`.
 
 ```{r boxplots}
 box_plots <- df_train %>% 
@@ -218,7 +226,6 @@ box_plots %>%
   facet_wrap(. ~variables, scales='free', ncol=6)
 ```
 
-
 ```{r}
 box_plots %>% 
   dplyr::select(c(TARGET, STARS, LabelAppeal, AcidIndex)) %>%
@@ -232,8 +239,11 @@ box_plots %>%
   facet_wrap(~variables, scales = 'free',  ncol = 1)
 ```
 
-### 1.4 Scatter plots
-The plots below can help us to understand the relationship between independent variables and target variable.
+------------------------------------------------------------------------
+
+### 1.4 Scatter Plots
+
+Graphing our variables distributions with scatterplots helped us understand relationships between our independent variables and the target variable.
 
 **ADD TEXT**
 
@@ -241,10 +251,14 @@ The plots below can help us to understand the relationship between independent v
 featurePlot(box_plots[,2:ncol(box_plots)], box_plots[,1], plot = "scatter")
 ```
 
+------------------------------------------------------------------------
 
 ### 1.5 Correlation Matrix
-In the correlation plot below, we see that variables `Star` and `LabelAppeal` are the most positively correlated to the response variable (more stars, as a result, more purchases/ better label, more purchases). There is slight negative correlation between `AcidIndex` and the `target` variable.
+
+In the correlation plot below, we see that variables `Star` and `LabelAppeal` are the most positively correlated to the response variable (more stars, as a result, more purchases/ better label, more purchases).
+There is slight negative correlation between `AcidIndex` and the `target` variable.
 In terms of multicollinearity, we don't see high correlation between variables and there is a chance that we won't need to deal with it in our models.
+
 ```{r}
 rcore <- rcorr(as.matrix(box_plots %>% dplyr::select(where(is.numeric))))
 coeff <- rcore$r
@@ -254,18 +268,15 @@ corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "bl
 
 ------------------------------------------------------------------------
 
-
 ## 2. Data Preparation
 
 ### 2.1 Transformations, Outliers
-
 
 We tried exponentiation of related to sugars, chlorides, acidity, sulfides and sulfates variables by the natural log and other values, but did not arrive at an obvious or consistent transformation approach - so we may not be able to interpret model results on the scale of the original values for these variables.
 
 **COULD YOU ADD THE TRANSFORMATIONS AND MAKE THE PARAGRAPH AS CONCLUSION?**
 
-**Mention outliers**
-------------------------------------------------------------------------
+## **Mention outliers**
 
 ### 2.2 Missing Data
 
@@ -291,16 +302,22 @@ x[x>0] %>% as.data.frame() %>%
 Heeding the warning in the assignment, *"sometimes, the fact that a variable is missing is actually predictive of the target"*, we'll consider each of these variables carefully.
 While there may be data "missing completely at random" (MCAR) that we wish to impute, this may not always be the case.
 
+------------------------------------------------------------------------
+
 #### 2.2.1 Missing Data - Stars
 
 The predictor `Stars` suggests that out of 16,000 wine samples, about 25% have never been professionally reviewed.
-If we assume the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model. Therefore, we'll simply preserve the NAs as the model functions automatically adjust for these observations.
+If we assume the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model.
+Therefore, we'll simply preserve the NAs as the model functions automatically adjust for these observations.
 
 However, we'll convert `Stars` from a numeric to a factor to enable further analysis.
+
 ```{r}
 df_prep <- df_prep %>%
   mutate(stars = as.factor(stars))
 ```
+
+------------------------------------------------------------------------
 
 #### 2.2.2 Missing Data - Chemical Compounds
 
@@ -335,6 +352,8 @@ meth[c('target','labelappeal','stars','source')] = ''
 impute = mice(df_prep, method=meth, predictorMatrix=predM, m=5)
 df_prep_imputed <- complete(impute)
 ```
+
+------------------------------------------------------------------------
 
 ### 2.3 Data Sparseness - Label Appeal
 
@@ -381,6 +400,8 @@ df_prep_imputed[,numeric_cols] %>%
   facet_wrap(vars(variables), scales="free")
 ```
 
+------------------------------------------------------------------------
+
 ### 2.5 Split Datasets
 
 With transformations complete, we split back into training and prediction datasets based on our `source_flag`, and create a 15% validation hold-out from the training data.
@@ -405,7 +426,6 @@ df_valid <- df_train_all[!row_sample,]
 ### 3.1 Poisson Regression 1
 
 Poisson Regression assumes that the variance and mean of our dependent variable `target` are roughly equal, otherwise we may be looking at over- or under-dispersion.
-
 
 ```{r, echo=TRUE}
 pr1 <- glm(target ~ ., family = 'poisson', data = df_train)
@@ -639,7 +659,6 @@ nb2_eval %>%
 
 For our first Multiple Linear Regression, we'll use all predictors.
 
-
 ```{r, echo=TRUE}
 lm1 <- lm(target ~ ., data=df_train)
 ```
@@ -652,7 +671,6 @@ lm1_diag <- model_diag(lm1)
 lm1_diag[c('AIC','Adj R2')] %>% 
   round(2) %>% nice_table()
 ```
-
 
 ### Diagnostics
 
@@ -679,7 +697,7 @@ lm1_eval %>%
 
 ------------------------------------------------------------------------
 
-### 3.6  Multiple Linear Regression 2
+### 3.6 Multiple Linear Regression 2
 
 For our second Multiple Linear Regression, we'll add stepwise feature selection.
 
@@ -724,7 +742,8 @@ lm2_eval %>%
 
 ## 3.7 Lasso
 
-We used the zipath() to fit zero-inflated poisson regression models with variable selection using lasso regularization. The count and the logit models both start with all the predictor variables and we used the coefficients parameters that generated the smallest AIC value for the model.
+We used the zipath() to fit zero-inflated poisson regression models with variable selection using lasso regularization.
+The count and the logit models both start with all the predictor variables and we used the coefficients parameters that generated the smallest AIC value for the model.
 
 ```{r}
 fit.lasso <- zipath(target~.|.,data = df_train, family = "negbin")
@@ -745,11 +764,10 @@ as.data.frame(coef(fit.lasso, minAic)) %>% nice_table(cap='Zero-Inflated Model C
 
 The coefficients for the count model that survive the regularization process include the dummy variables for `labelappeal`, `stars`, and the variables `density`.
 
-- `labelappeal` - the dummy variables derived from label appeal are strong indicators of the number of cases that will be purchased  
-- `stars` - the dummy variables derived from wine ratings are strong indicators of number of cases that will be purchased
-- `density` - is a negative indicator of the number of cases purchased by distributors suggesting that lighter wines are more popular than full-bodied wines
-- the following variables drop out of the final model `residualsugar`, `totalsulfurdioxide`, `freesulfurdioxide`, and `fixedacidity`
-
+-   `labelappeal` - the dummy variables derived from label appeal are strong indicators of the number of cases that will be purchased\
+-   `stars` - the dummy variables derived from wine ratings are strong indicators of number of cases that will be purchased
+-   `density` - is a negative indicator of the number of cases purchased by distributors suggesting that lighter wines are more popular than full-bodied wines
+-   the following variables drop out of the final model `residualsugar`, `totalsulfurdioxide`, `freesulfurdioxide`, and `fixedacidity`
 
 ```{r fig.height=4}
 c_df <- data.frame(enframe(coef(fit.lasso, minAic)$count[-1]))  %>% 
@@ -763,12 +781,11 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
 ```
 
+The coefficients for the zero inflation model that survived the regularization process include `stars`, `labelappeal-1`, `labelappeal1` ,and `volatileacidity`.
 
-The coefficients for the zero inflation model that survice the regularization process include `stars`, `labelappeal-1`, `labelappeal1` ,and `volatileacidity`.
-
-- `stars` - the dummy variables derived from wine ratings are strong indicators of number of cases that will be purchased
-- `labelappeal-1` is negative and `labelappeal1` is positive with no other label related dummy variable being included in the model. This would suggest that label aesthetics only count at the margins between positive and negative customer sentiment. 
-- `volatileacidity` - is the only other variable coefficient that is included in the final model. With a negative coefficient lower volatile acid content is preferred when making a purchasing decision.
+-   `stars` - the dummy variables derived from wine ratings are strong indicators of number of cases that will be purchased
+-   `labelappeal-1` is negative and `labelappeal1` is positive with no other label related dummy variable being included in the model. This would suggest that label aesthetics only count at the margins between positive and negative customer sentiment.
+-   `volatileacidity` - is the only other variable coefficient that is included in the final model. With a negative coefficient lower volatile acid content is preferred when making a purchasing decision.
 
 ```{r fig.height=4}
 c_df <- data.frame(enframe(coef(fit.lasso, minAic)$zero[-1])) %>% 
@@ -819,6 +836,7 @@ lasso_eval %>%
 # Model Evaluation
 
 ...
+
 ```{r}
 
 results_lm_tbl <- tibble(
@@ -838,7 +856,6 @@ multi_metric <- metric_set(mape, smape, mase, mpe, yardstick::rmse)
 
 
 ```
-
 
 ```{r}
 ## Poisson Regression 1
