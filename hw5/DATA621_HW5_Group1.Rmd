@@ -52,11 +52,14 @@ set.seed(42)
 ```
 
 ```{r common functions}
-nice_table <- function(df){
-  table <- df %>% kable %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
+nice_table <- function(df, cap=NULL, cols=NULL, dig=3, fw=F){
+  if (is.null(cols)) {c <- colnames(df)} else {c <- cols}
+  table <- df %>% 
+    kable(caption=cap, col.names=c, digits=dig) %>% 
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      html_font = 'monospace',
+      full_width = fw)
   return(table)
 }
 
@@ -75,6 +78,11 @@ model_diag <- function(model){
   names(vec) <- c('AIC','Adj R2','Dispersion','Log-Lik')
   return(vec)
 }
+```
+
+```{r}
+# insert chunk & run with rmarkdown::render('DATA621_HW5_Group1.Rmd') to see knit vars in local environment.
+#knitr::knit_exit()
 ```
 
 ## Overview
@@ -130,7 +138,7 @@ While exploring this data, we made the following observations:
 
 ```{r data_load}
 # load data
-df_trains <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-training-data.csv')
+df_train <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-training-data.csv')
 df_predict <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/hw5/data/wine-evaluation-data.csv')
 ```
 
@@ -138,19 +146,17 @@ df_predict <- read.csv('https://raw.githubusercontent.com/cliftonleesps/data621_
 ```{r clean_data}
 # fix index name in predict for bind
 df_predict <- df_predict %>% rename(INDEX=IN)
-df_trains<- df_trains %>% rename(INDEX=п.їINDEX)
 
 # union for exploration and prep
-df_trains <- df_trains %>% mutate(source='train')
+df_train <- df_train %>% mutate(source='train')
 df_predict <- df_predict %>% mutate(source='predict')
-df_all <- bind_rows(df_trains, df_predict)
+df_all <- bind_rows(df_train, df_predict)
 
 # fix column labels
 names(df_all) <- str_to_lower(str_replace_all(names(df_all), c(" " = "_" , "," = "", "\\*" = "", "\\(" = "", "\\)" = "", "`" = "", "\\/" = "_")))
 
 # drop un-necessary columns
 df_all <- df_all %>% dplyr::select(!index)
-
 ```
 
 
@@ -166,7 +172,7 @@ df_all %>%
   mutate(complete_rate=round(complete_rate,2), 
          min=round(min,2), max=round(max,2)) %>%
   arrange(variable) %>%
-  nice_table()
+  nice_table(cap='Summary Statistics')
 ```
 
 
@@ -199,7 +205,7 @@ The boxplots below don't show any outliers that we need to deal with.
 We also see the relationship between `stars`/`labelappeal`and `target`  variables. If `labelappeal` increases, `target` variable also goes up (if score indicating the appeal of label design for consumers increases, number of cases purchased increases as well). `stars=NA`correlates to low values for `target`. We may use the hint from from the assignment that a variable is missing is actually predictive of the target, and won't get rid of the missing values for `stars`.
 
 ```{r boxplots}
-box_plots <- df_trains %>% 
+box_plots <- df_train %>% 
   dplyr::select(!c(INDEX, source))
   
 box_plots %>% 
@@ -279,7 +285,7 @@ x[x>0] %>% as.data.frame() %>%
   setNames('is_na') %>% 
   mutate(pct = round(is_na/nrow(df_prep),2)) %>%
   arrange(desc(pct)) %>%
-  nice_table()
+  nice_table(cap = 'Missing Data')
 ```
 
 Heeding the warning in the assignment, *"sometimes, the fact that a variable is missing is actually predictive of the target"*, we'll consider each of these variables carefully.
@@ -360,7 +366,7 @@ rownames(df) <- NULL
 df %>% 
   dplyr::filter(variable != 'source' & variable != 'target') %>%
   arrange(variable) %>% 
-  nice_table()
+  nice_table(cap = 'Final Dataset - Missing and Zeros')
 ```
 
 ```{r}
@@ -369,8 +375,9 @@ numeric_cols <- sapply(df_prep_imputed, is.numeric)
 df_prep_imputed[,numeric_cols] %>%
   dplyr::select(!target) %>%
   pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
-  ggplot(aes(x=values)) +
-  geom_histogram(alpha=0.5, colour='black', size=0.2) +
+  ggplot() +
+  geom_histogram(aes(x=values, y = ..density..), alpha=0.5, colour='black', size=0.2) +
+  geom_density(aes(x=values), color='purple') +
   facet_wrap(vars(variables), scales="free")
 ```
 
@@ -413,18 +420,17 @@ pr1_diag[c('AIC','Dispersion','Log-Lik')] %>%
   round(2) %>% nice_table()
 ```
 
-
-```{r, echo=TRUE}
-pr_try <- glm(target ~ ., family = 'poisson', data = try_train)
-```
-
-```{r}
-summary(pr_try)
-
-pr_try_diag <- model_diag(pr_try)
-
-pr_try_diag[c('AIC','Dispersion','Log-Lik')] %>% 
-  round(2) %>% nice_table()
+```{r, echo=FALSE}
+# testing?
+#
+# pr_try <- glm(target ~ ., family = 'poisson', data = try_train)
+#
+# summary(pr_try)
+# 
+# pr_try_diag <- model_diag(pr_try)
+# 
+# pr_try_diag[c('AIC','Dispersion','Log-Lik')] %>% 
+#   round(2) %>% nice_table()
 ```
 
 We note that our model has generated 'dummies' from our categorical variables `labelappeal` and `stars`, and of the 20 total predictors, all but five have statistical significance.
@@ -435,7 +441,7 @@ Notably, our Dispersion Parameter is `r round(pr1_diag['Dispersion'],2)`, which 
 
 By graphing our target values (green) against our predicted values (blue) we can easily see this model tends to under-predict the higher count levels, and wildly over-predict the lower count levels.
 
-```{r, fig.align='default', out.width="50%", fig.height=4}
+```{r, fig.align='default', out.width='50%', fig.height=4}
 # predict based on our validation holdout
 pr1_valid <- predict(pr1, newdata = df_valid)
 
@@ -491,7 +497,7 @@ By graphing our target values (green) against our predicted values (blue) we can
 
 Notably, we are still under-predicting counts of 1-2, and greatly over-predicting counts of zero.
 
-```{r, fig.align='default', out.width="50%", fig.height=4}
+```{r, fig.align='default', out.width='50%', fig.height=4}
 # predict based on our validation holdout
 pr2_valid <- predict(pr2, newdata = df_valid)
 
@@ -544,7 +550,7 @@ nb1_diag[c('AIC','Dispersion','Log-Lik')] %>%
 
 As expected, the Negative Binomial Regression does not outperform the Poisson.
 
-```{r, fig.align='default', out.width="50%", fig.height=4}
+```{r, fig.align='default', out.width='50%', fig.height=4}
 # predict based on our validation holdout
 nb1_valid <- predict(nb1, newdata = df_valid)
 
@@ -597,7 +603,7 @@ nb2_diag[c('AIC','Dispersion','Log-Lik')] %>%
 
 The Zero-Inflated Negative Binomial model sees similar improvement as with the Zero-Inflated Poisson, but as before does not outperform the Poisson.
 
-```{r, fig.align='default', out.width="50%", fig.height=4}
+```{r, fig.align='default', out.width='50%', fig.height=4}
 # predict based on our validation holdout
 nb2_valid <- predict(nb2, newdata = df_valid)
 
@@ -652,12 +658,12 @@ lm1_diag[c('AIC','Adj R2')] %>%
 
 ...
 
-```{r, fig.align='default', out.width="50%", fig.height=5}
+```{r, fig.align='default', out.width='50%', fig.height=5}
 # residual plots
 plot(lm1,ask=FALSE)
 ```
 
-```{r}
+```{r fig.align='left', fig.height=3, fig.width=4}
 # validate and calculate RMSE
 lm1_valid <- predict(lm1, newdata = df_valid)
 lm1_eval <- bind_cols(target = df_valid$target, predicted=lm1_valid)
@@ -695,12 +701,12 @@ lm2_diag[c('AIC','Adj R2')] %>%
 
 ...
 
-```{r, fig.align='default',out.width="50%", fig.height=5}
+```{r, fig.align='default', out.width='50%', fig.height=5}
 # residual plots
 plot(lm2, ask=FALSE)
 ```
 
-```{r}
+```{r fig.align='left', fig.height=3, fig.width=4}
 # validate and calculate RMSE
 lm2_valid <- predict(lm2, newdata = df_valid)
 lm2_eval <- bind_cols(target = df_valid$target, predicted=lm2_valid)
@@ -714,17 +720,15 @@ lm2_eval %>%
   labs(title=paste('RMSE:',round(lm2_rmse,1)))
 ```
 
+------------------------------------------------------------------------
 
 ## 3.7 Lasso
 
 We used the zipath() to fit zero-inflated poisson regression models with variable selection using lasso regularization. The count and the logit models both start with all the predictor variables and we used the coefficients parameters that generated the smallest AIC value for the model.
 
-
-
 ```{r}
 fit.lasso <- zipath(target~.|.,data = df_train, family = "negbin")
 ```
-
 
 ```{r eval=FALSE}
 minBic <- which.min(BIC(fit.lasso))
@@ -732,14 +736,12 @@ coef(fit.lasso, minBic)
 cat("theta estimate", fit.lasso$theta[minBic])
 ```
 
-
 ```{r}
 minAic <- which.min(AIC(fit.lasso))
-coef(fit.lasso, minAic)
-cat("theta estimate", fit.lasso$theta[minAic])
+as.data.frame(coef(fit.lasso, minAic)) %>% nice_table(cap='Zero-Inflated Model Coefficients', dig=4) 
 ```
 
-
+**Theta Estimate:** `r cat("theta estimate", fit.lasso$theta[minAic])`
 
 The coefficients for the count model that survive the regularization process include the dummy variables for `labelappeal`, `stars`, and the variables `density`.
 
@@ -749,8 +751,7 @@ The coefficients for the count model that survive the regularization process inc
 - the following variables drop out of the final model `residualsugar`, `totalsulfurdioxide`, `freesulfurdioxide`, and `fixedacidity`
 
 
-
-```{r}
+```{r fig.height=4}
 c_df <- data.frame(enframe(coef(fit.lasso, minAic)$count[-1]))  %>% 
             arrange(value) %>% mutate_if(is.numeric,round, digits = 4)
 c_df %>% 
@@ -767,10 +768,9 @@ The coefficients for the zero inflation model that survice the regularization pr
 
 - `stars` - the dummy variables derived from wine ratings are strong indicators of number of cases that will be purchased
 - `labelappeal-1` is negative and `labelappeal1` is positive with no other label related dummy variable being included in the model. This would suggest that label aesthetics only count at the margins between positive and negative customer sentiment. 
-- `volatileacidity` - is the only other variable coefficient that is included in the final model. With a negative coefficient lower volatile acid content is preferred when making a purchasing decision
+- `volatileacidity` - is the only other variable coefficient that is included in the final model. With a negative coefficient lower volatile acid content is preferred when making a purchasing decision.
 
-
-```{r}
+```{r fig.height=4}
 c_df <- data.frame(enframe(coef(fit.lasso, minAic)$zero[-1])) %>% 
             arrange(value) %>% mutate_if(is.numeric,round, digits = 4)
 c_df %>%
@@ -782,33 +782,31 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
 ```
 
-
-
-
 ### Diagnostics
 
-
-
-
-```{r}
+```{r, fig.align='default', out.width='50%', fig.height=4}
 lasso_eval <- predict(fit.lasso, newdata=df_valid, which=minAic)
 lasso_eval <- data.frame(lasso_eval)
 colnames(lasso_eval) <- c('predicted')
 lasso_eval$target <- df_valid$target
 lasso_eval$resid <- lasso_eval$predicted - lasso_eval$target
 lasso_rmse <- sqrt(mean((lasso_eval$target - lasso_eval$predicted)^2)) 
+
 # Diagnostic plots
+
 # xy plot of model fitted and residuals
 lasso_eval %>%
   ggplot(aes(x=predicted, y=resid)) +
   geom_point(alpha = .3) +
   geom_hline(yintercept=2, linetype='dashed') +
   geom_hline(yintercept=-2, linetype='dashed')
+
 # xy plot of validation predictions and targets
 lasso_eval %>%
   ggplot(aes(x = target, y = predicted)) +
   geom_point(alpha = .3) +
   geom_smooth(method="lm", color='grey', alpha=.3, se=FALSE)
+
 # density plot of validation predictions and targets
 lasso_eval %>%
   ggplot() +
@@ -816,15 +814,11 @@ lasso_eval %>%
   geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
 ```
 
-
-
 ------------------------------------------------------------------------
 
 # Model Evaluation
 
-
-
-
+...
 ```{r}
 
 results_lm_tbl <- tibble(
@@ -865,8 +859,6 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
 
 ```
 
-
-
 ```{r}
 ## Poisson Regression 2
 pr2_df <-pr2_eval %>% multi_metric(truth=target, estimate=predicted)
@@ -883,7 +875,6 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                       "F-statistic" = NA
                      ))
 ```
-
 
 ```{r}
 ## Negative Binomial 1
@@ -973,21 +964,10 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
                      ))
 ```
 
-
-
-
-
 ```{r}
-
 kable(results_lm_tbl, digits=4) %>% 
   kable_styling(bootstrap_options = "basic", position = "center")
-
 ```
-
-
-
-
-
 
 ```{r, eval=FALSE}
 
@@ -998,14 +978,12 @@ tab_model(pr1, nb1,
 
 ```
 
-
 ```{r, eval=FALSE}
 tab_model(lm1, lm2,
           dv.labels = c('Multiple Linear Regression 1','Multiple Linear Regression 2'),
           show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, 
           show.ci=FALSE, show.p = TRUE,show.stat=TRUE, digits.p=4)
 ```
-
 
 ```{r, eval=FALSE}
 
