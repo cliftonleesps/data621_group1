@@ -1,6 +1,8 @@
 ## initial load of all applications & transcript files
+
+# libraries
 library(tidyverse)
-library(haven) # read .dta 
+library(haven) # .dta
 
 ## change to your local data dir outside the repo
 local_data_dir <- '../../data/theop'
@@ -9,7 +11,7 @@ local_data_dir <- '../../data/theop'
 df_applications <- data.frame()
 cat = 'data_applications'
 
-files <- list.files(path = file.path(local_data_dir,cat), recursive=TRUE, 
+files <- list.files(path = file.path(local_data_dir,cat), recursive=TRUE,
                     pattern = '\\.dta$', full.names = TRUE)
 
 for (f in files){
@@ -28,7 +30,7 @@ save(df_applications,file=file.path(local_data_dir,'data_model/df_applications.R
 df_transcripts <- data.frame()
 cat = 'data_transcripts'
 
-files <- list.files(path = file.path(local_data_dir,cat), recursive=TRUE, 
+files <- list.files(path = file.path(local_data_dir,cat), recursive=TRUE,
                     pattern = '\\.dta$', full.names = TRUE)
 
 for (f in files){
@@ -41,5 +43,4 @@ for (f in files){
 
 # save to data_model folder
 save(df_transcripts,file=file.path(local_data_dir,'data_model/df_transcripts.RData'))
-
 
