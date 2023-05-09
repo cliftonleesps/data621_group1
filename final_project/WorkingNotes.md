@@ -1,13 +1,8 @@
 ## Texas Higher Education Opportunity Project (THEOP)
 https://opr.princeton.edu/archive/theop/
 
-## Documentation
-
-- [Admin_CollegeApplication.pdf](https://github.com/cliftonleesps/data621_group1/blob/main/final_project/documentation/Admin_CollegeApplication_documentation.pdf)
-- [Admin_CollegeTranscript.pdf](https://github.com/cliftonleesps/data621_group1/blob/main/final_project/documentation/Admin_CollegeTranscript_documentation.pdf)
-
-
 ## Data
+There are two distinct datasets that are a part of this study; **Administrative** data that summarize student-level admissions and academic performance from nine Texas public colleges and universitites, and longitudinal **Survey** data of Texas high school sophmores and seniors exploring their post-high school goals and activities.
 
 ### Administrative Data
 **Adminstrative** data are split into two groups:  **applications** and **transcripts**.   One of each dataset is provided for 8 Texas colleges, for 16 datasets in total.
@@ -63,7 +58,7 @@ With the exception of **gpahrs** for AM, all variables are available for all nin
 ---
 #### 3. Data Preparation Notes
 
-- (**DONE**) Create Unique Student ID across all datasets (recommend school abbreviation + studentid)
+- Create Unique Student ID across all datasets (recommend school abbreviation + studentid) **(STATUS: DONE)**
 	- "Student identifiers are not unique across institutions. If building a dataset with application records from more than one institution, creation of an institutionid variable is recommended.  However this School-based ID will be needed to join Application Data with associated Transcript Data."
 	  
 	- "It is not possible to track transfers within this group of nine universities." (does this mean that all prior transcript information transfers to the 'final university'?)
@@ -85,14 +80,14 @@ With the exception of **gpahrs** for AM, all variables are available for all nin
 	- quartile (2/9)
 	- hslos (2/9)
 	- hscentury (2/9)
-	- admit_ut_summer (1/9)
-	- admit_prov (4/9)
-	- utsa_cap (1/9)
+	- admit_ut_summer (1/9) (possible keep, see below)
+	- admit_prov (4/9) (possible keep, see below)
+	- utsa_cap (1/9) (possible keep, see below)
   
 - Applications: Merge codes from **termapp** with **termdes** where missing for AMK.
 	- "Because the termdes variable is missing for many applications in the Texas A&M Kingsville file, the termapp variable is also provided for this institution. Available only for AMK.
 	  
-- Applications: **utsa_cap** and **admit_ut_summer** are school-specific provisional/alternative admissions programs.  Might consider keeping if relevant to research questions?
+- Applications: **utsa_cap**, **admit_prov** and **admit\_ut\_summer** are school-specific provisional/alternative admissions programs.  Might consider keeping if relevant to research questions?
 
 - Applications: College Board "recentered" the SAT scoring scales in 1995, may need to consider and transform pre-1995 data.
 	- "In April 1995, the SAT replaced the former 200‐800 verbal and quantitative section test scales with new recentered 200‐800 scales... (this) created new scales with mean test score much closer to 500. (Prior to the recentering, mean verbal and math section scores were below 500.) Both section and composite recentered scores are higher than equivalent scores that are not recentered."
@@ -121,3 +116,32 @@ Potential questions we might explore with the Administrative data include:
 -   Were High School economic status rankings predictive of college academic performance?
 
 
+### Response Variables (Transcripts)
+
+- Program Completion
+	- Completion status (eligible for completion)
+	- Semesters to completion
+	- Time to completion
+	- Completion with/without breaks
+	- Avg Hours per term
+	- Final GPA (cumulative GPA in final semester)
+	- Changes in Major?
+
+
+---
+
+### Technical Notes
+
+- Haven creates dataframes of 'labeled vectors' that contain metadata..  the labelled() package can be used to manipulate these.
+	- Useful to retain the metadata during EDA
+	- Convert to unlabelled factors prior to modeling
+	- https://cran.r-project.org/web/packages/labelled/vignettes/intro_labelled.html
+
+- Compose a consecutive 'term_chron' per student record? (DONE)
+	- Terms are not consecutively numbered
+	- Fall would be 1, Winter Intersess 2, Spring 3, Spring Intersession 4, Summer I 5, Summer II 6.
+	- Fall 1995 is 1995-1, Winter 1995 is 1995-2, etc.
+	  
+- We may want to examine only those who graduated, or had enough time to graduate.  In other words, trim or mark students who began their studies X years less than our max date.
+  
+- How many hours to completion?  How many semesters to completion?
