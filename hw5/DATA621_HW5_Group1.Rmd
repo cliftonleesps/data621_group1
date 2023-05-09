@@ -38,12 +38,13 @@ library(yardstick)
 library(caret)
 library(corrplot)
 library(Hmisc)
+library(jtools)
+library(car)
+library(knitr)
 
 # ggplot
 theme_set(theme_light())
 
-# random seed
-set.seed(42)
 ```
 
 ```{css}
@@ -146,9 +147,10 @@ While exploring this data, we made the following observations:
 -   8 variables out of 14 contained missing values.
 -   `target` (number of cases purchased) varied between 0 and 8.
 
-```{r clean_data}
+```{r clean_data, message=FALSE, warning=FALSE, error=FALSE}
 # fix index name in predict for bind
 df_predict <- df_predict %>% rename(INDEX=IN)
+df_train <- df_train %>% rename(INDEX=п.їINDEX)
 
 # union for exploration and prep
 df_train <- df_train %>% mutate(source='train')
@@ -276,7 +278,7 @@ We tried exponentiation of related to sugars, chlorides, acidity, sulfides and s
 
 **COULD YOU ADD THE TRANSFORMATIONS AND MAKE THE PARAGRAPH AS CONCLUSION?**
 
-## **Mention outliers**
+A number of numerical characteristics exhibit negative values that seem somewhat implausible, however, we have decided to trust that these variables have undergone log transformation and that the values are valid.
 
 ### 2.2 Missing Data
 
@@ -308,14 +310,16 @@ While there may be data "missing completely at random" (MCAR) that we wish to im
 
 The predictor `Stars` suggests that out of 16,000 wine samples, about 25% have never been professionally reviewed.
 If we assume the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model.
-Therefore, we'll simply preserve the NAs as the model functions automatically adjust for these observations.
-
-However, we'll convert `Stars` from a numeric to a factor to enable further analysis.
+Therefore, we simply preserved the NAs were transformed to "0" level of `Stars` variable as the model functions automatically adjust for these observations to be used in the Zero-Inflated models.
+Also, `Stars`,  `Acid Index` variables were converted from a numeric to a factor to enable further analysis.
 
 ```{r}
 df_prep <- df_prep %>%
   mutate(stars = as.factor(stars))
+
+#added None instead of NA later in the code
 ```
+
 
 ------------------------------------------------------------------------
 
@@ -323,7 +327,7 @@ df_prep <- df_prep %>%
 
 Next we consider some of the missing chemical compounds in our wines; alcohol, sugars, chlorides, sulfites and sulfates, and measures such as `ph`.
 
-First, can safely assume that all wines in this dataset have an actual `ph` score greater than zero (which would represent the most acidic rank, such as powerful industrial acids.) We'll want to impute more reasonable values for these.
+First, we can safely assume that all wines in this dataset have an actual `ph` score greater than zero (which would represent the most acidic rank, such as powerful industrial acids). We'll want to impute more reasonable values for these.
 
 Based on some reading into the organic wines segment, there is a growing demand in the market for specialty products such as low-sulfite, low-sugar and low-alcohol wines.
 However, this still represents a very small segment of the overall market, and chemically it's not likely for these compounds to be completely absent from the final product.
@@ -361,11 +365,27 @@ df_prep_imputed <- complete(impute)
 It has also been pre-transformed to produce a normal distribution for modeling; however this is a very sparse variable with nearly half the cases having a value of zero.
 
 This may be candidate for handling with Zero-Inflated models.
-We won't change the values here, but will convert `labelappeal` from a numeric to a factor.
+We didn't change the values here, but converted `labelappeal` from a numeric to a factor.
 
 ```{r}
 df_prep_imputed <- df_prep_imputed %>%
-  mutate(labelappeal = as.factor(labelappeal)) 
+  mutate(labelappeal = as.factor(labelappeal)) %>%
+  mutate(acidindex = as.factor(acidindex)) 
+```
+
+
+```{r}
+
+#dataframe for models without NA
+try_df <- df_prep_imputed
+# Get levels and add "0"
+levels <- levels(try_df$stars)
+levels[length(levels) + 1] <- "0"
+
+# refactor Stars to include "0" as a factor level
+# and replace NA with "0"
+try_df$stars <- factor(try_df$stars, levels = levels)
+try_df$stars[is.na(try_df$stars)] <- "0"
 ```
 
 ------------------------------------------------------------------------
@@ -407,6 +427,8 @@ df_prep_imputed[,numeric_cols] %>%
 With transformations complete, we split back into training and prediction datasets based on our `source_flag`, and create a 15% validation hold-out from the training data.
 
 ```{r}
+# random seed
+set.seed(42)
 # split back to train and test, remove source flag
 df_train_all <- df_prep_imputed %>% filter(source == 'train') %>% dplyr::select(!source)
 
@@ -419,6 +441,22 @@ df_train <- df_train_all[row_sample,]
 df_valid <- df_train_all[!row_sample,]
 ```
 
+
+```{r}
+# random seed
+set.seed(42)
+# split back to train and test, remove source flag
+try_df_all <- try_df %>% filter(source == 'train') %>% dplyr::select(!source)
+
+try_df_predict <- try_df %>% filter(source == 'predict') %>% dplyr::select(!source)
+
+# create a validation holdout from the training dataset
+row_samples <- sample(c(TRUE,FALSE), nrow(try_df_all), replace=TRUE, prob=c(0.85,0.15))
+
+try_train <- try_df_all[row_samples,]
+try_valid <- try_df_all[!row_samples,]
+```
+
 ------------------------------------------------------------------------
 
 ## 3. Build Models
@@ -426,9 +464,10 @@ df_valid <- df_train_all[!row_sample,]
 ### 3.1 Poisson Regression 1
 
 Poisson Regression assumes that the variance and mean of our dependent variable `target` are roughly equal, otherwise we may be looking at over- or under-dispersion.
+The data used for the model has no missing values (stars=NA was substituted with stars=None), `Label Appeal` and `Acid Index` variables were transformed to factors. 
 
 ```{r, echo=TRUE}
-pr1 <- glm(target ~ ., family = 'poisson', data = df_train)
+pr1 <- glm(target ~ ., family = 'poisson', data = try_train)
 ```
 
 ```{r}
@@ -440,43 +479,69 @@ pr1_diag[c('AIC','Dispersion','Log-Lik')] %>%
   round(2) %>% nice_table()
 ```
 
-```{r, echo=FALSE}
-# testing?
-#
-# pr_try <- glm(target ~ ., family = 'poisson', data = try_train)
-#
-# summary(pr_try)
-# 
-# pr_try_diag <- model_diag(pr_try)
-# 
-# pr_try_diag[c('AIC','Dispersion','Log-Lik')] %>% 
-#   round(2) %>% nice_table()
+Stepwise selection can help to reduce the AIC metric.
+```{r pr_aic, warning=FALSE, message=FALSE}
+pr1_aic <- pr1 %>% stepAIC(trace = FALSE)
+summ(pr1_aic)
 ```
 
-We note that our model has generated 'dummies' from our categorical variables `labelappeal` and `stars`, and of the 20 total predictors, all but five have statistical significance.
+```{r}
+pr1_diag <- model_diag(pr1_aic)
+
+pr1_diag[c('AIC','Dispersion','Log-Lik')] %>% 
+  round(2) %>% nice_table()
+```
+
+
+#### Model Performance
+
+We note that our model has generated 'dummies' from our categorical variables `labelappeal` and `stars`, and of the 14 total predictors, all but 4 have statistical significance.
+
+
+The following variables had highly **positive coefficients** in our model, indicating a higher number of cases purchased. As discussed before, high rating and good labels lead to better sales:
+
+```{r}
+as.data.frame(summ(pr1_aic)$coeftable) %>%
+  dplyr::select(Est.,p) %>%
+  filter(p < 0.06 & Est. > 0.2) %>%
+  arrange(desc(Est.)) %>%
+  nice_table(cap='Positive Coefficients', cols=c('Est','p'))
+```
+
+Variables with highly **negative coefficients** indicated a lower number of cases purchased. The results followed the common logic, the higher total acidity of wine and no rating lead to low sales:
+
+```{r}
+as.data.frame(summ(pr1_aic)$coeftable) %>%
+  dplyr::select(Est.,p) %>%
+  filter(p < 0.06 & Est. < -0.2) %>%
+  arrange(Est.) %>%
+  nice_table(cap='Negative Coefficients', cols=c('Est','p'))
+```
+
+The `null deviance` of `r round(pr1$null.deviance,2)` defined how well the target variable could be predicted by a model with only an intercept term.
+
+The `residual deviance` of `r round(pr1$deviance,2)` defined how well the target variable can be predicted by the AIC model that we fit with the predictor variables listed above.
+The lower the value, the better the model's predictions of the response variable.
+
+The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
+
+The Akaike information criterion (`AIC`) was `r round(pr1$aic,2)`.
+The lower the AIC value, the better the model's ability to fit the data.
+We used this metric to compare the relative performance of the six models.
 
 Notably, our Dispersion Parameter is `r round(pr1_diag['Dispersion'],2)`, which suggests a degree of under-dispersion in the data.
 
-### Diagnostics
 
-By graphing our target values (green) against our predicted values (blue) we can easily see this model tends to under-predict the higher count levels, and wildly over-predict the lower count levels.
+By graphing our target values (green) against our predicted values (blue) we can easily see this model tends to over-predict the higher count levels, and wildly under-predict the lower count levels.
 
 ```{r, fig.align='default', out.width='50%', fig.height=4}
 # predict based on our validation holdout
-pr1_valid <- predict(pr1, newdata = df_valid)
+pr1_valid <- predict(pr1_aic, newdata = try_valid, type = "response")
 
 # bind the predicted and actuals for comparison
-pr1_eval <- bind_cols(target = df_valid$target, predicted= pr1_valid)
-pr1_eval[is.na(pr1_eval)] <- 0
+pr1_eval <- bind_cols(target = try_valid$target, predicted= pr1_valid)
+#pr1_eval[is.na(pr1_eval)] <- 0
 
-# Diagnostic plots
-
-# xy plot of model fitted and residuals
-bind_cols(fitted=unname(fitted(pr1)), resid=unname(resid(pr1))) %>%
-  ggplot(aes(x=fitted, y=resid)) +
-  geom_point(alpha = .3) +
-  geom_hline(yintercept=2, linetype='dashed') +
-  geom_hline(yintercept=-2, linetype='dashed')
 
 # xy plot of validation predictions and targets
 pr1_eval %>%
@@ -491,14 +556,37 @@ pr1_eval %>%
   geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
 ```
 
+
+#### Model Assumptions
+
+
+We evaluated the modeling assumptions using standard diagnostic plots, marginal model plots, and a Variance Inflation Factor (VIF) to assess collinearity.
+
+The resulting plot 1 below (predicted values vs. residuals) didn't show a random pattern. Examining the Standardized Pearson Residuals plot, the model seemed good until the middle range but there were extremes on the right.
+
+```{r}
+par(mfrow=c(2,2))
+plot(pr1_aic)
+```
+
+
+All variables had a VIF less than 5. As a result, th multi-collinearity may not be a problem for this model.
+
+```{r}
+as.data.frame(car::vif(pr1_aic)) %>% 
+  arrange(desc(GVIF)) %>%
+  nice_table(cap='Variance Inflation Factor', cols=c('GVIF','df','adj'))
+```
+
+
 ------------------------------------------------------------------------
 
 ### 3.2 Poisson Regression 2
 
-We'll build a Zero-Inflated Poisson model to handle the large number of zero values in our `labelappeal` and `stars` predictors, to see if we can improve model accuracy.
+We built a Zero-Inflated Poisson model to handle the large number of zero values in our `labelappeal` and `stars` predictors, to see if we can improve model accuracy.
 
 ```{r, echo=TRUE}
-pr2 <- zeroinfl(target ~ . | ., data=df_train, dist = 'poisson')
+pr2 <- zeroinfl(target ~ . | ., data=try_train, dist = 'poisson')
 ```
 
 ```{r}
@@ -510,20 +598,33 @@ pr2_diag[c('AIC','Dispersion','Log-Lik')] %>%
   round(2) %>% nice_table()
 ```
 
-### Diagnostics
+
+#### Model Performance
+
+We note that our model has generated 'dummies' from our categorical variables `labelappeal` and `stars`, and of the 14 total predictors, all but 4 have statistical significance.
+
+
+The results for the positive/negative coefficients seem strange, high acid levels can increase the purchases, and high rating can decrease.
+
+
+The `residual deviance` is `r round(pr2$deviance,2)`
+
+The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
+
+The Akaike information criterion (`AIC`) was `r round(pr2$aic,2)`.
 
 Using a Zero-Inflated model, the Dispersion Parameter drops significantly, but we are getting a better overall result for counts of 3 or more.
 By graphing our target values (green) against our predicted values (blue) we can see we are getting much greater accuracy rate for most of the mid- and upper counts.
 
-Notably, we are still under-predicting counts of 1-2, and greatly over-predicting counts of zero.
+Notably, we are still over-predicting counts of 1-2, and greatly under-predicting counts of zero. 
 
 ```{r, fig.align='default', out.width='50%', fig.height=4}
 # predict based on our validation holdout
-pr2_valid <- predict(pr2, newdata = df_valid)
+pr2_valid <- predict(pr2, newdata = try_valid, type="response")
 
 # bind the predicted and actuals for comparison
-pr2_eval <- bind_cols(target = df_valid$target, predicted= pr2_valid)
-pr2_eval[is.na(pr2_eval)] <- 0
+pr2_eval <- bind_cols(target = try_valid$target, predicted= pr2_valid)
+#pr2_eval[is.na(pr2_eval)] <- 0
 
 # Diagnostic plots
 
@@ -547,14 +648,15 @@ pr2_eval %>%
   geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
 ```
 
+
 ------------------------------------------------------------------------
 
 ### 3.3 Negative Binomial Regression 1
 
-Generally, we would use Negative Binomial Regression in cases of over-dispersion (where the variance of our dependent variable is significantly greater than the mean.) This does not appear to be the case with our dataset, but we'll apply it here and examine the results:
+Generally, we would use Negative Binomial Regression in cases of over-dispersion (where the variance of our dependent variable is significantly greater than the mean). This does not appear to be the case with our dataset, but we'll apply it here and examine the results:
 
 ```{r, echo=TRUE}
-nb1 <- glm.nb(target ~ ., data = df_train)
+nb1 <- glm.nb(target ~ ., data = try_train)
 ```
 
 ```{r}
@@ -566,17 +668,47 @@ nb1_diag[c('AIC','Dispersion','Log-Lik')] %>%
   round(2) %>% nice_table()
 ```
 
-### Diagnostics
+
+#### Model Performance
+
+Of the total predictors, all but 4 have statistical significance.
+
+The results for the positive/negative coefficients seemed reasonable, high acid levels and low rating can decrease the purchases, good rating and good label can increase.
+
+```{r}
+as.data.frame(summ(nb1)$coeftable) %>%
+  dplyr::select(Est.,p) %>%
+  filter(p < 0.06 & Est. > 0.2) %>%
+  arrange(desc(Est.)) %>%
+  nice_table(cap='Positive Coefficients', cols=c('Est','p'))
+```
+
+```{r}
+as.data.frame(summ(nb1)$coeftable) %>%
+  dplyr::select(Est.,p) %>%
+  filter(p < 0.06 & Est. < -0.2) %>%
+  arrange(Est.) %>%
+  nice_table(cap='Negative Coefficients', cols=c('Est','p'))
+```
+
+
+The `residual deviance` is `r round(nb1$deviance,2)`
+
+The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
+
+The Akaike information criterion (`AIC`) was `r round(nb1$aic,2)`.
+The lower the AIC value, the better the model's ability to fit the data.
+
 
 As expected, the Negative Binomial Regression does not outperform the Poisson.
 
 ```{r, fig.align='default', out.width='50%', fig.height=4}
 # predict based on our validation holdout
-nb1_valid <- predict(nb1, newdata = df_valid)
+nb1_valid <- predict(nb1, newdata = try_valid, type="response")
 
 # bind the predicted and actuals for comparison
-nb1_eval <- bind_cols(target = df_valid$target, predicted= nb1_valid)
-nb1_eval[is.na(nb1_eval)] <- 0
+nb1_eval <- bind_cols(target = try_valid$target, predicted= nb1_valid)
+#nb1_eval[is.na(nb1_eval)] <- 0
 
 # Diagnostic plots
 
@@ -600,6 +732,26 @@ nb1_eval %>%
   geom_density(aes(x=round(predicted,0)), fill='blue', alpha=0.25)
 ```
 
+
+
+#### Model Assumptions
+
+The resulting plot 1 below (predicted values vs. residuals) didn't show a random pattern. Examining the Standardized Pearson Residuals plot, the model seemed good until the middle range but there were extremes on the right.
+
+```{r}
+par(mfrow=c(2,2))
+plot(nb1)
+```
+
+
+All variables had a VIF less than 5. As a result, th multi-collinearity may not be a problem for this model.
+
+```{r }
+as.data.frame(car::vif(nb1)) %>% 
+  arrange(desc(GVIF)) %>%
+  nice_table(cap='Variance Inflation Factor', cols=c('GVIF','df','adj'))
+```
+
 ------------------------------------------------------------------------
 
 ### 3.4 Negative Binomial Regression 2
@@ -607,7 +759,7 @@ nb1_eval %>%
 We'll build a Zero-Inflated Negative Binomial model to handle the large number of zero values in our `labelappeal` and `stars` predictors, to see if we can improve model accuracy.
 
 ```{r, echo=TRUE}
-nb2 <- zeroinfl(target ~ . | ., data=df_train, dist = 'negbin')
+nb2 <- zeroinfl(target ~ . | ., data=try_train, dist = 'negbin')
 ```
 
 ```{r}
@@ -619,16 +771,26 @@ nb2_diag[c('AIC','Dispersion','Log-Lik')] %>%
   round(2) %>% nice_table()
 ```
 
-### Diagnostics
+#### Model Performance
+
+The results for the positive/negative coefficients seem strange, high acid levels can increase the purchases, and high rating can decrease.
+
+
+The `residual deviance` is `r round(nb2$deviance,2)`
+
+The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
+
+The Akaike information criterion (`AIC`) was `r round(nb2$aic,2)`.
+
 
 The Zero-Inflated Negative Binomial model sees similar improvement as with the Zero-Inflated Poisson, but as before does not outperform the Poisson.
 
 ```{r, fig.align='default', out.width='50%', fig.height=4}
 # predict based on our validation holdout
-nb2_valid <- predict(nb2, newdata = df_valid)
+nb2_valid <- predict(nb2, newdata = try_valid, type="response")
 
 # bind the predicted and actuals for comparison
-nb2_eval <- bind_cols(target = df_valid$target, predicted= nb2_valid)
+nb2_eval <- bind_cols(target = try_valid$target, predicted= nb2_valid)
 nb2_eval[is.na(nb2_eval)] <- 0
 
 # Diagnostic plots
@@ -660,7 +822,7 @@ nb2_eval %>%
 For our first Multiple Linear Regression, we'll use all predictors.
 
 ```{r, echo=TRUE}
-lm1 <- lm(target ~ ., data=df_train)
+lm1 <- lm(target ~ ., data=try_train)
 ```
 
 ```{r}
@@ -672,19 +834,26 @@ lm1_diag[c('AIC','Adj R2')] %>%
   round(2) %>% nice_table()
 ```
 
-### Diagnostics
 
-...
+#### Model Performance
 
-```{r, fig.align='default', out.width='50%', fig.height=5}
-# residual plots
-plot(lm1,ask=FALSE)
-```
+The F-statistic was `401`, and out of the 14 variables, 5 had statistically significant p-values.
+
+The Adjusted R-Squared of `r round(summary(lm1)$adj.r.squared,2)` explained about 54% of the total variance in the response variable `target`.
+
+The RMSE was `r round(sqrt(mean(lm1$residuals^2)),2)`.
+
+Positive coefficients indicated an increase in the purchases.
+In this model, wines with a better rating, good label, high alcohol tended to have more purchases.
+
+Similarly, negative coefficients lead less purchases.
+In this model, wines with high acid level, no rating,high concentration of sulphates/chlorides tended to have less purchases.
+
 
 ```{r fig.align='left', fig.height=3, fig.width=4}
 # validate and calculate RMSE
-lm1_valid <- predict(lm1, newdata = df_valid)
-lm1_eval <- bind_cols(target = df_valid$target, predicted=lm1_valid)
+lm1_valid <- predict(lm1, newdata = try_valid)
+lm1_eval <- bind_cols(target = try_valid$target, predicted=lm1_valid)
 lm1_rmse <- sqrt(mean((lm1_eval$target - lm1_eval$predicted)^2)) 
 
 # plot targets vs predicted
@@ -695,6 +864,31 @@ lm1_eval %>%
   labs(title=paste('RMSE:',round(lm1_rmse,1)))
 ```
 
+
+
+#### Model Assumptions
+
+An examination of the residuals indicated that the Residuals vs Fitted plot didn't show a constant variability of the residuals, but the Q-Q plot indicated a much better level of normality compared to the previous models.
+
+The variables included in our model had a VIF of 1 (or slightly above), indicating the variables were not correlated, for the most part.
+
+```{r, fig.align='default', out.width='50%', fig.height=5}
+# residual plots
+plot(lm1_aic,ask=FALSE)
+```
+
+```{r fig.height=4}
+
+vif_values <- vif(lm1_aic)
+vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
+
+vif_values %>%
+  ggplot(aes(y=GVIF, x=var)) +
+  coord_flip() + 
+  geom_hline(yintercept=5, linetype="dashed", color = "red") +
+  geom_bar(stat = 'identity', width=0.3 ,position=position_dodge()) 
+```
+
 ------------------------------------------------------------------------
 
 ### 3.6 Multiple Linear Regression 2
@@ -702,7 +896,7 @@ lm1_eval %>%
 For our second Multiple Linear Regression, we'll add stepwise feature selection.
 
 ```{r, echo=TRUE}
-lm2_all <- lm(target ~ ., data=df_train)
+lm2_all <- lm(target ~ ., data=try_train)
 lm2 <- stepAIC(lm2_all, trace=FALSE, direction='both')
 ```
 
@@ -715,18 +909,25 @@ lm2_diag[c('AIC','Adj R2')] %>%
   round(2) %>% nice_table()
 ```
 
-### Diagnostics
 
-...
+#### Model Performance
 
-```{r, fig.align='default', out.width='50%', fig.height=5}
-# residual plots
-plot(lm2, ask=FALSE)
-```
+The F-statistic was `458`, and out of the 14 variables, 5 had statistically significant p-values.
+
+The Adjusted R-Squared of `r round(summary(lm2)$adj.r.squared,2)`only explained about 54% of the total variance in the response variable `target`.
+
+The RMSE was `r round(sqrt(mean(lm2$residuals^2)),2)`.
+
+Positive coefficients indicated an increase in the purchases.
+In this model, wines with a better rating, good label, high alcohol tended to have more purchases.
+
+Similarly, negative coefficients lead less purchases.
+In this model, wines with high acid level, no rating,high concentration of sulphates/chlorides tended to have less purchases.
+
 
 ```{r fig.align='left', fig.height=3, fig.width=4}
 # validate and calculate RMSE
-lm2_valid <- predict(lm2, newdata = df_valid)
+lm2_valid <- predict(lm2, newdata = try_valid)
 lm2_eval <- bind_cols(target = df_valid$target, predicted=lm2_valid)
 lm2_rmse <- sqrt(mean((lm2_eval$target - lm2_eval$predicted)^2)) 
 
@@ -738,9 +939,33 @@ lm2_eval %>%
   labs(title=paste('RMSE:',round(lm2_rmse,1)))
 ```
 
+#### Model Assumptions
+
+An examination of the residuals indicated that the Residuals vs Fitted plot didn't show a constant variability of the residuals, but the Q-Q plot indicated a much better level of normality compared to the previous models.
+
+The variables included in our model had a VIF of 1 (or slightly above), indicating the variables were not correlated, for the most part.
+
+```{r, fig.align='default', out.width='50%', fig.height=5}
+# residual plots
+plot(lm2,ask=FALSE)
+```
+
+```{r fig.height=4}
+
+vif_values <- vif(lm2)
+vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
+
+vif_values %>%
+  ggplot(aes(y=GVIF, x=var)) +
+  coord_flip() + 
+  geom_hline(yintercept=5, linetype="dashed", color = "red") +
+  geom_bar(stat = 'identity', width=0.3 ,position=position_dodge()) 
+```
+
+
 ------------------------------------------------------------------------
 
-## 3.7 Lasso
+### 3.7 Lasso
 
 We used the zipath() to fit zero-inflated poisson regression models with variable selection using lasso regularization.
 The count and the logit models both start with all the predictor variables and we used the coefficients parameters that generated the smallest AIC value for the model.
@@ -799,7 +1024,7 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
 ```
 
-### Diagnostics
+#### Diagnostics
 
 ```{r, fig.align='default', out.width='50%', fig.height=4}
 lasso_eval <- predict(fit.lasso, newdata=df_valid, which=minAic)
@@ -833,7 +1058,7 @@ lasso_eval %>%
 
 ------------------------------------------------------------------------
 
-# Model Evaluation
+### 4. Model Selection
 
 ...
 
