@@ -137,8 +137,8 @@ In order to explore summary stats and distribution characteristics of our datase
 -   The 'training' dataset contained a single response variable `target`, a numeric variable indicating the number of cases purchased.
 -   The 'prediction' dataset contained no values for `target`, suggesting this data might be used for prediction rather than validation and evaluation of model performance. For clarity we'll renamed this this dataset 'prediction' instead and created a separate validation hold-out from the training data.
 -   There was a numeric `index` column labeling the observations which could be excluded from the models.
--   `r nrow(df_predict)` observations (or `r round(nrow(df_predict)/nrow(df_all),2)*100`%) of the total dataset had been set aside for prediction.
--   The combined training and prediction datasets consist of `r nrow(df_all)` observations containing `r ncol(df_all)-2` predictor variables.
+-   `r nrow(df_predict)` observations (or `r #round(nrow(df_predict)/nrow(df_all),2)*100`%) of the total dataset had been set aside for prediction.
+-   The combined training and prediction datasets consist of `r #nrow(df_all)` observations containing `r #ncol(df_all)-2` predictor variables.
 
 While exploring this data, we made the following observations:
 
@@ -150,7 +150,7 @@ While exploring this data, we made the following observations:
 ```{r clean_data, message=FALSE, warning=FALSE, error=FALSE}
 # fix index name in predict for bind
 df_predict <- df_predict %>% rename(INDEX=IN)
-df_train <- df_train %>% rename(INDEX=п.їINDEX)
+#df_train <- df_train %>% rename(INDEX=IN)
 
 # union for exploration and prep
 df_train <- df_train %>% mutate(source='train')
@@ -607,11 +607,11 @@ We note that our model has generated 'dummies' from our categorical variables `l
 The results for the positive/negative coefficients seem strange, high acid levels can increase the purchases, and high rating can decrease.
 
 
-The `residual deviance` is `r round(pr2$deviance,2)`
+The `residual deviance` is `r #round(pr2$deviance,2)`
 
 The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
 
-The Akaike information criterion (`AIC`) was `r round(pr2$aic,2)`.
+The Akaike information criterion (`AIC`) was `r #round(pr2$aic,2)`.
 
 Using a Zero-Inflated model, the Dispersion Parameter drops significantly, but we are getting a better overall result for counts of 3 or more.
 By graphing our target values (green) against our predicted values (blue) we can see we are getting much greater accuracy rate for most of the mid- and upper counts.
@@ -776,11 +776,11 @@ nb2_diag[c('AIC','Dispersion','Log-Lik')] %>%
 The results for the positive/negative coefficients seem strange, high acid levels can increase the purchases, and high rating can decrease.
 
 
-The `residual deviance` is `r round(nb2$deviance,2)`
+The `residual deviance` is `r #round(nb2$deviance,2)`
 
 The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
 
-The Akaike information criterion (`AIC`) was `r round(nb2$aic,2)`.
+The Akaike information criterion (`AIC`) was `r #round(nb2$aic,2)`.
 
 
 The Zero-Inflated Negative Binomial model sees similar improvement as with the Zero-Inflated Poisson, but as before does not outperform the Poisson.
@@ -874,12 +874,12 @@ The variables included in our model had a VIF of 1 (or slightly above), indicati
 
 ```{r, fig.align='default', out.width='50%', fig.height=5}
 # residual plots
-plot(lm1_aic,ask=FALSE)
+plot(lm1,ask=FALSE)
 ```
 
 ```{r fig.height=4}
 
-vif_values <- vif(lm1_aic)
+vif_values <- vif(lm1)
 vif_values <- rownames_to_column(as.data.frame(vif_values), var = "var")
 
 vif_values %>%
@@ -974,7 +974,7 @@ The count and the logit models both start with all the predictor variables and w
 fit.lasso <- zipath(target~.|.,data = df_train, family = "negbin")
 ```
 
-```{r eval=FALSE}
+```{r eval=TRUE}
 minBic <- which.min(BIC(fit.lasso))
 coef(fit.lasso, minBic)
 cat("theta estimate", fit.lasso$theta[minBic])
@@ -1027,10 +1027,11 @@ ggplot() +
 #### Diagnostics
 
 ```{r, fig.align='default', out.width='50%', fig.height=4}
-lasso_eval <- predict(fit.lasso, newdata=df_valid, which=minAic)
+df_valid_cleaned <- df_valid %>% filter(acidindex != 4)
+lasso_eval <- predict(fit.lasso, newdata=df_valid_cleaned, which=minAic)
 lasso_eval <- data.frame(lasso_eval)
 colnames(lasso_eval) <- c('predicted')
-lasso_eval$target <- df_valid$target
+lasso_eval$target <- df_valid_cleaned$target
 lasso_eval$resid <- lasso_eval$predicted - lasso_eval$target
 lasso_rmse <- sqrt(mean((lasso_eval$target - lasso_eval$predicted)^2)) 
 
@@ -1211,7 +1212,7 @@ kable(results_lm_tbl, digits=4) %>%
   kable_styling(bootstrap_options = "basic", position = "center")
 ```
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 
 tab_model(pr1, nb1,
           dv.labels = c('Poisson','Negative Binomial'),
@@ -1220,14 +1221,14 @@ tab_model(pr1, nb1,
 
 ```
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 tab_model(lm1, lm2,
           dv.labels = c('Multiple Linear Regression 1','Multiple Linear Regression 2'),
           show.df = FALSE, show.aic = TRUE, show.fstat=TRUE, show.se = TRUE, 
           show.ci=FALSE, show.p = TRUE,show.stat=TRUE, digits.p=4)
 ```
 
-```{r, eval=FALSE}
+```{r, eval=TRUE}
 
 tab_model(pr2, nb2,
           dv.labels = c( 'Poisson zeroinfl', 'Negative Binomial zeroinfl'),
