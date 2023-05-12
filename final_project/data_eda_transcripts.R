@@ -25,15 +25,12 @@ labelvec_to_df <- function(vec){
 local_data_dir <- '../../data/theop'
 
 # load data
-load(file.path(local_data_dir,'data_model/df_applications_orig.RData'))
 load(file.path(local_data_dir,'data_model/df_transcripts_orig.RData'))
 
 # working dfs
-df_applications <- df_applications_orig
 df_transcripts <- df_transcripts_orig
 
 # save memory
-remove(df_applications_orig)
 remove(df_transcripts_orig)
 
 # -----
