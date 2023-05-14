@@ -1,0 +1,194 @@
+---
+title: 'Final: Texas Higher Education Opportunity Project (THEOP)'
+subtitle: 'Critical Thinking Group 1'
+author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks'
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+  pdf_document:
+    toc: yes
+editor_options:
+  chunk_output_type: console
+  markdown: 
+    wrap: sentence
+---
+
+
+```{r setup, include=FALSE}
+# chunks
+knitr::opts_chunk$set(echo=FALSE, eval=TRUE, include=TRUE, 
+message=FALSE, warning=FALSE, fig.height=5, fig.align='center')
+
+# libraries
+library(tidyverse)
+library(kableExtra)
+library(MASS) # glm.nb()
+library(mice)
+library(pscl) # zeroinfl()
+library(skimr)
+library(sjPlot)
+library(mpath)
+library(yardstick)
+library(labelled)
+library(haven)
+library(corrplot)
+library(Hmisc)
+
+# ggplot
+theme_set(theme_light())
+
+
+# random seed
+set.seed(42)
+```
+
+
+
+
+
+```{r common functions}
+
+nice_table <- function(df){
+  table <- df %>% kable %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                html_font = 'monospace',
+                full_width = FALSE)
+  return(table)
+}
+
+model_diag <- function(model){
+  model_sum <- summary(model)
+  aic <- AIC(model)
+  ar2 <- model_sum$adj.r.squared
+  disp <- sum(resid(model,'pearson')^2)/model$df.residual
+  loglik <- logLik(model)
+  
+  vec <- c(ifelse(is.null(aic), NA, aic),
+           ifelse(is.null(ar2), NA, ar2),
+           ifelse(is.null(disp), NA, disp),
+           ifelse(is.null(loglik), NA, loglik))
+  
+  names(vec) <- c('AIC','Adj R2','Dispersion','Log-Lik')
+  return(vec)
+}
+
+
+
+factor_haven <- function(df, col_lst) {
+  for (c in col_lst) {
+    df[c] <- as_factor(zap_missing(df[c]))
+  }
+  return(df)
+}
+
+
+```
+
+
+
+
+
+# Load Data
+
+```{r}
+
+# change to your local data dir outside the repo
+local_data_dir <- '../../data/theop'
+
+
+# load application and transactions data frames
+load(paste0(local_data_dir, '/data_model/df_applications.RData'))
+load(paste0(local_data_dir, '/data_model/df_transcripts.RData'))
+
+```
+
+
+
+
+
+```{r}
+
+# clean application data and remove labels
+app_df  <- df_applications
+col_lst <- c("termdes","male","ethnic","citizenship","restype","satR","actR","testscoreR","decileR","quartile","major_field",
+             "hsprivate","hstypeR","hsinstate","hseconstatus","hslos","hscentury","admit","admit_prov","enroll","gradyear",
+             "studentid_uniq","univ","termapp","sat_not_recenteredR","admit_ut_summer")
+app_df <- factor_haven(app_df,col_lst)
+
+
+# clean transcripts and remove labels
+transcript_df <- df_transcripts
+col_lst <- c("term","semgpa","hrearn","term_major_dept","term_major_field")
+transcript_df <- factor_haven(transcript_df,col_lst)
+
+```
+
+
+
+
+
+
+# Data Exploration
+
+
+```{r}
+
+app_df %>% 
+  #dplyr::select(!c(source, target)) %>%
+  skim() %>%
+  dplyr::select(skim_variable, complete_rate, n_missing, 
+                numeric.p0, numeric.p100) %>%
+  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  mutate(complete_rate=round(complete_rate,2), 
+         min=round(min,2), max=round(max,2)) %>%
+  arrange(variable) %>%
+  nice_table()
+
+
+transcript_df %>% 
+  #dplyr::select(!c(source, target)) %>%
+  skim() %>%
+  dplyr::select(skim_variable, complete_rate, n_missing, 
+                numeric.p0, numeric.p100) %>%
+  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  mutate(complete_rate=round(complete_rate,2), 
+         min=round(min,2), max=round(max,2)) %>%
+  arrange(variable) %>%
+  nice_table()
+
+```
+
+
+
+
+```{r distrib}
+
+
+transcript_df %>% dplyr::select(where(is.numeric)) %>%
+  #dplyr::select(!target) %>%
+  pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
+  ggplot() +
+  geom_histogram(aes(x=values, y = ..density..), alpha=0.5, colour='black', size=0.2) +
+  geom_density(aes(x=values), color='purple') +
+  facet_wrap(vars(variables), scales="free")
+
+```
+
+
+
+
+
+
+```{r}
+
+rcore <- rcorr(as.matrix(transcript_df %>% dplyr::select(where(is.numeric))))
+coeff <- rcore$r
+corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "black",
+         type="upper", order="hclust", number.cex=0.7, diag=FALSE)
+
+```
+
+
+
