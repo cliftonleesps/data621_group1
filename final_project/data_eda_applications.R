@@ -4,6 +4,7 @@
 ## libraries
 library(tidyverse)
 library(labelled)
+library(skimr)
 
 ## functions to inspect/convert labelled vectors
 #
@@ -33,6 +34,12 @@ df_applications <- df_applications_orig
 
 # save memory
 remove(df_applications_orig)
+
+# -----
+
+df_skim_missing <- skim(df_applications) %>%
+  dplyr::select(skim_variable, complete_rate, n_missing) %>%
+  arrange(complete_rate,skim_variable)
 
 # -----
 
@@ -97,6 +104,14 @@ df_applications <- df_applications %>%
 # does major_field align to field in transcripts data?
 
 # should decile and quartile be converted from factor levels to actual numerics?
+
+df_applications %>%
+  group_by(univ,hscentury) %>%
+  summarize(n())
+
+df_applications %>%
+  group_by(univ,hslos) %>%
+  summarize(n())
 
 
 
