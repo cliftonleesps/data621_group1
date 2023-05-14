@@ -203,8 +203,7 @@ df_all[,numeric_cols] %>%
   facet_wrap(vars(variables), scales="free")
 ```
 
-The histogram of the target variable showed normal distribution though it seemed zero inflated.
-It was considered when building some of the models.
+The histogram of the target variable showed a mostly normal distribution, though we considered the possibility of using zero-inflated models to handle the high frequency of zero values.
 
 ```{r}
 df_all%>%
@@ -217,13 +216,13 @@ df_all%>%
 
 ### 1.3 Boxplots
 
-Graphing our variables distributions with boxplots didn't identify any outliers we needed to deal with.
+Graphing our variables' distributions with boxplots didn't identify any outliers we needed to deal with.
 
 We did see a relationship between `stars`/`labelappeal`and the `target` variable.
 As `labelappeal` increased, the `target` variable also went up - suggesting a positive relationship between label design appeal and cases purchased.
 
 We also noticed that missing/NA values for `stars` was associated with low values for `target`.
-Using the hint from from the assignment that "sometimes, the fact that a variable is missing is actually predictive of the target", we won't discard or impute over the missing values for `stars`.
+Using the hint from from the assignment that "sometimes, the fact that a variable is missing is actually predictive of the target", we didn't discard these values nor impute new values for them.
 
 ```{r boxplots}
 box_plots <- df_train %>% 
@@ -269,8 +268,8 @@ featurePlot(box_plots[,2:ncol(box_plots)], box_plots[,1], plot = "scatter")
 
 ### 1.5 Correlation Matrix
 
-In the correlation plot below, we observed that variables `Star` and `LabelAppeal` were the most positively correlated to the response variable (more stars, as a result, more purchases/ better label, more purchases).
-There were a slight negative correlation between `AcidIndex` and the `target` variable.
+In the correlation plot below, we observed that variables `Star` and `LabelAppeal` were the most positively correlated to the response variable.
+There was a slightly negative correlation between `AcidIndex` and the `target` variable.
 In terms of multicollinearity, we didn't see high correlation between variables and there was a chance that we wouldn't need to deal with it in our models.
 
 ```{r}
@@ -286,15 +285,16 @@ corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "bl
 
 ### 2.1 Transformations, Outliers
 
-The field `index` was removed from the data as it didn't affect anything in the models and just meant the index of an observation.
+The field `index` was removed from the data as it didn't affect anything in the models, simply being a table index of an observation.
 
-We tried exponentiation of related to sugars, chlorides, acidity, sulfides and sulfates variables by the natural log and other values, but did not arrive at an obvious or consistent transformation approach - so we may not be able to interpret model results on the scale of the original values for these variables.
+We tried exponentiation of variables related to sugars, chlorides, acidity, sulfides and sulfates by the natural log and other values, but did not arrive at an obvious or consistent transformation approach - we may not be to interpret model results on the scale of the original values for these variables.
 
-A number of numerical characteristics exhibited negative values that seem somewhat implausible, however, we had decided to trust that these variables had undergone log transformation and that the values were valid.
+A number of chemical variables had negative values that seem somewhat implausible.
+However, we decided to trust that these variables had undergone log transformation and that the values could be considered valid.
 
 ### 2.2 Missing Data
 
-Next we decided find and impute any missing data.
+Next we decided to find and impute any missing data.
 There were 8 predictor variables that contained NAs:
 
 ```{r}
@@ -313,23 +313,23 @@ x[x>0] %>% as.data.frame() %>%
   nice_table(cap = 'Missing Data')
 ```
 
-Heeding the warning in the assignment, *"sometimes, the fact that a variable is missing is actually predictive of the target"*, we considere each of these variables carefully.
-While there could be data "missing completely at random" (MCAR) that we wished to impute, this may not always be the case.
+Heeding the warning in the assignment, *"sometimes, the fact that a variable is missing is actually predictive of the target"*, we considered each of these variables carefully.
+While there could be data "missing completely at random" (MCAR) that we wished to impute, this may not always have been the case.
 
 ------------------------------------------------------------------------
 
 #### 2.2.1 Missing Data - Stars
 
 The predictor `Stars` suggested that out of 16,000 wine samples, about 25% had never been professionally reviewed.
-If we assume the existence of a review has some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model.
-Therefore, we simply preserved the NAs were transformed to "0" level of `Stars` variable as the model functions automatically adjust for these observations to be used in the Zero-Inflated models.
-Also, `Stars`, `Acid Index` variables were converted from a numeric to a factor to enable further analysis.
+If we assumed the existence of a review had some impact on the sales of a wine brand (whatever the reviewer's sentiment), then imputing mean or predicted values here might distort our model.
+
+Therefore, we simply preserved the NAs for `Stars`, transformed the variable to a factor.
+Further, we converted these NA values to zeroes when applying zero-inflated models, below.
 
 ```{r}
+# substitute 0 instead of NA later in the code
 df_prep <- df_prep %>%
   mutate(stars = as.factor(stars))
-
-#added 0 instead of NA later in the code
 ```
 
 ------------------------------------------------------------------------
@@ -338,13 +338,13 @@ df_prep <- df_prep %>%
 
 Next we considered some of the missing chemical compounds in our wines; alcohol, sugars, chlorides, sulfites and sulfates, and measures such as `ph`.
 
-First, we safely assumed that all wines in this dataset had an actual `ph` score greater than zero (which would represent the most acidic rank, such as powerful industrial acids).
-We decided to impute more reasonable values for these.
+First, we assumed that all wines in this dataset had an actual `ph` score greater than zero (which would represent the most acidic rank, such as powerful industrial acids).
+We decided to impute more reasonable values instead.
 
-Based on some reading into the organic wines segment, there were a growing demand in the market for specialty products such as low-sulfite, low-sugar and low-alcohol wines.
-However, this still represented a very small segment of the overall market, and chemically it was not likely for these compounds to be completely absent from the final product.
+Based on some reading into the organic wines segment, there is a growing demand in the market for specialty products such as low-sulfite, low-sugar and low-alcohol wines.
+However, this still represents a very small segment of the overall market, and chemically it was not likely for these compounds to be completely absent from the final product.
 
-Additionally, the predictors `freesulfurdioxide` and `totalsulfurdioxide` were linked - the amount of 'Free' SO2 in wine was always a subset of the 'Total' S02 presented.
+Additionally, the predictors `freesulfurdioxide` and `totalsulfurdioxide` were linked - the amount of 'Free' SO2 in wine is always a subset of the 'Total' S02 presented.
 We only identified 59 cases where both these values were NA, while over 1500 cases had missing values for only one or the other.
 
 Based on these observations, we used the MICE imputation method to predict and impute the missing values for `residualsugar`, `chlorides`, `freesulphurdioxide`, `totalsulfurdioxide`, `sulphates`, `alchohol` and `ph`.
@@ -364,6 +364,7 @@ predM[, c('target','labelappeal','stars','source')] = 0
 meth[c('target','labelappeal','stars','source')] = ''
 
 impute = mice(df_prep, method=meth, predictorMatrix=predM, m=5, printFlag=FALSE)
+
 df_prep_imputed <- complete(impute)
 ```
 
@@ -371,11 +372,10 @@ df_prep_imputed <- complete(impute)
 
 ### 2.3 Data Sparseness - Label Appeal
 
-`labelappeal` is a numeric score of consumer ratings for a wine brand's label design.
+`labelappeal` was a numeric score of consumer ratings for a wine brand's label design.
 It had also been pre-transformed to produce a normal distribution for modeling; however this was a very sparse variable with nearly half the cases having a value of zero.
 
-This could be candidate for handling with Zero-Inflated models.
-We didn't change the values here, but converted `labelappeal` from a numeric to a factor.
+This could have been candidate for handling with zero-Inflated models as well, so we didn't change the values but csimply onverted `labelappeal` from a numeric to a factor.
 
 ```{r}
 df_prep_imputed <- df_prep_imputed %>%
@@ -384,7 +384,6 @@ df_prep_imputed <- df_prep_imputed %>%
 ```
 
 ```{r}
-
 #dataframe for models without NA
 try_df <- df_prep_imputed
 
@@ -402,7 +401,7 @@ try_df$stars[is.na(try_df$stars)] <- "0"
 
 ### 2.4 Examine Final Dataset
 
-After the previous operations, we had reasonably imputed values, and nearly-normal distributions for our numeric predictors, taking special note of the frequency of zero values for `labelappeal` and `stars`.
+After completing the previous operations, we observed reasonably-imputed values and nearly-normal distributions for our numeric predictors, taking special note of the frequency of zero values for `labelappeal` and `stars`.
 
 ```{r}
 n_missing <- apply(try_df, 2, function(col) sum(is.na(col)))
@@ -434,7 +433,7 @@ try_df[,numeric_cols] %>%
 
 ### 2.5 Split Datasets
 
-With transformations complete, we splited back into training and prediction datasets based on our `source_flag`, and created a 15% validation hold-out from the training data.
+With transformations complete, we split our data back into training and prediction datasets based on our `source_flag`, and created a 15% validation hold-out from the training data.
 
 ```{r eval=FALSE}
 # random seed
@@ -472,8 +471,8 @@ try_valid <- try_df_all[!row_samples,]
 
 ### 3.1 Poisson Regression 1
 
-Poisson Regression assumes that the variance and mean of our dependent variable `target` are roughly equal, otherwise we may be looking at over- or under-dispersion.
-The data used for the models has no missing values (stars=NA was substituted with stars=0), `Label Appeal` and `Acid Index` variables were transformed to factors.
+Poisson Regression assumes that the variance and mean of the dependent variable (`target`) are roughly equal, otherwise we may be looking at over- or under-dispersion.
+The data used for the models had no missing values (`stars=NA` was substituted with zeroes), while `Label Appeal` and `Acid Index` were transformed to factors.
 
 ```{r, echo=TRUE}
 pr1 <- glm(target ~ ., family = 'poisson', data = try_train)
@@ -504,10 +503,10 @@ pr1_diag[c('AIC','Dispersion','Log-Lik')] %>%
 
 #### Model Performance
 
-We noted that our model has generated 'dummies' from our categorical variables `labelappeal` and `stars`, and of the 14 total predictors, all but 5 had statistical significance.
+We noted that our model generated 'dummies' from our categorical variables `labelappeal` and `stars`, and of the 14 total predictors, all but 5 had statistical significance.
 
 The following variables had highly **positive coefficients** in our model, indicating a higher number of cases purchased.
-As discussed before, high rating and good labels lead to better sales:
+High reviewer ratings and label appeal seemed to lead to better sales:
 
 ```{r}
 as.data.frame(summ(pr1_aic)$coeftable) %>%
@@ -518,7 +517,7 @@ as.data.frame(summ(pr1_aic)$coeftable) %>%
 ```
 
 Variables with highly **negative coefficients** indicated a lower number of cases purchased.
-The results followed the common logic, the higher total acidity of wine and no rating lead to low sales:
+Lack of reviewer ratings and high levels of acidity seemed to lead to lower sales:
 
 ```{r}
 as.data.frame(summ(pr1_aic)$coeftable) %>%
@@ -530,14 +529,14 @@ as.data.frame(summ(pr1_aic)$coeftable) %>%
 
 The `null deviance` of `r round(pr1_aic$null.deviance,2)` defined how well the target variable could be predicted by a model with only an intercept term.
 
-The `residual deviance` of `r round(pr1_aic$deviance,2)` defined how well the target variable can be predicted by the AIC model that we fit with the predictor variables listed above.
+The `residual deviance` of `r round(pr1_aic$deviance,2)` defined how well the target variable could be predicted by the AIC model that we fit with the predictor variables listed above.
 The lower the value, the better the model's predictions of the response variable.
 
 The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
 
 The Akaike information criterion (`AIC`) was `r round(pr1_aic$aic,2)`.
 The lower the AIC value, the better the model's ability to fit the data.
-We used this metric to compare the relative performance of the six models.
+We used this metric to compare the relative performance of the six models, below.
 
 Notably, our Dispersion Parameter was `r round(pr1_diag['Dispersion'],2)`, which suggested a degree of under-dispersion in the data.
 
@@ -548,7 +547,6 @@ pr1_valid <- predict(pr1_aic, newdata = try_valid, type = "response")
 # bind the predicted and actuals for comparison
 pr1_eval <- bind_cols(target = try_valid$target, predicted= pr1_valid)
 #pr1_eval[is.na(pr1_eval)] <- 0
-
 
 # xy plot of validation predictions and targets
 pr1_eval %>%
@@ -567,7 +565,7 @@ pr1_eval %>%
 
 We evaluated the modeling assumptions using standard diagnostic plots, and a Variance Inflation Factor (VIF) to assess collinearity.
 
-The resulting plot 1 below (predicted values vs. residuals) showed that a lot of the standardized residuals fell outside the range of -2 and 2.
+The resulting plot 1 below (predicted values vs. residuals) showed that many of the standardized residuals fell outside the range of -2 and 2.
 Examining the Standardized Pearson Residuals plot, the model seemed good until the middle range but there were extremes on the right.
 In general, this model didn't fit our data as there were zero counts in the response variable.
 We had to consider models that could address this issue.
@@ -590,9 +588,9 @@ as.data.frame(car::vif(pr1_aic)) %>%
 
 ### 3.2 Poisson Regression 2
 
-Sometimes a count response data has the number of zeroes appearing is significantly greater than the Poisson or negative binomial models would predict.
-As a result, we built a Zero-Inflated Poisson model to handle the large number of zero values in our `labelappeal`, `stars` predictors and `target` response, to see if we can improve model accuracy.
-By default a binomial model with a logit link was used for the zero component and a Poisson with a log link was used for the count component.
+Sometimes the number of zeroes / missing values in dataset can distort the results of a normal count regression.
+We built a zero-Inflated Poisson model to handle these values in our `labelappeal` and `stars` predictors and the `target` response, to see if we can improve model accuracy.
+By default, a binomial model with a logit link was used for the zero component and a Poisson with a log link was used for the count component.
 
 ```{r, echo=TRUE}
 pr2 <- zeroinfl(target ~ .| ., data=try_train, dist = 'poisson')
@@ -610,9 +608,11 @@ pr2_diag[c('AIC','Dispersion','Log-Lik')] %>%
 #### Model Performance
 
 The results for the positive/negative coefficients seemed strange in the zero-inflation model.
-We should remember that our zero-inflated model produced two sets of coefficients --- one for the truncated Poisson part of the model and one for the binary response part of the model.
-The count coefficients estimated the `target`\>0 (number of purchases): good label and high rating increased purchases (the same as in the regular poisson model), high acid index decreased it.
-The zero-inflation model coefficients estimated the probability of whether or not any purchases was made: no reviews increased the chance of no-purchase.
+We should remember that our zero-inflated model produced two sets of coefficients --- one for the truncated Poisson (count) portion of the model and one for the binary response portion of the model.
+
+The Poisson portion of the model showed that high reviewer ratings and label appeal seemed to lead to better sales, while high acidity reduced them (which agreed with our first Poisson model).
+
+The binary response (zero-inflated) portion of the model indicated the lack of reviewer ratings (`stars`) decreased the chances of purchase.
 
 The `residual deviance` was `r #round(pr2$deviance,2)`
 
@@ -647,7 +647,7 @@ pr2_eval %>%
 
 #### Model Assumptions
 
-The resulting plot below (predicted values vs. residuals) showed that a lot of the standardized residuals fell outside the range of -2 and 2.
+The resulting plot below (predicted values vs. residuals) showed that many of the standardized residuals fell outside the range of -2 and 2.
 
 ```{r}
 # Diagnostic plots
@@ -660,9 +660,8 @@ bind_cols(fitted=unname(fitted(pr2)), resid=unname(resid(pr2))) %>%
   geom_hline(yintercept=-2, linetype='dashed')
 ```
 
-To use the Poisson models, the assumption that mean and variance of the target variables were equal should have been observed.
-Though, we saw the violation of the assumption.
-As a result, Negative Binomial distribution was more appropriate as it required the variance to be larger than the mean.
+To use Poisson models, we assume the mean and variance of the target variable are roughly equal - however we observed that assumption was violated here.
+A Negative Binomial model seemed more appropriate since it assumes the variance to be larger than the mean.
 
 ```{r}
 varian_mean <- tibble(
@@ -684,7 +683,7 @@ kable(varian_mean, digits=3) %>%
 ### 3.3 Negative Binomial Regression 1
 
 Generally, we would use Negative Binomial Regression in cases of over-dispersion (where the variance of our dependent variable is significantly greater than the mean).
-This does not appear to be the case with our dataset, there were a small difference between the mean and the variance, so we applied it here and examined the results:
+This did not appear to be the case with our dataset, where there was a small difference between the mean and the variance, but we applied it here and examined the results:
 
 ```{r, echo=TRUE,  warning=FALSE, message=FALSE}
 nb1 <- glm.nb(target ~ ., data = try_train)
@@ -703,7 +702,7 @@ nb1_diag[c('AIC','Dispersion','Log-Lik')] %>%
 
 Of the total predictors, all but 5 had statistical significance.
 
-The results for the positive/negative coefficients seemed reasonable, high acid levels and low rating can decrease the purchases, good rating and good label can increase.
+The results for the positive/negative coefficients seemed reasonable; high reviewer ratngs and label appeal increased sales while high acidcity levels and low reviewer ratings decreased them.
 
 ```{r  warning=FALSE, message=FALSE, error=FALSE}
 a <- as.data.frame(summary(nb1)$coefficients[,1])
@@ -732,12 +731,12 @@ The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), s
 The Akaike information criterion (`AIC`) was `r round(nb1$aic,2)`.
 The lower the AIC value, the better the model's ability to fit the data.
 
-Theta parameter seemed too large (40419).
-This occurred because the data is almost equidispersed (variance == mean), which couldn't be achieved by a negative binomial distribution.
+The Theta parameter, however, seemed too large (40419).
+This occurred because the data was almost equidispersed (variance == mean), which couldn't be achieved by a negative binomial distribution.
 As a result, the optimizer gave up while it was trying to send the dispersion parameter to infinity.
 
 As expected, the Negative Binomial Regression did not outperform the Poisson.
-There were little difference between poisson and negative binomial models due to the little difference between mean and variance.
+There was little difference between poisson and negative binomial models due to the small difference between mean and variance.
 
 ```{r, fig.align='center', out.width='50%', fig.height=4}
 # predict based on our validation holdout
@@ -762,10 +761,10 @@ nb1_eval %>%
 
 #### Model Assumptions
 
-The resulting plot 1 below (predicted values vs. residuals) showed that a lot of the standardized residuals fell outside the range of -2 and 2.
-Examining the Standardized Pearson Residuals plot, the model seemed good only the middle range but there were extremes on the ends.
+The resulting plot below (predicted values vs. residuals) showed that many of the standardized residuals fell outside the range of -2 and 2.
+Examining the Standardized Pearson Residuals plot, the model seemed good in the middle range with extremes on the ends.
 In general, this model didn't fit our data as there were zero counts in the response variable.
-We had to consider models that could address this issue.
+We had to consider other models that could address this issue instead.
 
 ```{r}
 par(mfrow=c(2,2))
@@ -773,7 +772,7 @@ plot(nb1)
 ```
 
 All variables had a VIF less than 5.
-As a result, th multi-collinearity may not be a problem for this model.
+As a result, multi-collinearity may not have been a problem for this model.
 
 ```{r }
 as.data.frame(car::vif(nb1)) %>% 
@@ -803,8 +802,11 @@ nb2_diag[c('AIC','Dispersion','Log-Lik')] %>%
 #### Model Performance
 
 The results for the positive/negative coefficients seemed reasonable and similar to the poisson models.
-The count coefficients estimated the `target`\>0 (number of purchases): good label and high rating increased purchases (the same as in the regular poisson model), high acid index decreased it.
-The zero-inflation model coefficients estimated the probability of whether or not any purchases was made: no reviews increased the chance of no-purchase.
+Our zero-inflated model produced two sets of coefficients --- one for the truncated Poisson (count) portion of the model and one for the zero-inflated binary response (probability) portion of the model.
+
+The Poisson portion of the model showed that high reviewer ratings and label appeal seemed to lead to better sales, while high acidity reduced them.
+
+The binary response portion of the model indicated the lack of reviewer ratings (`stars`) decreased the chances of purchase.
 
 The `residual deviance` was `r #round(nb2$deviance,2)`
 
@@ -838,7 +840,7 @@ nb2_eval %>%
 
 #### Model Assumptions
 
-The resulting plot below (predicted values vs. residuals) showed that a lot of the standardized residuals fell outside the range of -2 and 2 but it seemed better than for the Poisson models.
+The resulting plot below (predicted values vs. residuals) showed that many of the standardized residuals fell outside the range of -2 and 2 but seemed better than for the Poisson models.
 
 ```{r}
 # Diagnostic plots
@@ -950,10 +952,9 @@ The Adjusted R-Squared of `r round(summary(lm2)$adj.r.squared,2)`only explained 
 The RMSE was `r round(sqrt(mean(lm2$residuals^2)),2)`.
 
 Positive coefficients indicated an increase in the purchases.
-In this model, wines with a better rating, good label, high alcohol tended to have more purchases.
+In this model, wines with a higher reviewer rating, label appeal and high alcohol contenttended to have more purchases.
 
-Similarly, negative coefficients lead less purchases.
-In this model, wines with high acid level, no rating,high concentration of sulphates/chlorides tended to have less purchases.
+Wines with no reviewer ratings, high acidity levels, and high concentrations of sulphates/chlorides tended to have fewer purchases.
 
 ```{r fig.align='center', fig.height=3, fig.width=4}
 # validate and calculate RMSE
@@ -1107,16 +1108,16 @@ results_lm_tbl <- results_lm_tbl %>% add_row(tibble_row(
 
 The following table summarized performance metrics for each model on the training dataset (RMSE, AIC, BIC, mae, mase, smape for all 6 models).
 
-Results suggested that the performance improved after using zero-inflated models.
+Results suggested that the performance improved when using zero-inflated models.
 
-Results suggest that the model performance improved after applying transformations and methods for selecting significant predictor variables, such as Lasso and Variable Inflation Factor.
+Model performance also improved after applying transformations and methods for selecting significant predictor variables, such as Lasso and Variable Inflation Factor.
 
--   Poisson model 2 and Negative binomial model 2 (zero-inflated) had similar results for all metrics.
--   AIC/BIC was lowest for the Poisson model 2, the worst results were for Poisson/Negative Binomial models without modeling an excess of zero counts.
--   MAE (mean absolute error between observed and predicted values) was the lowest for the Poisson model 2, Multiple linear models performed with higher mean error.
+-   Poisson model 2 and Negative Binomial model 2 (zero-inflated) had similar results for all metrics.
+-   AIC/BIC was lowest for the Poisson model 2, and the worst results were for Poisson/Negative Binomial models without modeling an excess of zero counts.
+-   MAE (mean absolute error between observed and predicted values) was the lowest for the Poisson model 2, while Multiple linear models performed with higher mean error.
 -   RMSE (Root Mean Square Error) was alsmost similar for all the models with an exception for zero-inflated Poisson and Negative Binomial models, they preformed the best in terms of this metric.
 
-Overall, Zero-inflated Poisson model appeared to produce the best fit.
+Overall, the Zero-inflated Poisson model appeared to produce the best fit.
 
 ```{r}
 
@@ -1276,7 +1277,7 @@ kable(results_lm_tbl, digits=4) %>%
 
 ## 5. Predictions
 
-Using Zero-Inflated Poisson regression model (no missing values, some variables to factors), we predicted `target` values for the `r sum(try_df_predict$target_predict)` observations in our evaluation dataset.
+Using the Zero-Inflated Poisson regression model (no missing values, some variables to factors), we predicted `target` values for the `r sum(try_df_predict$target_predict)` observations in our evaluation dataset.
 
 We applied all training data transformations to the evaluation data as well.
 
@@ -1324,14 +1325,14 @@ write.csv(predictions, 'predictions_only.csv', row.names=F)
 
 ## 6. Conclusion
 
-The most important predictive factors for the number of purchases - by far - were the amount of stars (1, 2, 3, 4 or none), marketing score indicating the appeal of label design for consumers (LabelAppeal), and total acidity of wine (AcidIndex).
-As a result, based on our models, a good wine should have good reviews, low acid index, and attractive label.
-These results were not far from reality since majority of the people wouldn't care about citric acid content fixed acidity, volatile acid content, ph, etc.
+The most important predictive factors for the number of purchases - by far - were the number of reviewer stars (`stars)`, the label design appeal for consumers (`labelappeal`), and the total acidity of wine (`acidindex`).
 
-There were some issue with the accuracy of predictions for the 0 number of cases purchased (target=0).
-This could be a candidate for further research and analysis together with the high theta being produced for the Negative Binomial models.
+Based on our models, a good wine should have good reviews, a low acid index, and an attractive label.
 
-For future consideration, we might also wish to look into advanced variable selection, it could improve the performance of our models.
+There were some issues with the accuracy of predictions of zero cases purchased (target=0).
+This could be a candidate for further research and analysis, together with the high Theta being produced for the Negative Binomial models.
+
+For future consideration, we might also wish to look into advanced variable selection, as it could improve the performance of our models.
 
 ------------------------------------------------------------------------
 
