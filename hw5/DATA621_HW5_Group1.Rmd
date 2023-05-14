@@ -138,8 +138,6 @@ In order to explore summary stats and distribution characteristics of our datase
 -   The 'training' dataset contained a single response variable `target`, a numeric variable indicating the number of cases purchased.
 -   The 'prediction' dataset contained no values for `target`, suggesting this data might be used for prediction rather than validation and evaluation of model performance. For clarity we'll renamed this this dataset 'prediction' instead and created a separate validation hold-out from the training data.
 -   There was a numeric `index` column labeling the observations which could be excluded from the models.
--   `r nrow(df_predict)` observations (or `r #round(nrow(df_predict)/nrow(df_all),2)*100`%) of the total dataset had been set aside for prediction.
--   The combined training and prediction datasets consist of `r #nrow(df_all)` observations containing `r #ncol(df_all)-2` predictor variables.
 
 While exploring this data, we made the following observations:
 
@@ -614,15 +612,9 @@ The Poisson portion of the model showed that high reviewer ratings and label app
 
 The binary response (zero-inflated) portion of the model indicated the lack of reviewer ratings (`stars`) decreased the chances of purchase.
 
-The `residual deviance` was `r #round(pr2$deviance,2)`
-
 The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
 
-The Akaike information criterion (`AIC`) was `r #round(pr2$aic,2)`.
-
 Using a Zero-Inflated model, the dispersion parameter dropped significantly, but we were getting a better overall result for counts of 3 or more.
-
-Notably, our Dispersion Parameter was `r #round(pr2['Dispersion'],2)`, which suggested a degree of under-dispersion in the data.
 
 ```{r, fig.align='center', out.width='50%', fig.height=4}
 # predict based on our validation holdout
@@ -808,11 +800,7 @@ The Poisson portion of the model showed that high reviewer ratings and label app
 
 The binary response portion of the model indicated the lack of reviewer ratings (`stars`) decreased the chances of purchase.
 
-The `residual deviance` was `r #round(nb2$deviance,2)`
-
 The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
-
-The Akaike information criterion (`AIC`) was `r #round(nb2$aic,2)`.
 
 The Zero-Inflated Negative Binomial model showed similar improvement as with the Zero-Inflated Poisson, but as before didn't outperform the Poisson.
 Using a Zero-Inflated model, the dispersion parameter drops significantly, but we are getting a better overall result for counts of 3 or more.
