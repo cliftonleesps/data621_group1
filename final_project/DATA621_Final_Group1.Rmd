@@ -35,6 +35,7 @@ library(labelled)
 library(haven)
 library(corrplot)
 library(Hmisc)
+library(janitor)
 
 # ggplot
 theme_set(theme_light())
@@ -95,12 +96,15 @@ factor_haven <- function(df, col_lst) {
 ```{r}
 
 # change to your local data dir outside the repo
-local_data_dir <- '../../data/theop'
+# local_data_dir <- '../../data/theop'
+# 
+# 
+# # load application and transactions data frames
+# load(paste0(local_data_dir, '/data_model/df_applications.RData'))
+# load(paste0(local_data_dir, '/data_model/df_transcripts.RData'))
 
-
-# load application and transactions data frames
-load(paste0(local_data_dir, '/data_model/df_applications.RData'))
-load(paste0(local_data_dir, '/data_model/df_transcripts.RData'))
+load("C:\\Users\\bpinb\\OneDrive\\Desktop\\Coursework\\DATA 621 Business Analytics and Data Mining\\Final project\\Data\\theop\\theop\\data_model\\df_applications.RData")
+load("C:\\Users\\bpinb\\OneDrive\\Desktop\\Coursework\\DATA 621 Business Analytics and Data Mining\\Final project\\Data\\theop\\theop\\data_model\\df_transcripts.RData")
 
 ```
 
@@ -122,7 +126,7 @@ app_df <- factor_haven(app_df,col_lst)
 transcript_df <- df_transcripts
 col_lst <- c("term","semgpa","hrearn","term_major_dept","term_major_field")
 transcript_df <- factor_haven(transcript_df,col_lst)
-
+rm(df_transcripts, df_applications)
 ```
 
 
@@ -165,7 +169,6 @@ transcript_df %>%
 
 ```{r distrib}
 
-
 transcript_df %>% dplyr::select(where(is.numeric)) %>%
   #dplyr::select(!target) %>%
   pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
@@ -173,6 +176,7 @@ transcript_df %>% dplyr::select(where(is.numeric)) %>%
   geom_histogram(aes(x=values, y = ..density..), alpha=0.5, colour='black', linewidth=0.2) +
   geom_density(aes(x=values), color='purple') +
   facet_wrap(vars(variables), scales="free")
+
 
 ```
 
@@ -226,6 +230,34 @@ merge_df <- merge(merge_df, app_df, by='studentid')
 
 ```
 
+# Merge dataframes. Check for duplicates in applications and transcripts. For applications there were duplicates for the desired year of admission, so we took the minimum desired year. For transcripts, make sure there are no duplicates for the same semester. We also limited to enrollment at the applied school to track progress only at schools of enrollment.
+```{r}
+tabyl(app_df$termdes)
+#dupes <- get_dupes(app_df, studentid_uniq, enroll)
+
+app_df <- app_df |>
+  mutate(termdes_num = case_when(termdes=='Spring' ~ 1
+                                 , termdes=='Summer I' ~ 2
+                                 , termdes=='Summer II' ~ 3
+                                 , termdes=='Fall' ~ 4)) |>
+  group_by(studentid_uniq) |>
+  filter(yeardes==min(yeardes)) |>
+  filter(termdes_num==min(termdes_num)) |>
+  filter(enroll=="Yes")
+  
+  
+dupes <- get_dupes(transcript_df, studentid_uniq, year, term)
+
+transcript_df <- transcript_df |>
+  distinct()
+
+# Join them together
+all <- app_df |>
+  left_join(transcript_df, by='studentid_uniq')
+  
+  
+
+```
 
 
 ```{r}
@@ -256,6 +288,5 @@ corrplot(coeff, tl.cex = .8, tl.col="black", method = 'color', addCoef.col = "bl
 
 
 ```
-
 
 
