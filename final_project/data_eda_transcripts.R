@@ -25,13 +25,7 @@ labelvec_to_df <- function(vec){
 local_data_dir <- '../../data/theop'
 
 # load data
-load(file.path(local_data_dir,'data_model/df_transcripts_orig.RData'))
-
-# working dfs
-df_transcripts <- df_transcripts_orig
-
-# save memory
-remove(df_transcripts_orig)
+load(file.path(local_data_dir,'data_model/df_transcripts.RData'))
 
 # -----
 
@@ -86,7 +80,7 @@ df_transcripts <- df_transcripts %>%
   left_join(df_meta_semgpa, by=join_by(semgpa==levels)) %>%
   rename(semgpa_actuals = values)
 
-save(df_transcripts, file=file.path(local_data_dir,'data_model/df_transcripts.RData'))
+save(df_transcripts, file=file.path(local_data_dir,'data_model/df_transcripts_transformed.RData'))
 remove(df_temp)
 
 # -----

@@ -15,7 +15,6 @@ editor_options:
     wrap: sentence
 ---
 
-
 ```{r setup, include=FALSE}
 # chunks
 knitr::opts_chunk$set(echo=FALSE, eval=TRUE, include=TRUE, 
@@ -46,10 +45,6 @@ theme_set(theme_light())
 set.seed(42)
 ```
 
-
-
-
-
 ```{r common functions}
 
 nice_table <- function(df){
@@ -76,8 +71,6 @@ model_diag <- function(model){
   return(vec)
 }
 
-
-
 factor_haven <- function(df, col_lst) {
   for (c in col_lst) {
     df[c] <- as_factor(zap_missing(df[c]))
@@ -85,58 +78,47 @@ factor_haven <- function(df, col_lst) {
   return(df)
 }
 
-
 ```
-
-
-
-
 
 # Load Data
 
 ```{r}
 
 # change to your local data dir outside the repo
-# local_data_dir <- '../../data/theop'
+local_data_dir <- '../../data/theop'
 # 
 # 
 # # load application and transactions data frames
-# load(paste0(local_data_dir, '/data_model/df_applications.RData'))
-# load(paste0(local_data_dir, '/data_model/df_transcripts.RData'))
-
-load("C:\\Users\\bpinb\\OneDrive\\Desktop\\Coursework\\DATA 621 Business Analytics and Data Mining\\Final project\\Data\\theop\\theop\\data_model\\df_applications.RData")
-load("C:\\Users\\bpinb\\OneDrive\\Desktop\\Coursework\\DATA 621 Business Analytics and Data Mining\\Final project\\Data\\theop\\theop\\data_model\\df_transcripts.RData")
+load(paste0(local_data_dir, '/data_model/df_applications.RData'))
+load(paste0(local_data_dir, '/data_model/df_transcripts.RData'))
+# 
+# load("C:\\Users\\bpinb\\OneDrive\\Desktop\\Coursework\\DATA 621 Business Analytics and Data Mining\\Final project\\Data\\theop\\theop\\data_model\\df_applications.RData")
+# load("C:\\Users\\bpinb\\OneDrive\\Desktop\\Coursework\\DATA 621 Business Analytics and Data Mining\\Final project\\Data\\theop\\theop\\data_model\\df_transcripts.RData")
 
 ```
 
-
-
-
-
 ```{r}
-
 # clean application data and remove labels
 app_df  <- df_applications
-col_lst <- c("termdes","male","ethnic","citizenship","restype","satR","actR","testscoreR","decileR","quartile","major_field",
-             "hsprivate","hstypeR","hsinstate","hseconstatus","hslos","hscentury","admit","admit_prov","enroll","gradyear",
-             "studentid_uniq","univ","termapp","sat_not_recenteredR","admit_ut_summer")
-app_df <- factor_haven(app_df,col_lst)
 
+col_lst <- c("termdes","male","ethnic","citizenship","restype","satR","actR","testscoreR","decileR","quartile","major_field","hsprivate","hstypeR","hsinstate","hseconstatus","hslos","hscentury","admit","admit_prov","enroll","gradyear","studentid_uniq","univ","termapp","sat_not_recenteredR","admit_ut_summer")
+
+app_df <- factor_haven(app_df,col_lst)
 
 # clean transcripts and remove labels
 transcript_df <- df_transcripts
+
 col_lst <- c("term","semgpa","hrearn","term_major_dept","term_major_field")
+
 transcript_df <- factor_haven(transcript_df,col_lst)
-rm(df_transcripts, df_applications)
+
 ```
 
-
-
-
-
+```{r}
+#rm(df_transcripts, df_applications)
+```
 
 # Data Exploration
-
 
 ```{r}
 
@@ -145,28 +127,27 @@ app_df %>%
   skim() %>%
   dplyr::select(skim_variable, complete_rate, n_missing, 
                 numeric.p0, numeric.p100) %>%
-  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  dplyr::rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
   mutate(complete_rate=round(complete_rate,2), 
          min=round(min,2), max=round(max,2)) %>%
   arrange(variable) %>%
   nice_table()
+```
 
+```{r}
 
 transcript_df %>% 
   #dplyr::select(!c(source, target)) %>%
   skim() %>%
   dplyr::select(skim_variable, complete_rate, n_missing, 
                 numeric.p0, numeric.p100) %>%
-  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  dplyr::rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
   mutate(complete_rate=round(complete_rate,2), 
          min=round(min,2), max=round(max,2)) %>%
   arrange(variable) %>%
   nice_table()
 
 ```
-
-
-
 
 ```{r distrib}
 
@@ -175,25 +156,20 @@ transcript_df %>% dplyr::select(where(is.numeric)) %>%
   pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
   ggplot() +
   geom_histogram(aes(x=values, y = ..density..), alpha=0.5, colour='black', linewidth=0.2) +
-  geom_density(aes(x=values), color='purple') +
+  #geom_density(aes(x=values), color='purple') +
   facet_wrap(vars(variables), scales="free")
 
-
 ```
-
-
-
 
 ```{r}
 
 rcore <- rcorr(as.matrix(transcript_df %>% dplyr::select(where(is.numeric))))
+
 coeff <- rcore$r
-corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "black",
-         type="upper", order="hclust", number.cex=0.7, diag=FALSE)
+
+corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "black",type="upper", order="hclust", number.cex=0.7, diag=FALSE)
 
 ```
-
-
 
 # Transform Data
 
@@ -209,7 +185,6 @@ t_df$term_num[t_df$term_num == 7] <- 6
 t_df$term_num = t_df$term_num / 10
 t_df$term_num = t_df$year + t_df$term_num
 
-
 avg_df <- t_df %>%
   group_by(studentid) %>%
   summarise(avg_gpa = mean(cgpa)
@@ -224,17 +199,16 @@ last_df <- t_df %>%
   slice(which.max(term_num))
 
 merge_df <- merge(avg_df, first_df, by='studentid')
-merge_df <- merge(merge_df, last_df, by='studentid', suffixes = c(".first",".last"))
+
+merge_df <- merge(merge_df, last_df, by='studentid', 
+                  suffixes = c(".first",".last"))
 
 merge_df <- merge(merge_df, app_df, by='studentid')
 
-
-
-model_df <- merge_df %>% dplyr::select('avg_gpa','male','ethnic','citizenship','restype',
-                                       'satR','testscoreR','decileR')
+model_df <- merge_df %>% 
+  dplyr::select('avg_gpa','male','ethnic','citizenship','restype','satR','testscoreR','decileR')
  
 levels(model_df$citizenship) <- c(levels(model_df$citizenship),"None")
-
 model_df$citizenship[is.na(model_df$citizenship)] <- "None"
 levels(model_df$ethnic) <- c(levels(model_df$ethnic),"None")
 model_df$ethnic[is.na(model_df$ethnic)] <- "None"
@@ -251,7 +225,6 @@ model_df$decileR[is.na(model_df$decileR)] <- "None"
 
 ```
 
-
 ```{r}
 
 merge_df %>% 
@@ -259,7 +232,8 @@ merge_df %>%
   skim() %>%
   dplyr::select(skim_variable, complete_rate, n_missing, 
                 numeric.p0, numeric.p100) %>%
-  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  dplyr::rename(variable=skim_variable, min=numeric.p0, 
+                max=numeric.p100) %>%
   mutate(complete_rate=round(complete_rate,2), 
          min=round(min,2), max=round(max,2)) %>%
   arrange(variable) %>%
@@ -267,18 +241,22 @@ merge_df %>%
 
 ```
 
-
 ```{r}
 rcore <- rcorr(as.matrix(merge_df %>% dplyr::select(!c('year.first','year.last')) %>% dplyr::select(where(is.numeric))))
+
 coeff <- rcore$r
-corrplot(coeff, tl.cex = .8, tl.col="black", method = 'color', addCoef.col = "black",
-         type="upper", order="hclust", number.cex=0.7, diag=FALSE)
+
+corrplot(coeff, tl.cex = .8, tl.col="black", method = 'color', addCoef.col = "black", type="upper", order="hclust", number.cex=0.7, diag=FALSE)
 
 ```
 
+### Merge dataframes.
 
-### Merge dataframes. 
-Check for duplicates in applications and transcripts. For applications there were duplicates for the desired year of admission, so we took the minimum desired year. For transcripts, make sure there are no duplicates for the same semester. We also limited to enrollment at the applied school to track progress only at schools of enrollment.
+Check for duplicates in applications and transcripts.
+For applications there were duplicates for the desired year of admission, so we took the minimum desired year.
+For transcripts, make sure there are no duplicates for the same semester.
+We also limited to enrollment at the applied school to track progress only at schools of enrollment.
+
 ```{r}
 tabyl(app_df$termdes)
 #dupes <- get_dupes(app_df, studentid_uniq, enroll)
@@ -293,7 +271,6 @@ app_df <- app_df |>
   filter(termdes_num==min(termdes_num)) |>
   filter(enroll=="Yes") |>
   ungroup()
-  
   
 #dupes <- get_dupes(transcript_df, studentid_uniq, year, term)
 
@@ -318,17 +295,19 @@ rm(transcript_df, app_df)
 ```
 
 ### Cleaning
+
 Since the goal was to determine whether the 10% rule was predictive of retention (total number of semesters), and performance (cumulative GPA), to make this easier we widened the data and removed the semester-based tabulation in favor of cumulative.
-  1. Create cumulative fields for `hrearn` and total numbers of semesters.
-  2. Drop `gpahrs` since this was only available for one school, Texas A&M Kingsville.
-  3. Drop several other variables:
-        * `studentid` since we generated a unique id with studentid and school abbreviation.
-        * `yeardes` year of admission desired, since intuitively this would be very hard to interpret as a predictor.
-        * `satR` and `actR` since these were already coalesced in the `testscoreR` column.
-        * `termapp` application term since we wanted to be timing-agnostic.
-        * `termdes_num` since we already had the variable represented as `termdes`
-        * `semgpa` semester by semester GPA, but we were only interested in cumulative.
-        * `gradyear` year of graduation as again, we wanted to be timing-agnostic.
+
+1.  Create cumulative fields for `hrearn` and total numbers of semesters.
+2.  Drop `gpahrs` since this was only available for one school, Texas A&M Kingsville.
+3.  Drop several other variables:
+    -   `studentid` since we generated a unique id with studentid and school abbreviation.
+    -   `yeardes` year of admission desired, since intuitively this would be very hard to interpret as a predictor.
+    -   `satR` and `actR` since these were already coalesced in the `testscoreR` column.
+    -   `termapp` application term since we wanted to be timing-agnostic.
+    -   `termdes_num` since we already had the variable represented as `termdes`
+    -   `semgpa` semester by semester GPA, but we were only interested in cumulative.
+    -   `gradyear` year of graduation as again, we wanted to be timing-agnostic.
 
 ```{r}
 
@@ -365,5 +344,6 @@ cleaned.m %>% ggplot(aes(x=value)) +
 
 ```
 
-
-
+```{r}
+knitr::knit_exit()
+```
