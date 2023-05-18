@@ -26,14 +26,8 @@ labelvec_to_df <- function(vec){
 local_data_dir <- '../../data/theop'
 
 # load data
-load(file.path(local_data_dir,'data_model/df_applications_orig.RData'))
+load(file.path(local_data_dir,'data_model/df_applications.RData'))
 load(file.path(local_data_dir,'data_model/df_meta_terms.RData'))
-
-# working dfs
-df_applications <- df_applications_orig
-
-# save memory
-remove(df_applications_orig)
 
 # -----
 
@@ -48,7 +42,7 @@ df_skim_missing <- skim(df_applications) %>%
 # -----
 
 ## convert termdes to 'academic term order' where Fall = 1
-## merge in termapp for A&M ? 
+## merge in termapp for A&M ?
 
 val_labels(df_applications$termdes)
 val_labels(df_applications$termapp)
@@ -65,7 +59,7 @@ df_qa2 <- df_applications %>%
   filter(univ=='amk', !is.na(termdes)) %>%
   group_by(termapp, termdes) %>%
   summarize(n())
-  
+
 
 # Texas A&M Kingsville application deadlines (2023)
 # Fall	August 1
@@ -93,7 +87,7 @@ df_applications <- df_applications %>%
 
 ## test scores
 
-# what adjustments needed for test scores, 'centered' test scores .. 
+# what adjustments needed for test scores, 'centered' test scores ..
 
 
 
@@ -119,11 +113,15 @@ df_applications %>%
 
 ## imputation
 
-# can we reliably impute missing vals for 'male' and 'ethnic' using other variables with MICE?  
+# can we reliably impute missing vals for 'male' and 'ethnic' using other variables with MICE?
 
-# can we impute missing 'admit' and 'enroll' from the transcripts?  
+# can we impute missing 'admit' and 'enroll' from the transcripts?
 
 
 
+# -----
+
+# Save final
+save(df_applications, file=file.path(local_data_dir,'data_model/df_applications_transformed.RData'))
 
 
