@@ -1,0 +1,433 @@
+---
+title: 'Final: Texas Higher Education Opportunity Project (THEOP)'
+subtitle: 'Critical Thinking Group 1'
+author: 'Ben Inbar, Cliff Lee, Daria Dubovskaia, David Simbandumwe, Jeff Parks'
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    theme: united
+  pdf_document:
+    toc: yes
+editor_options:
+  chunk_output_type: console
+  markdown: 
+    wrap: sentence
+---
+
+
+```{r setup, include=FALSE}
+# chunks
+knitr::opts_chunk$set(echo=FALSE, eval=TRUE, include=TRUE, 
+message=FALSE, warning=FALSE, fig.height=5, fig.align='center')
+
+# libraries
+library(tidyverse)
+library(kableExtra)
+library(MASS) # glm.nb()
+library(mice)
+library(pscl) # zeroinfl()
+library(skimr)
+library(sjPlot)
+library(mpath)
+library(yardstick)
+library(labelled)
+library(haven)
+library(corrplot)
+library(Hmisc)
+library(jtools)
+library(caret)
+
+ # library
+library(treemap)
+library(ggplot2)
+library(hrbrthemes)
+library(viridis)
+
+
+
+# ggplot
+theme_set(theme_light())
+
+
+# random seed
+set.seed(42)
+```
+
+
+
+
+
+```{r common functions}
+
+#' nice_table
+#' 
+#' @param df
+#' @param fw
+nice_table <- function(df, cap=NULL, cols=NULL, dig=3, fw=F){
+  if (is.null(cols)) {c <- colnames(df)} else {c <- cols}
+  table <- df %>% 
+    kable(caption=cap, col.names=c, digits=dig) %>% 
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      html_font = 'monospace',
+      full_width = fw)
+  return(table)
+}
+
+model_diag <- function(model){
+  model_sum <- summary(model)
+  aic <- AIC(model)
+  ar2 <- model_sum$adj.r.squared
+  disp <- sum(resid(model,'pearson')^2)/model$df.residual
+  loglik <- logLik(model)
+  
+  vec <- c(ifelse(is.null(aic), NA, aic),
+           ifelse(is.null(ar2), NA, ar2),
+           ifelse(is.null(disp), NA, disp),
+           ifelse(is.null(loglik), NA, loglik))
+  
+  names(vec) <- c('AIC','Adj R2','Dispersion','Log-Lik')
+  return(vec)
+}
+
+
+
+factor_haven <- function(df, col_lst) {
+  for (c in col_lst) {
+    df[c] <- as_factor(zap_missing(df[c]))
+  }
+  return(df)
+}
+
+
+```
+
+
+
+
+
+# Load Data
+
+```{r}
+
+# change to your local data dir outside the repo
+local_data_dir <- '../../data/theop'
+
+
+# load application and transactions data frames
+load(paste0(local_data_dir, '/data_model/df_applications.RData'))
+load(paste0(local_data_dir, '/data_model/df_transcripts.RData'))
+
+```
+
+
+
+
+
+```{r}
+
+# clean application data and remove labels
+app_df  <- df_applications
+col_lst <- c("termdes","male","ethnic","citizenship","restype","satR","actR","testscoreR","decileR","quartile","major_field",
+             "hsprivate","hstypeR","hsinstate","hseconstatus","hslos","hscentury","admit","admit_prov","enroll","gradyear",
+             "studentid_uniq","univ","termapp","sat_not_recenteredR","admit_ut_summer")
+app_df <- factor_haven(app_df,col_lst)
+
+
+```
+
+
+
+
+
+# Data Exploration
+
+
+```{r}
+
+am_df <- app_df %>% dplyr::filter(univ == 'am') %>%
+        dplyr::select(!c(termapp,sat_not_recenteredR,admit_ut_summer,univ)) %>% 
+        drop_na(satR,decileR)
+
+
+
+
+am_df$satR <- as.numeric(am_df$satR)
+am_df$actR <- as.numeric(am_df$actR)
+am_df$testscoreR <- as.numeric(am_df$testscoreR)
+am_df$gradyear <- as.numeric(am_df$gradyear)
+
+
+am_df$admit <- as.logical(as.numeric(am_df$admit)-1)
+am_df$admit_prov <- as.logical(as.numeric(am_df$admit_prov)-1)
+am_df$enroll <- as.logical(as.numeric(am_df$enroll)-1)
+
+
+levels(am_df$hsprivate) <- c(levels(am_df$hsprivate),"None")
+am_df$hsprivate[is.na(am_df$hsprivate)] <- "None"
+
+levels(am_df$citizenship) <- c(levels(am_df$citizenship),"None")
+am_df$citizenship[is.na(am_df$citizenship)] <- "None"
+
+levels(am_df$ethnic) <- c(levels(am_df$ethnic),"None")
+am_df$ethnic[is.na(am_df$ethnic)] <- "None"
+
+levels(am_df$restype) <- c(levels(am_df$restype),"None")
+am_df$restype[is.na(am_df$restype)] <- "None"
+
+levels(am_df$male) <- c(levels(am_df$male),"None")
+am_df$male[is.na(am_df$male)] <- "None"
+
+
+am_df <- am_df %>% mutate(top10 = ifelse(decileR == "Top 10%", TRUE, FALSE))
+
+
+
+# filter 
+attr_str <- c('admit', 'termdes', 'male','ethnic','citizenship','restype','satR','testscoreR',
+              'top10','hsprivate','hsinstate','yeardes', 'enroll')
+
+am_df <- am_df %>% dplyr::select(attr_str)
+
+
+```
+
+
+
+```{r}
+
+am_df %>%
+  #dplyr::select(!c(studentid)) %>%
+  skim() %>%
+  dplyr::select(skim_variable, complete_rate, n_missing, 
+                numeric.p0, numeric.p100) %>%
+  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  mutate(complete_rate=round(complete_rate,2), 
+         min=round(min,2), max=round(max,2)) %>%
+  arrange(variable) %>%
+  nice_table()
+
+
+```
+
+
+
+```{r, eval=FALSE}
+
+rcore <- rcorr(as.matrix(am_df %>% 
+                           dplyr::select(where(is.numeric) & !c(studentid))))
+coeff <- rcore$r
+corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "black",
+         type="upper", order="hclust", number.cex=0.7, diag=FALSE)
+
+```
+
+
+
+
+```{r}
+
+#m_df <- merge_df %>% slice_sample(n=2000) %>%
+m_df <- am_df %>%
+  dplyr::select(where(is.numeric) & !c('admit','enroll')) %>% 
+  pivot_longer(!c('satR'), names_to='variable' , values_to = 'value') %>% 
+  drop_na()
+
+m_df %>% ggplot(aes(x=value)) + 
+#m_df %>% ggplot(aes(x=value, group=avg_gpa, fill=avg_gpa)) + 
+geom_density(color='#023020') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+
+```
+
+
+
+
+
+
+```{r}
+
+m_df <- am_df %>%
+  dplyr::select((where(is.numeric) | c('admit','enroll')) & !c(yeardes)) %>% 
+  pivot_longer(!c('admit','enroll'), names_to='variable' , values_to = 'value') %>% 
+  drop_na()
+
+m_df %>% ggplot(aes(y=value, x=admit, fill=enroll)) + 
+#m_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) + 
+geom_boxplot(color='#023020') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+
+# m_df %>% ggplot(aes(y=value, x=enroll)) + 
+# #m_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) + 
+# geom_boxplot(color='#023020') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+```
+
+
+
+
+
+```{r}
+
+#m_df <- am_df 
+
+m_df <- am_df %>%
+  group_by(admit, ethnic, male) %>%
+  summarise(n = n())
+
+#treemap(m_df, index=c("ethnic","admit"), vSize="n", type="index")
+treemap(m_df, index=c("admit","ethnic"), vSize="n", type="index",
+      title="My Treemap",                      # Customize your title
+      fontsize.title=12,
+      align.labels=list(
+        c("center", "center"), 
+        c("right", "bottom")
+        ),                                   # Where to place labels in the rectangle?
+    overlap.labels=0.5,                      # 
+    inflate.labels=F, )
+
+```
+
+
+
+
+
+```{r}
+
+m_df <- am_df %>%
+  group_by(admit, ethnic, male) %>%
+  summarise(n = n())
+
+# plot
+ggplot(m_df, aes(fill=ethnic, y=n, x=admit)) + 
+  geom_bar(position="stack", stat="identity") + 
+  scale_fill_viridis(discrete=TRUE, name="") +
+  facet_wrap(~admit, scales = 'free',  ncol = 4)
+  theme_ipsum() +
+  ylab("Money input") + 
+  xlab("Month")
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Models
+
+
+
+
+
+
+
+```{r}
+
+pre_df <- am_df %>% dplyr::filter(yeardes < 1998)
+
+pre_df %>%
+  #dplyr::select(!c(studentid)) %>%
+  skim() %>%
+  dplyr::select(skim_variable, complete_rate, n_missing, 
+                numeric.p0, numeric.p100) %>%
+  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  mutate(complete_rate=round(complete_rate,2), 
+         min=round(min,2), max=round(max,2)) %>%
+  arrange(variable) %>%
+  nice_table()
+
+```
+
+
+
+```{r}
+
+am_model_1 <- glm(pre_df, formula = admit ~ . -enroll, family = binomial(link = "probit"))
+summary(am_model_1)
+
+```
+
+
+
+
+```{r}
+
+am_model_1_aic <- am_model_1 %>% stepAIC(trace = FALSE)
+summ(am_model_1_aic)
+
+```
+
+
+
+
+
+# Predict
+
+
+```{r}
+
+am1998_df <- am_df %>% dplyr::filter(yeardes == 1998)
+
+am1998_pred <- predict.glm(am_model_1_aic, am1998_df, "response")
+
+am1998_df$prob_admit <- am1998_pred
+am1998_df$pred_admit <- ifelse(am1998_pred >= 0.5, TRUE, FALSE)
+
+
+```
+
+
+```{r}
+
+log_matrix_1 <- confusionMatrix(factor(am1998_df$pred_admit), 
+                                factor(am1998_df$admit), 'TRUE')
+
+log_matrix_1
+
+
+```
+
+
+
+```{r}
+
+
+am1999_df <- am_df %>% dplyr::filter(yeardes == 1999)
+
+am1999_pred <- predict.glm(am_model_1_aic, am1999_df, "response")
+
+am1999_df$prob_admit <- am1999_pred
+am1999_df$pred_admit <- ifelse(am1999_pred >= 0.5, TRUE, FALSE)
+
+
+```
+
+
+
+
+
+```{r}
+log_matrix_2 <- confusionMatrix(factor(am1999_df$pred_admit), 
+                                factor(am1999_df$admit), 'TRUE')
+
+log_matrix_2
+```
+
