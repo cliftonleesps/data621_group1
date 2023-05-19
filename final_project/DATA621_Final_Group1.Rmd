@@ -82,12 +82,30 @@ factor_haven <- function(df, col_lst) {
 
 ```
 
+# Abstract 
+
+<i>Use 250 words or less to summarize your problem, methodology, and major outcomes</i>
+
+
+# Introduction
+
+Despite some claims, people have acknowledged a gap in access to higher education still exists, especially for minority students. However, many have objected to affirmative action policies as a solution, and in 1996 in Texas, the Fifth Court Circuit of Appeals outlawed the use of race for college admissions in the state. After a noticeable drop in minority student enrollments, the governor of Texas signed a new bill as a compromise:  any high school student finishing in top decile received a guaranteed admission to Texas’ two flagship public universities (University of Texas at Austin and Texas A&M University). Instead of competing with applicants from the entire state, students only had to compete with their immediate classmates to access higher education.
+
+# Literature review
+<i>Discuss how other researchers have addressed similar problems, what their achievements are, and what the advantage and drawbacks of each reviewed approach are. Explain how your investigation is similar or different to the state-of-the-art. Please cite the relevant papers where appropriate. </i>
+
+# Methodology 
+<i>Discuss the key aspects of your problem, data set and regression model(s). Given that you are working on real-world data, explain at a high-level your exploratory data analysis, how you prepared the data for regression modeling, your process for building regression models, and your model selection.</i> 
+
+
+
+
 # Load Data
 
 ```{r}
 
 # change to your local data dir outside the repo
-local_data_dir <- '../theop'
+local_data_dir <- '../../data/theop'
 # 
 # 
 # # load application and transactions data frames
@@ -514,6 +532,13 @@ cleaned.m %>% ggplot(aes(x=value)) +
 
 ```
 
+
+# Discussion and Conclusions 
+
+<i>Conclude your findings, limitations, and suggest areas for future work. </i>
+
 ```{r}
 knitr::knit_exit()
 ```
+
+
