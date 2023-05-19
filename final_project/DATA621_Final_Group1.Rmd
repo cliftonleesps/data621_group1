@@ -36,6 +36,8 @@ library(corrplot)
 library(Hmisc)
 library(janitor)
 library(reshape)
+library(ggpubr)
+library(ggplot2)
 
 # ggplot
 theme_set(theme_light())
@@ -85,7 +87,7 @@ factor_haven <- function(df, col_lst) {
 ```{r}
 
 # change to your local data dir outside the repo
-local_data_dir <- '../../data/theop'
+local_data_dir <- '../theop'
 # 
 # 
 # # load application and transactions data frames
@@ -118,37 +120,6 @@ transcript_df <- factor_haven(transcript_df,col_lst)
 #rm(df_transcripts, df_applications)
 ```
 
-# Data Exploration
-
-```{r}
-
-app_df %>% 
-  #dplyr::select(!c(source, target)) %>%
-  skim() %>%
-  dplyr::select(skim_variable, complete_rate, n_missing, 
-                numeric.p0, numeric.p100) %>%
-  dplyr::rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
-  mutate(complete_rate=round(complete_rate,2), 
-         min=round(min,2), max=round(max,2)) %>%
-  arrange(variable) %>%
-  nice_table()
-```
-
-```{r}
-
-transcript_df %>% 
-  #dplyr::select(!c(source, target)) %>%
-  skim() %>%
-  dplyr::select(skim_variable, complete_rate, n_missing, 
-                numeric.p0, numeric.p100) %>%
-  dplyr::rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
-  mutate(complete_rate=round(complete_rate,2), 
-         min=round(min,2), max=round(max,2)) %>%
-  arrange(variable) %>%
-  nice_table()
-
-```
-
 ```{r distrib}
 
 transcript_df %>% dplyr::select(where(is.numeric)) %>%
@@ -171,7 +142,199 @@ corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "bl
 
 ```
 
+
+
+Choose Texas A&M college and compare the admissions policy at a university before and after top 10%. Make variables categorical if needed.
+
+```{r}
+texas_applications <- filter(df_applications, univ == "am") %>% dplyr::select(!c(termapp, sat_not_recenteredR, admit_ut_summer, univ))
+texas_transcripts <- filter(df_transcripts, univ == "am") %>% dplyr::select(!univ)
+```
+
+```{r}
+factor_vars_1 <- c("termdes","male","ethnic","citizenship","restype","decileR","quartile",
+                 "major_field","hsprivate","hstypeR","hsinstate","hseconstatus","admit","admit_prov","enroll")
+
+for (v in factor_vars_1) {
+  texas_applications <- texas_applications %>% mutate(!!v := factor(get(v)))
+}
+
+factor_vars_2 <- c("term","term_major_dept","term_major_field")
+
+for (v in factor_vars_2) {
+  texas_transcripts <- texas_transcripts %>% mutate(!!v := factor(get(v)))
+}
+```
+
+
+
+# Data Exploration
+
+The **application** dataset contained 163,027 observations of 24 predictor variables and **transcripts** dataset contained 637,028 observations of 10 predictor variables, where each record represented an individual applicant.
+These variables describe items typically found on a college admission application such as the year and term an applicant desired to enroll, applicant 
+demographics, applicant academic characteristics, and high school characteristics.
+
+
+
+<img src="https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/final_project/project_data.png" width="1200" style="display: block; margin-left: auto; margin-right: auto; width: 100%;"/>
+
+### 1.1 Summary Statistics
+
+Each record in the application dataset included a response variable "admit" (Institution’s admission decision), was a boolean where "1" indicated the person was admitted.
+Each record in the transcript dataset registers academic progress toward a degree for a single enrollee in a single semester (hours earned, semester GPA, cumulative GPA, and department and field of major).
+
+A sample of the data appears in the following tables:
+
+```{r}
+DT::datatable(
+      texas_applications[1:25,],
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE) 
+```
+
+
+```{r}
+DT::datatable(
+      texas_transcripts[1:25,],
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE) 
+```
+
+
+While exploring this data, we made the following observations for the **applications data**:
+
+-   21 variables were categorical, and 3 were numeric.
+-   `actR`, `gradyear`, `hscentury`, `hslos` variables had more that 50% of the missing data.
+
+For the **transcripts data**:
+
+-  no missing values besides `cgpa` had only 64 missing values out of 637,028 observations.
+-  6 variables were categorical, and 4 were numeric.
+
+
+```{r}
+
+texas_applications %>% 
+  #dplyr::select(!c(source, target)) %>%
+  skim() %>%
+  dplyr::select(skim_variable, complete_rate, n_missing, 
+                numeric.p0, numeric.p100) %>%
+  dplyr::rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  mutate(complete_rate=round(complete_rate,2), 
+         min=round(min,2), max=round(max,2)) %>%
+  arrange(variable) %>%
+  nice_table()
+```
+
+```{r}
+
+texas_transcripts %>% 
+  #dplyr::select(!c(source, target)) %>%
+  skim() %>%
+  dplyr::select(skim_variable, complete_rate, n_missing, 
+                numeric.p0, numeric.p100) %>%
+  dplyr::rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  mutate(complete_rate=round(complete_rate,2), 
+         min=round(min,2), max=round(max,2)) %>%
+  arrange(variable) %>%
+  nice_table()
+
+```
+
+### 1.2 Distribution
+
+76% of all the students were admitted to the university.
+```{r}
+texas_applications%>%
+  ggplot() +
+  geom_bar(aes(x=admit), colour='black', size=0.2) 
+```
+
+By checking the frequency of the variables with few unique values ("male","ethnic", "citizenship", "restype","decileR","major_field"), we checked the frequency of each value.
+As demonstrated by the graph below, more than 50% of the data for the `citizenship`, `restype` and `ethnic` variables was `US Citizen`, `Texas Resident` and `White, Non-Hispanic` accordingly:
+
+```{r discrete_plot}
+texas_applications[,c("male","ethnic", "citizenship", "restype","decileR","major_field")] %>%
+  gather("variable","value") %>%
+  group_by(variable) %>%
+  count(value) %>%
+  mutate(value = factor(value,levels=8:0)) %>%
+  mutate(percent = n*100/163027) %>%
+  ggplot(.,
+  aes(variable,percent)) +
+  geom_bar(stat = "identity", aes(fill = value)) +
+  xlab("Variable") +
+  ylab("Percentage") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_fill_manual(values = rev(c("#003f5c","#58508d", "#bc5090", "#ff6361", "#ffa600","#CC79a7", "black", "green", "blue")))
+```
+
+```{r}
+a <- ggplot(texas_transcripts, aes(x = cgpa)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  labs(x = "Per semester cumulative gpa", y = "Count")
+
+
+b <- ggplot(texas_transcripts, aes(x = semgpa)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  labs(x = "Semester gpa", y = "Count")
+
+plot<- ggarrange(a, b, ncol=2, nrow=1)
+
+annotate_figure(plot, top = text_grob("Distribution of GPA", 
+               color = "black", face = "bold", size = 14))
+```
+
+```{r}
+m_df <- texas_applications %>% dplyr::select(c(satR, actR, testscoreR)) %>% melt() 
+
+m_df %>% ggplot(aes(x= value)) + 
+geom_histogram(color='#023020', fill='gray') + 
+  facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+```
+
+
+```{r}
+m_df <- texas_transcripts %>% dplyr::select(c(semgpa,cgpa)) %>% melt() 
+
+m_df %>% ggplot(aes(x= value)) + 
+geom_histogram(color='#023020', fill='gray') + 
+  facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+```
+
+### 1.3 Boxplots
+
+
+
 # Transform Data
+
+
+```{r}
+#maybe split data by year: before 1998 and after
+
+appl_1997 <- filter(texas_applications, yeardes < 1998)
+appl_1998 <- filter(texas_applications, yeardes >= 1998)
+
+transc_1997 <- filter(texas_transcripts, year < 1998)
+transc_1998 <- filter(texas_transcripts, year >= 1998)
+```
+
 
 ```{r}
 t_df <- transcript_df
@@ -184,7 +347,10 @@ t_df$term_num[t_df$term_num == 6] <- 2
 t_df$term_num[t_df$term_num == 7] <- 6
 t_df$term_num = t_df$term_num / 10
 t_df$term_num = t_df$year + t_df$term_num
+```
 
+
+```{r}
 avg_df <- t_df %>%
   group_by(studentid) %>%
   summarise(avg_gpa = mean(cgpa)
@@ -200,10 +366,14 @@ last_df <- t_df %>%
 
 merge_df <- merge(avg_df, first_df, by='studentid')
 
+
 merge_df <- merge(merge_df, last_df, by='studentid', 
                   suffixes = c(".first",".last"))
 
+
 merge_df <- merge(merge_df, app_df, by='studentid')
+
+
 
 model_df <- merge_df %>% 
   dplyr::select('avg_gpa','male','ethnic','citizenship','restype','satR','testscoreR','decileR')
@@ -227,7 +397,7 @@ model_df$decileR[is.na(model_df$decileR)] <- "None"
 
 ```{r}
 
-merge_df %>% 
+model_df %>% 
   #dplyr::select(!c(source, target)) %>%
   skim() %>%
   dplyr::select(skim_variable, complete_rate, n_missing, 
