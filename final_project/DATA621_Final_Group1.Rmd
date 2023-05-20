@@ -275,6 +275,59 @@ demographicCount <- function(df, model, y, d_df) {
 }
 
 
+
+
+#' Title
+#'
+#' @param df 
+#' @param l_model 
+#' @param y 
+#' @param d_df 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+demographicCountLasso <- function(df, l_model, y, d_df) {
+  
+  
+  if (y == 1998) {
+    am_df <- df %>% dplyr::filter(yeardes == y & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
+  } else {
+    am_df <- df %>% dplyr::filter(yeardes == y) %>% dplyr::select(!c(enroll,yeardes,termdes))
+  }
+  
+  
+  X_test <- model.matrix(admit ~ . ,data=am_df)[,-1]
+  Y_test <- am_df[,"admit"] 
+  
+  
+  # predict using coefficients at lambda.min
+  lassoPred <- predict(l_model, newx = X_test, type = "response", s = 'lambda.min')
+  
+  #pred_df <- am_lasso1998_df 
+  am_df$admit_prob <- lassoPred[,1]
+  am_df$admit_pred <- ifelse(lassoPred >= 0.5, 1, 0)[,1]
+
+
+  log_matrix_1 <- confusionMatrix(factor(am_df$admit_pred), 
+                                factor(am_df$admit), "1")
+  log_matrix_1
+
+  
+  d <- am_df %>% 
+    group_by(admit,ethnic) %>%
+    summarise(y = n())
+  
+  names(d) <- c('admit', 'ethnic', y)
+  d_df <- d_df %>% full_join( d, by=c('admit','ethnic'))
+  
+  return(d_df)
+  
+}
+
+
+
 ```
 
 # Abstract 
@@ -665,6 +718,7 @@ pre_df <- rbind(pre_df,b)
 
 
 demographic_df <- pre_df %>% 
+  dplyr::filter(yeardes == 1997) %>%
   group_by(admit,ethnic) %>%
   summarise(pre = n())
 
@@ -717,9 +771,9 @@ summ(am_model_1_aic)
 a <- as.data.frame(summary(am_model_1_aic)$coefficients[,1])
 a <- cbind(coef = rownames(a), a)
 rownames(a) <- NULL
-names(a) <- c('coef','pre')
+names(a) <- c('coef','< 1998')
 a$model <- 'glm'
-a <- a[, c("coef", "model", "pre")]
+a <- a[, c("coef", "model", "< 1998")]
 
 coef_tbl <- a
 
@@ -833,6 +887,14 @@ set.seed(42)
 X <- model.matrix(admit ~ . -enroll -yeardes -termdes , data=pre_df)[,-1]
 Y <- pre_df[,"admit"] 
 
+
+demographic_lasso_df <- pre_df %>% 
+  dplyr::filter(yeardes == 1997) %>%
+  group_by(admit,ethnic) %>%
+  summarise(pre = n())
+
+names(demographic_lasso_df) <- c('admit','ethnic','1997')
+
 ```
 
 
@@ -858,9 +920,9 @@ lasso.model
 ```{r}
 
 a <- coeff2dt(fitobject = lasso.model, s = "lambda.min")
-names(a) <- c('coef','pre')
+names(a) <- c('coef','< 1998')
 a$model <- 'lasso'
-a <- a[, c("coef", "model", "pre")]
+a <- a[, c("coef", "model", "< 1998")]
 
 coef_lasso_tbl <- a
 
@@ -945,6 +1007,16 @@ The coefficients extracted at the lambda.min value are used to predict the relat
 
 
 ```{r}
+
+
+
+
+```
+
+
+
+
+```{r}
 # Create matrix new data
 am_lasso1998_df <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Fall") %>%
   dplyr::select(!c(enroll,yeardes,termdes))
@@ -974,6 +1046,67 @@ confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.min')
 
 
 
+
+```{r}
+
+```
+
+
+```{r}
+
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 1998, demographic_lasso_df)
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 1999, demographic_lasso_df)
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 2000, demographic_lasso_df)
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 2001, demographic_lasso_df)
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 2002, demographic_lasso_df)
+
+
+```
+
+
+
+
+# Analysis
+
+
+```{r}
+
+m_df <- coef_tbl %>%
+  #dplyr::select(where(is.numeric) & !c('admit','enroll')) %>% 
+  dplyr::filter(coef != '(Intercept)') %>%
+  pivot_longer(!c('coef','model'), names_to='variable' , values_to = 'value') %>% 
+  drop_na()
+
+
+ggplot(data=m_df, aes(x=variable, y = value, colour = coef, group = coef)) + 
+  geom_line() + 
+  geom_point(size=0.5) +
+  facet_wrap( ~coef, ncol = 4, as.table=TRUE, labeller = "label_both") +
+  theme_bw()
+
+coef_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='glm() Addmission Coefficients')
+
+```
+
+
+```{r}
+
+m_df <- coef_lasso_tbl %>%
+  #dplyr::select(where(is.numeric) & !c('admit','enroll')) %>% 
+  dplyr::filter(coef != '(Intercept)') %>%
+  pivot_longer(!c('coef','model'), names_to='variable' , values_to = 'value') %>% 
+  drop_na()
+
+
+ggplot(data=m_df, aes(x=variable, y = value, colour = coef, group = coef)) + 
+  geom_line() + 
+  geom_point(size=0.5) +
+  facet_wrap( ~coef, ncol = 4, as.table=TRUE, labeller = "label_both") +
+  theme_bw()
+
+coef_lasso_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='Lasso Addmission Coefficients')
+
+```
 
 
 
