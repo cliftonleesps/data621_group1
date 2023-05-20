@@ -125,6 +125,107 @@ glmnet_cv_aicc <- function(fit, lambda = 'lambda.1se'){
 }
 
 
+#' coeff2dt
+#'
+#' @param fitobject 
+#' @param s 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+coeff2dt <- function(fitobject, s) {
+  coeffs <- coef(fitobject, s) 
+  coeffs.dt <- data.frame(name = coeffs@Dimnames[[1]][coeffs@i + 1], coefficient = coeffs@x) 
+
+  # reorder the variables in term of coefficients
+  return(coeffs.dt[order(coeffs.dt$coefficient, decreasing = T),])
+}
+
+
+
+
+#' Title
+#'
+#' @param df 
+#' @param y 
+#' @param c_df 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+glm_coef <- function(df, y, c_df) {
+
+  am_df <- df %>% dplyr::filter(yeardes == y & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
+  
+  am_model <- glm(am_df, formula = admit ~ . , family = binomial(link = "probit"))
+  summary(am_model)
+  
+  am_model_aic <- am_model %>% stepAIC(trace = FALSE)
+  summ(am_model_aic)
+  
+  a <- as.data.frame(summary(am_model_aic)$coefficients[,1])
+  a <- cbind(coef = rownames(a), a)
+  rownames(a) <- NULL
+  names(a) <- c('coef',paste0('y',y))
+  a$model <- 'glm'
+  
+  if (is.null(c_df)) {
+    c_df <- a
+  } else {
+    c_df <- c_df %>% full_join( a, by=c('coef','model'))
+  }
+  
+  return (c_df)
+}
+
+
+
+
+#' Title
+#'
+#' @param df 
+#' @param y 
+#' @param c_df 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+lasso_coef <- function(df, y, c_df) {
+  
+  am_df <- df %>% dplyr::filter(yeardes == y & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
+
+  X <- model.matrix(admit ~ . , data=am_df)[,-1]
+  Y <- am_df[,"admit"] 
+  
+  
+  
+  lasso.model<- cv.glmnet(x=X,y=Y,
+                         family = "binomial", 
+                         link = "logit",
+                         standardize = TRUE,                       #standardize  
+                         nfold = 5,
+                         alpha=1)                                  #alpha=1 is lasso
+  
+  l.min <- lasso.model$lambda.min
+  coef(lasso.model, s = "lambda.min" )
+  
+  
+  a <- coeff2dt(fitobject = lasso.model, s = "lambda.min")
+  names(a) <- c('coef',paste0('y',y))
+  a$model <- 'lasso'
+  
+  if (is.null(c_df)) {
+    c_df <- data.frame(a)
+  } else {
+    c_df <- c_df %>% full_join( a, by=c('coef','model'))
+  }
+  
+  
+  return (c_df)
+}
 
 ```
 
@@ -358,18 +459,28 @@ Students with missing values for `ethnic` variable are combined with  "White, No
 
 ```{r message=FALSE, warning=FALSE,}
 
+
+library(rockchalk)
+
 levels(texas_applications$hsprivate) <- c(levels(texas_applications$hsprivate),"None")
 texas_applications$hsprivate[is.na(texas_applications$hsprivate)] <- "None"
 
 levels(texas_applications$hsinstate) <- c(levels(texas_applications$hsinstate),"None")
 texas_applications$hsinstate[is.na(texas_applications$hsinstate)] <- "None"
 
-texas_applications <- texas_applications %>% mutate(ethnic = ifelse(is.na(ethnic), "5", ethnic))
-texas_applications$ethnic <- as.factor(texas_applications$ethnic)
+#texas_applications <- texas_applications %>% mutate(ethnic = ifelse(is.na(ethnic), "5", ethnic))
+#texas_applications$ethnic[is.na(texas_applications$ethnic)] <- "White, Non-Hispanic"
+#texas_applications$ethnic <- as.factor(texas_applications$ethnic)
+
+levels(texas_applications$ethnic) <- c(levels(texas_applications$ethnic),"None")
+texas_applications$ethnic[is.na(texas_applications$ethnic)] <- "None"
+texas_applications$ethnic <- combineLevels(texas_applications$ethnic, 
+                                           levs = c("White, Non-Hispanic","None"), 
+                                           newLabel = "White, Non-Hispanic")
 
 # set values, dummy variable if top 10% or not
-texas_applications <- texas_applications %>% mutate(top10 = ifelse(decileR == "Top 10%", 1, 0))
-texas_applications$top10 <- as.factor(texas_applications$top10)
+texas_applications <- texas_applications %>% mutate(top10 = ifelse(decileR == "Top 10%", TRUE, FALSE))
+#texas_applications$top10 <- as.factor(texas_applications$top10)
 
 levels(texas_applications$decileR) <- c(levels(texas_applications$decileR),"None")
 texas_applications$decileR[is.na(texas_applications$decileR)] <- "None"
@@ -491,6 +602,27 @@ ggplot(m_df, aes(fill=ethnic, y=n, x=admit)) +
 # Models
 As the first step, we built the generalized linear model based on the dataset with some variables transformed to categorical from numeric for the time before Fall, 1998.
 
+
+```{r}
+
+# coef_tbl <- tibble(
+#                       model = character(),
+#                       coef = numeric(), 
+#                       pre = numeric(), 
+#                       y1998 = numeric(), 
+#                       y1999 = numeric(),
+#                       y2000 = numeric(), 
+#                       y2001 = numeric(),
+#                       y2002 = numeric()
+#                 )
+
+
+```
+
+
+
+
+
 ```{r}
 #no termdes=Fall or summer II only
 pre_df <- am_df %>% dplyr::filter(yeardes < 1998)
@@ -520,13 +652,43 @@ am_model_1 <- glm(pre_df, formula = admit ~ . -enroll -yeardes -termdes, family 
 summary(am_model_1)
 
 ```
+
+
 Using StepAic() function helped to improve the model performance.
+
 ```{r}
 
 am_model_1_aic <- am_model_1 %>% stepAIC(trace = FALSE)
 summ(am_model_1_aic)
 
 ```
+
+
+
+```{r}
+
+a <- as.data.frame(summary(am_model_1_aic)$coefficients[,1])
+a <- cbind(coef = rownames(a), a)
+rownames(a) <- NULL
+names(a) <- c('coef','pre')
+a$model <- 'glm'
+
+coef_tbl <- a
+
+```
+
+
+```{r}
+
+coef_tbl <- glm_coef(am_df, '1998', coef_tbl) 
+coef_tbl <- glm_coef(am_df, '1999', coef_tbl) 
+coef_tbl <- glm_coef(am_df, '2000', coef_tbl) 
+coef_tbl <- glm_coef(am_df, '2001', coef_tbl) 
+coef_tbl <- glm_coef(am_df, '2002', coef_tbl) 
+
+```
+
+
 
 
 ## Model Results
@@ -599,12 +761,10 @@ car::vif(am_model_1_aic)
 # Predict
 
 Once the uniform admission law was fully in force, fall, 1998.
-```{r}
-
-am1998_df <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Fall")
-```
 
 ```{r}
+
+am1998_df <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
 
 am1998_pred <- predict.glm(am_model_1_aic, am1998_df, "response")
 
@@ -626,8 +786,10 @@ log_matrix_1
 ```
 
 1999
+
 ```{r}
 
+am1999_df <- am_df %>% dplyr::filter(yeardes == 1999 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
 
 am1999_df <- am_df %>% dplyr::filter(yeardes == 1999)
 
@@ -649,8 +811,10 @@ log_matrix_2
 
 
 2000
-```{r}
 
+
+```{r}
+am2000_df <- am_df %>% dplyr::filter(yeardes == 2000 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
 
 am2000_df <- am_df %>% dplyr::filter(yeardes == 2000)
 
@@ -673,7 +837,10 @@ log_matrix_3
 
 2001
 
+
 ```{r}
+am2001_df <- am_df %>% dplyr::filter(yeardes == 2001 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
+
 am2001_df <- am_df %>% dplyr::filter(yeardes == 2001)
 
 am2001_pred <- predict.glm(am_model_1_aic, am2001_df, "response")
@@ -693,7 +860,10 @@ log_matrix_4
 ```
 
 2002
+
 ```{r}
+
+am2002_df <- am_df %>% dplyr::filter(yeardes == 2002 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
 am2002_df <- am_df %>% dplyr::filter(yeardes == 2002)
 
 am2002_pred <- predict.glm(am_model_1_aic, am2002_df, "response")
@@ -713,8 +883,7 @@ log_matrix_5
 ```
 
 
-# Lasso???
-
+# Lasso
 
 ```{r}
 # set seed for consistancy 
@@ -745,6 +914,30 @@ lasso.model
 ```
 
 
+
+```{r}
+
+a <- coeff2dt(fitobject = lasso.model, s = "lambda.min")
+names(a) <- c('coef','pre')
+a$model <- 'lasso'
+
+coef_lasso_tbl <- a
+
+```
+
+
+```{r}
+
+coef_lasso_tbl <- lasso_coef(am_df, 1998 ,  coef_lasso_tbl)
+coef_lasso_tbl <- lasso_coef(am_df, 1999 ,  coef_lasso_tbl)
+coef_lasso_tbl <- lasso_coef(am_df, 2000 ,  coef_lasso_tbl)
+coef_lasso_tbl <- lasso_coef(am_df, 2001 ,  coef_lasso_tbl)
+coef_lasso_tbl <- lasso_coef(am_df, 2002 ,  coef_lasso_tbl)
+
+```
+
+
+
 ```{r}
 
 par(mfrow=c(2,2))
@@ -759,10 +952,6 @@ plot(rocs,type="l")
 ```
 
 
-```{r}
-
-```
-
 
 ```{r}
 assess.glmnet(lasso.model,           
@@ -775,30 +964,64 @@ print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
 ```
 
 
+
 ```{r}
-coef(lasso.model, s = "lambda.min" )
-vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
+as.data.frame(as.matrix(coef(lasso.model, s = "lambda.min"))) %>%
+  arrange(desc(s1)) %>%
+  nice_table(cap='Model Coefficients', cols=c('Est'))
 ```
+
+
+```{r}
+
+vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
+coeffs.table <- coeff2dt(fitobject = lasso.model, s = "lambda.min")
+
+coeffs.table %>% mutate(name = fct_reorder(name, desc(coefficient))) %>%
+ggplot() +
+  geom_col(aes(y = name, x = coefficient, fill = {coefficient > 0})) +
+  xlab(label = "") +
+  ggtitle(expression(paste("Lasso Coefficients with ", lambda, " = 0.0275"))) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5),legend.position = "none")
+
+```
+
+
+
+
+
+
+
+
 
 #### Model Results
 
 
 The coefficients extracted at the lambda.min value are used to predict the relative crime rate for the testing data set. The confusion matrix highlights an accuracy of 91%.
-```{r eval=FALSE}
+
+
+
+```{r}
 # Create matrix new data
-#X <- model.matrix(admit ~ . -enroll -yeardes -termdes , data=pre_df)[,-1]
-X_test <- model.matrix(admit ~ . -enroll -yeardes -termdes, data=am1998_df)[,-1]
-Y_test <- am1998_df[,"admit"] 
+am_lasso1998_df <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Fall") %>%
+  dplyr::select(!c(enroll,yeardes,termdes))
+
+X_test <- model.matrix(admit ~ . ,data=am_lasso1998_df)[,-1]
+Y_test <- am_lasso1998_df[,"admit"] 
 
 
 # predict using coefficients at lambda.min
 lassoPred <- predict(lasso.model, newx = X_test, type = "response", s = 'lambda.min')
 
-pred_df <- am1998_df
-pred_df$admit_prob <- lassoPred[,1]
-pred_df$admit_pred <- ifelse(lassoPred >= 0.5, 1, 0)[,1]
+#pred_df <- am_lasso1998_df 
+am_lasso1998_df$admit_prob <- lassoPred[,1]
+am_lasso1998_df$admit_pred <- ifelse(lassoPred >= 0.5, 1, 0)[,1]
 
 ```
+
+
+
 
 
 ```{r eval=FALSE}
@@ -814,116 +1037,6 @@ confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.min')
 
 
 
-
-
-
-
-
-
-
-
-```{r eval=FALSE}
-### Merge dataframes.
-
-# Check for duplicates in applications and transcripts.
-# For applications there were duplicates for the desired year of admission, so we took the minimum desired year.
-# For transcripts, make sure there are no duplicates for the same semester.
-# We also limited to enrollment at the applied school to track progress only at schools of enrollment.
-
-#we are working with applications data only, we don't need transcripts
-
-#tabyl(app_df$termdes)
-#dupes <- get_dupes(app_df, studentid_uniq, enroll)
-
-#app_df <- app_df |>
- # mutate(termdes_num = case_when(termdes=='Spring' ~ 1
-                            #     , termdes=='Summer I' ~ 2
-                             #    , termdes=='Summer II' ~ 3
-                              #   , termdes=='Fall' ~ 4)) |>
- # group_by(studentid_uniq) |>
- # filter(yeardes==min(yeardes)) |>
- # filter(termdes_num==min(termdes_num)) |>
- # filter(enroll=="Yes") |>
- # ungroup()
-  
-#dupes <- get_dupes(transcript_df, studentid_uniq, year, term)
-
-#transcript_df <- transcript_df |>
-  #distinct()
-
-# Join them together
-#all <- app_df |>
- # left_join(transcript_df, by=c('studentid_uniq', 'univ'))
-  
-# tabyl(all$ethnic)
-# tabyl(all$univ.x)
-# tabyl(all$decileR)
-# tabyl(all$gradyear)
-# table(all$univ.y, all$admit)
-# table(all$univ.x, all$univ.y)
-# tabyl(all$admit_prov)
-# tabyl(all$year)
-
-#rm(transcript_df, app_df)
-
-```
-
-
-
-
-
-```{r eval=FALSE}
-
-
-
-### Cleaning
-
-# Since the goal was to determine whether the 10% rule was predictive of retention (total number of semesters), and performance (cumulative GPA), to make this easier we widened the data and removed the semester-based tabulation in favor of cumulative.
-# 
-# 1.  Create cumulative fields for `hrearn` and total numbers of semesters.
-# 2.  Drop `gpahrs` since this was only available for one school, Texas A&M Kingsville.
-# 3.  Drop several other variables:
-#     -   `studentid` since we generated a unique id with studentid and school abbreviation.
-#     -   `yeardes` year of admission desired, since intuitively this would be very hard to interpret as a predictor.
-#     -   `satR` and `actR` since these were already coalesced in the `testscoreR` column.
-#     -   `termapp` application term since we wanted to be timing-agnostic.
-#     -   `termdes_num` since we already had the variable represented as `termdes`
-#     -   `semgpa` semester by semester GPA, but we were only interested in cumulative.
-#     -   `gradyear` year of graduation as again, we wanted to be timing-agnostic.
-
-# 
-# cleaned <- all |>
-#   dplyr::select(-c(studentid.x, studentid.y, yeardes, gpahrs, satR, actR, termapp, termdes_num, semgpa)) |>
-#   distinct() |>
-#   mutate(termnum = case_when(term=='Spring' ~ 1
-#                                  , term=='Summer I' ~ 2
-#                                  , term=='Summer II' ~ 3
-#                                  , term=='Fall' ~ 4)) |>
-#   group_by(studentid_uniq) |>
-#   mutate(cum_hrs = sum(as.numeric(hrearn)) - n(),
-#          cum_terms = n(),
-#          enrolled_pre_98 = case_when(year<=1998 ~ "Pre"
-#                             , year>1998 ~ "Post"
-#                             , T ~ "Unknown")) |>
-#   filter(year==max(year)) |>    # To get maximum enrollment
-#   filter(termnum==max(termnum)) |>  # ... and maximum cgpa.
-#   filter(!(enrolled_pre_98=="Unknown")) |>  # Drop cases without term years as we do not know when this would be as it relates to the TX law.
-#   ungroup() |>
-#   dplyr::select(-c(year, term, hrearn, termnum)) |>
-#   dplyr::select(studentid_uniq, everything())  # Just move studentid_uniq to left index.
-# 
-# 
-# skim(cleaned)
-# 
-# cleaned <- as.data.frame(cleaned)
-# cleaned.m <- melt(cleaned)
-# 
-# cleaned.m %>% ggplot(aes(x=value)) +
-#   geom_density(color='#023020') +
-#   facet_wrap(~variable, scales = 'free') +
-#   theme_bw()
-
-```
 
 
 # Discussion and Conclusions 
