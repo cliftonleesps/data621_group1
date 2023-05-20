@@ -46,6 +46,7 @@ library(viridis)
 library(vip)
 
 library(ggpubr)
+library(rockchalk)
 
 
 
@@ -168,7 +169,7 @@ glm_coef <- function(df, y, c_df) {
   a <- as.data.frame(summary(am_model_aic)$coefficients[,1])
   a <- cbind(coef = rownames(a), a)
   rownames(a) <- NULL
-  names(a) <- c('coef',paste0('y',y))
+  names(a) <- c('coef',y)
   a$model <- 'glm'
   
   if (is.null(c_df)) {
@@ -194,8 +195,12 @@ glm_coef <- function(df, y, c_df) {
 #'
 #' @examples
 lasso_coef <- function(df, y, c_df) {
-  
-  am_df <- df %>% dplyr::filter(yeardes == y & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
+
+  if (y == 1998) {
+    am_df <- df %>% dplyr::filter(yeardes == y & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
+  } else {
+    am_df <- df %>% dplyr::filter(yeardes == y) %>% dplyr::select(!c(enroll,yeardes,termdes))
+  }
 
   X <- model.matrix(admit ~ . , data=am_df)[,-1]
   Y <- am_df[,"admit"] 
@@ -214,7 +219,7 @@ lasso_coef <- function(df, y, c_df) {
   
   
   a <- coeff2dt(fitobject = lasso.model, s = "lambda.min")
-  names(a) <- c('coef',paste0('y',y))
+  names(a) <- c('coef',y)
   a$model <- 'lasso'
   
   if (is.null(c_df)) {
@@ -226,6 +231,102 @@ lasso_coef <- function(df, y, c_df) {
   
   return (c_df)
 }
+
+
+
+
+#' Title
+#'
+#' @param df 
+#' @param model 
+#' @param y 
+#' @param d_df 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+demographicCount <- function(df, model, y, d_df) {
+  
+  if (y == 1998) {
+    am_df <- df %>% dplyr::filter(yeardes == y & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
+  } else {
+    am_df <- df %>% dplyr::filter(yeardes == y) %>% dplyr::select(!c(enroll,yeardes,termdes))
+  }
+  
+  am_pred <- predict.glm(model, am_df, "response")
+  am_df$prob_admit <- am_pred
+  am_df$pred_admit <- ifelse(am_pred >= 0.5, 1, 0)
+  
+  log_matrix_1 <- confusionMatrix(factor(am_df$pred_admit), 
+                                factor(am_df$admit), "1")
+  
+  log_matrix_1
+
+  
+  d <- am_df %>% 
+    group_by(admit,ethnic) %>%
+    summarise(y = n())
+  
+  names(d) <- c('admit', 'ethnic', y)
+  d_df <- d_df %>% full_join( d, by=c('admit','ethnic'))
+  
+  return(d_df)
+}
+
+
+
+
+#' Title
+#'
+#' @param df 
+#' @param l_model 
+#' @param y 
+#' @param d_df 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+demographicCountLasso <- function(df, l_model, y, d_df) {
+  
+  
+  if (y == 1998) {
+    am_df <- df %>% dplyr::filter(yeardes == y & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
+  } else {
+    am_df <- df %>% dplyr::filter(yeardes == y) %>% dplyr::select(!c(enroll,yeardes,termdes))
+  }
+  
+  
+  X_test <- model.matrix(admit ~ . ,data=am_df)[,-1]
+  Y_test <- am_df[,"admit"] 
+  
+  
+  # predict using coefficients at lambda.min
+  lassoPred <- predict(l_model, newx = X_test, type = "response", s = 'lambda.min')
+  
+  #pred_df <- am_lasso1998_df 
+  am_df$admit_prob <- lassoPred[,1]
+  am_df$admit_pred <- ifelse(lassoPred >= 0.5, 1, 0)[,1]
+
+
+  log_matrix_1 <- confusionMatrix(factor(am_df$admit_pred), 
+                                factor(am_df$admit), "1")
+  log_matrix_1
+
+  
+  d <- am_df %>% 
+    group_by(admit,ethnic) %>%
+    summarise(y = n())
+  
+  names(d) <- c('admit', 'ethnic', y)
+  d_df <- d_df %>% full_join( d, by=c('admit','ethnic'))
+  
+  return(d_df)
+  
+}
+
+
 
 ```
 
@@ -409,6 +510,9 @@ texas_applications[,c("admit","male", "US_Citizen", "Texas_resident","admit_prov
   scale_fill_manual(values = rev(c("#003f5c","#58508d", "#bc5090")))
 ```
 
+
+
+
 ```{r eval=FALSE}
 # a <- ggplot(texas_transcripts, aes(x = cgpa)) +
 #   geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
@@ -424,6 +528,8 @@ texas_applications[,c("admit","male", "US_Citizen", "Texas_resident","admit_prov
 # annotate_figure(plot, top = text_grob("Distribution of GPA", 
 #                color = "black", face = "bold", size = 14))
 ```
+
+
 
 ```{r eval=FALSE}
 # m_df <- texas_transcripts %>% dplyr::select(c(semgpa,cgpa)) %>% melt() 
@@ -459,8 +565,6 @@ Students with missing values for `ethnic` variable are combined with  "White, No
 
 ```{r message=FALSE, warning=FALSE,}
 
-
-library(rockchalk)
 
 levels(texas_applications$hsprivate) <- c(levels(texas_applications$hsprivate),"None")
 texas_applications$hsprivate[is.na(texas_applications$hsprivate)] <- "None"
@@ -580,6 +684,8 @@ treemap(m_df, index=c("admit","ethnic"), vSize="n", type="index",
 
 ```
 
+
+
 ```{r message=FALSE, warning=FALSE,}
 
 m_df <- am_df %>%
@@ -604,32 +710,27 @@ As the first step, we built the generalized linear model based on the dataset wi
 
 
 ```{r}
-
-# coef_tbl <- tibble(
-#                       model = character(),
-#                       coef = numeric(), 
-#                       pre = numeric(), 
-#                       y1998 = numeric(), 
-#                       y1999 = numeric(),
-#                       y2000 = numeric(), 
-#                       y2001 = numeric(),
-#                       y2002 = numeric()
-#                 )
-
-
-```
-
-
-
-
-
-```{r}
 #no termdes=Fall or summer II only
 pre_df <- am_df %>% dplyr::filter(yeardes < 1998)
 b <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Summer II")
 
 pre_df <- rbind(pre_df,b)
+
+
+demographic_df <- pre_df %>% 
+  dplyr::filter(yeardes == 1997) %>%
+  group_by(admit,ethnic) %>%
+  summarise(pre = n())
+
 ```
+
+
+
+
+
+
+
+
 
 ```{r}
 pre_df %>%
@@ -670,8 +771,9 @@ summ(am_model_1_aic)
 a <- as.data.frame(summary(am_model_1_aic)$coefficients[,1])
 a <- cbind(coef = rownames(a), a)
 rownames(a) <- NULL
-names(a) <- c('coef','pre')
+names(a) <- c('coef','< 1998')
 a$model <- 'glm'
+a <- a[, c("coef", "model", "< 1998")]
 
 coef_tbl <- a
 
@@ -761,126 +863,18 @@ car::vif(am_model_1_aic)
 # Predict
 
 Once the uniform admission law was fully in force, fall, 1998.
-
 ```{r}
 
-am1998_df <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
-
-am1998_pred <- predict.glm(am_model_1_aic, am1998_df, "response")
-
-am1998_df$prob_admit <- am1998_pred
-am1998_df$pred_admit <- ifelse(am1998_pred >= 0.5, 1, 0)
-
+demographic_df <- demographicCount(am_df, am_model_1_aic, 1998, demographic_df)
+demographic_df <- demographicCount(am_df, am_model_1_aic, 1999, demographic_df)
+demographic_df <- demographicCount(am_df, am_model_1_aic, 2000, demographic_df)
+demographic_df <- demographicCount(am_df, am_model_1_aic, 2001, demographic_df)
+demographic_df <- demographicCount(am_df, am_model_1_aic, 2002, demographic_df)
 
 ```
 
 
-```{r}
 
-log_matrix_1 <- confusionMatrix(factor(am1998_df$pred_admit), 
-                                factor(am1998_df$admit), "1")
-
-log_matrix_1
-
-
-```
-
-1999
-
-```{r}
-
-am1999_df <- am_df %>% dplyr::filter(yeardes == 1999 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
-
-am1999_df <- am_df %>% dplyr::filter(yeardes == 1999)
-
-am1999_pred <- predict.glm(am_model_1_aic, am1999_df, "response")
-
-am1999_df$prob_admit <- am1999_pred
-am1999_df$pred_admit <- ifelse(am1999_pred >= 0.5, 1, 0)
-
-
-```
-
-
-```{r}
-log_matrix_2 <- confusionMatrix(factor(am1999_df$pred_admit), 
-                                factor(am1999_df$admit), '1')
-
-log_matrix_2
-```
-
-
-2000
-
-
-```{r}
-am2000_df <- am_df %>% dplyr::filter(yeardes == 2000 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
-
-am2000_df <- am_df %>% dplyr::filter(yeardes == 2000)
-
-am2000_pred <- predict.glm(am_model_1_aic, am2000_df, "response")
-
-am2000_df$prob_admit <- am2000_pred
-am2000_df$pred_admit <- ifelse(am2000_pred >= 0.5, 1, 0)
-
-
-```
-
-
-```{r}
-log_matrix_3 <- confusionMatrix(factor(am2000_df$pred_admit), 
-                                factor(am2000_df$admit), '1')
-
-log_matrix_3
-```
-
-
-2001
-
-
-```{r}
-am2001_df <- am_df %>% dplyr::filter(yeardes == 2001 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
-
-am2001_df <- am_df %>% dplyr::filter(yeardes == 2001)
-
-am2001_pred <- predict.glm(am_model_1_aic, am2001_df, "response")
-
-am2001_df$prob_admit <- am2001_pred
-am2001_df$pred_admit <- ifelse(am2001_pred >= 0.5, 1, 0)
-
-
-```
-
-
-```{r}
-log_matrix_4 <- confusionMatrix(factor(am2001_df$pred_admit), 
-                                factor(am2001_df$admit), '1')
-
-log_matrix_4
-```
-
-2002
-
-```{r}
-
-am2002_df <- am_df %>% dplyr::filter(yeardes == 2002 & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
-am2002_df <- am_df %>% dplyr::filter(yeardes == 2002)
-
-am2002_pred <- predict.glm(am_model_1_aic, am2002_df, "response")
-
-am2002_df$prob_admit <- am2002_pred
-am2002_df$pred_admit <- ifelse(am2002_pred >= 0.5, 1, 0)
-
-
-```
-
-
-```{r}
-log_matrix_5 <- confusionMatrix(factor(am2002_df$pred_admit), 
-                                factor(am2002_df$admit), '1')
-
-log_matrix_5
-```
 
 
 # Lasso
@@ -892,6 +886,14 @@ set.seed(42)
 # build X matrix and Y vector
 X <- model.matrix(admit ~ . -enroll -yeardes -termdes , data=pre_df)[,-1]
 Y <- pre_df[,"admit"] 
+
+
+demographic_lasso_df <- pre_df %>% 
+  dplyr::filter(yeardes == 1997) %>%
+  group_by(admit,ethnic) %>%
+  summarise(pre = n())
+
+names(demographic_lasso_df) <- c('admit','ethnic','1997')
 
 ```
 
@@ -918,8 +920,9 @@ lasso.model
 ```{r}
 
 a <- coeff2dt(fitobject = lasso.model, s = "lambda.min")
-names(a) <- c('coef','pre')
+names(a) <- c('coef','< 1998')
 a$model <- 'lasso'
+a <- a[, c("coef", "model", "< 1998")]
 
 coef_lasso_tbl <- a
 
@@ -972,6 +975,7 @@ as.data.frame(as.matrix(coef(lasso.model, s = "lambda.min"))) %>%
 ```
 
 
+
 ```{r}
 
 vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
@@ -1003,6 +1007,16 @@ The coefficients extracted at the lambda.min value are used to predict the relat
 
 
 ```{r}
+
+
+
+
+```
+
+
+
+
+```{r}
 # Create matrix new data
 am_lasso1998_df <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Fall") %>%
   dplyr::select(!c(enroll,yeardes,termdes))
@@ -1022,8 +1036,6 @@ am_lasso1998_df$admit_pred <- ifelse(lassoPred >= 0.5, 1, 0)[,1]
 
 
 
-
-
 ```{r eval=FALSE}
 
 confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.min')
@@ -1034,6 +1046,67 @@ confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.min')
 
 
 
+
+```{r}
+
+```
+
+
+```{r}
+
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 1998, demographic_lasso_df)
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 1999, demographic_lasso_df)
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 2000, demographic_lasso_df)
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 2001, demographic_lasso_df)
+demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 2002, demographic_lasso_df)
+
+
+```
+
+
+
+
+# Analysis
+
+
+```{r}
+
+m_df <- coef_tbl %>%
+  #dplyr::select(where(is.numeric) & !c('admit','enroll')) %>% 
+  dplyr::filter(coef != '(Intercept)') %>%
+  pivot_longer(!c('coef','model'), names_to='variable' , values_to = 'value') %>% 
+  drop_na()
+
+
+ggplot(data=m_df, aes(x=variable, y = value, colour = coef, group = coef)) + 
+  geom_line() + 
+  geom_point(size=0.5) +
+  facet_wrap( ~coef, ncol = 4, as.table=TRUE, labeller = "label_both") +
+  theme_bw()
+
+coef_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='glm() Addmission Coefficients')
+
+```
+
+
+```{r}
+
+m_df <- coef_lasso_tbl %>%
+  #dplyr::select(where(is.numeric) & !c('admit','enroll')) %>% 
+  dplyr::filter(coef != '(Intercept)') %>%
+  pivot_longer(!c('coef','model'), names_to='variable' , values_to = 'value') %>% 
+  drop_na()
+
+
+ggplot(data=m_df, aes(x=variable, y = value, colour = coef, group = coef)) + 
+  geom_line() + 
+  geom_point(size=0.5) +
+  facet_wrap( ~coef, ncol = 4, as.table=TRUE, labeller = "label_both") +
+  theme_bw()
+
+coef_lasso_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='Lasso Addmission Coefficients')
+
+```
 
 
 
