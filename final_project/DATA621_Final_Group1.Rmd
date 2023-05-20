@@ -103,6 +103,29 @@ factor_haven <- function(df, col_lst) {
 }
 
 
+#' Title
+#'
+#' @param fit
+#' @param lambda
+#'
+#' @return
+#' @export
+#'
+#' @examples
+glmnet_cv_aicc <- function(fit, lambda = 'lambda.1se'){
+  whlm <- which(fit$lambda == fit[[lambda]])
+  with(fit$glmnet.fit,
+       {
+         tLL <- nulldev - nulldev * (1 - dev.ratio)[whlm]
+         k <- df[whlm]
+         n <- nobs
+         return(list('AICc' = - tLL + 2 * k + 2 * k * (k + 1) / (n - k - 1),
+                     'BIC' = log(n) * k - tLL))
+       })
+}
+
+
+
 ```
 
 # Abstract 
@@ -129,12 +152,14 @@ Despite some claims, people have acknowledged a gap in access to higher educatio
 ```{r}
 
 # change to your local data dir outside the repo
-local_data_dir <- 'C:/Users/daria/Documents/theop'
-# 
-# 
+#local_data_dir <- 'C:/Users/daria/Documents/theop'
+local_data_dir <- '../../data/theop'
+
+
 # # load application and transactions data frames
 load(paste0(local_data_dir, '/data_model/df_applications.RData'))
 load(paste0(local_data_dir, '/data_model/df_transcripts.RData'))
+
 ```
 
 
@@ -696,7 +721,7 @@ log_matrix_5
 set.seed(42)
 
 # build X matrix and Y vector
-X <- model.matrix(admit ~ ., data=pre_df)[,-1]
+X <- model.matrix(admit ~ . -enroll -yeardes -termdes , data=pre_df)[,-1]
 Y <- pre_df[,"admit"] 
 
 ```
@@ -735,26 +760,6 @@ plot(rocs,type="l")
 
 
 ```{r}
-#' Title
-#'
-#' @param fit
-#' @param lambda
-#'
-#' @return
-#' @export
-#'
-#' @examples
-glmnet_cv_aicc <- function(fit, lambda = 'lambda.1se'){
-  whlm <- which(fit$lambda == fit[[lambda]])
-  with(fit$glmnet.fit,
-       {
-         tLL <- nulldev - nulldev * (1 - dev.ratio)[whlm]
-         k <- df[whlm]
-         n <- nobs
-         return(list('AICc' = - tLL + 2 * k + 2 * k * (k + 1) / (n - k - 1),
-                     'BIC' = log(n) * k - tLL))
-       })
-}
 
 ```
 
@@ -781,7 +786,8 @@ vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lam
 The coefficients extracted at the lambda.min value are used to predict the relative crime rate for the testing data set. The confusion matrix highlights an accuracy of 91%.
 ```{r eval=FALSE}
 # Create matrix new data
-X_test <- model.matrix(admit ~ ., data=am1998_df)[,-1]
+#X <- model.matrix(admit ~ . -enroll -yeardes -termdes , data=pre_df)[,-1]
+X_test <- model.matrix(admit ~ . -enroll -yeardes -termdes, data=am1998_df)[,-1]
 Y_test <- am1998_df[,"admit"] 
 
 
