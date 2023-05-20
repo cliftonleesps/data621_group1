@@ -34,10 +34,20 @@ library(labelled)
 library(haven)
 library(corrplot)
 library(Hmisc)
-library(janitor)
-library(reshape)
-library(ggpubr)
+library(jtools)
+library(caret)
+library(broom)
+
+ # library
+library(treemap)
 library(ggplot2)
+library(hrbrthemes)
+library(viridis)
+library(vip)
+
+library(ggpubr)
+
+
 
 # ggplot
 theme_set(theme_light())
@@ -47,13 +57,23 @@ theme_set(theme_light())
 set.seed(42)
 ```
 
+
+
+
 ```{r common functions}
 
-nice_table <- function(df){
-  table <- df %>% kable %>% 
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
-                html_font = 'monospace',
-                full_width = FALSE)
+#' nice_table
+#' 
+#' @param df
+#' @param fw
+nice_table <- function(df, cap=NULL, cols=NULL, dig=3, fw=F){
+  if (is.null(cols)) {c <- colnames(df)} else {c <- cols}
+  table <- df %>% 
+    kable(caption=cap, col.names=c, digits=dig) %>% 
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      html_font = 'monospace',
+      full_width = fw)
   return(table)
 }
 
@@ -73,6 +93,8 @@ model_diag <- function(model){
   return(vec)
 }
 
+
+
 factor_haven <- function(df, col_lst) {
   for (c in col_lst) {
     df[c] <- as_factor(zap_missing(df[c]))
@@ -80,16 +102,19 @@ factor_haven <- function(df, col_lst) {
   return(df)
 }
 
+
 ```
 
 # Abstract 
 
-<i>Use 250 words or less to summarize your problem, methodology, and major outcomes</i>
+<i>This work examines changes in the racial and ethnic composition of admissions at Texas A&M college following the 1996 Hopwood case, which put a court prohibition on affirmative action. We estimate the extent to which these universities used affirmative action before the ban, and we examine how admissions officers at these universities adjusted the relative weights given to key applicant criteria throughout the suspension. We model the extent to which these new regulations succeeded in preserving minority admission rates at pre-Hopwood levels after examining whether changes in relative weights favored minority applicants. We discovered that most colleges followed the Hopwood rule, so that direct advantages offered to black and Hispanic candidates vanished (and, in some circumstances, became disadvantages). While there is evidence that universities changed the weights they placed on applicant characteristics other than race and ethnicity in ways that aided underrepresented minority applicants, these changes in the admissions process were unable to maintain the share of admitted students held by black and Hispanic applicants. As a result, these alternative admissions procedures have not been a reliable proxy for race and ethnicity.
+
+</i>
 
 
 # Introduction
 
-Despite some claims, people have acknowledged a gap in access to higher education still exists, especially for minority students. However, many have objected to affirmative action policies as a solution, and in 1996 in Texas, the Fifth Court Circuit of Appeals outlawed the use of race for college admissions in the state. After a noticeable drop in minority student enrollments, the governor of Texas signed a new bill as a compromise:  any high school student finishing in top decile received a guaranteed admission to Texas’ two flagship public universities (University of Texas at Austin and Texas A&M University). Instead of competing with applicants from the entire state, students only had to compete with their immediate classmates to access higher education.
+Despite some claims, people have acknowledged a gap in access to higher education still exists, especially for minority students. However, many have objected to affirmative action policies as a solution, and in 1996 in Texas, the Fifth Court Circuit of Appeals outlawed the use of race for college admissions in the state. After a noticeable drop in minority student enrollments, the governor of Texas signed a new bill as a compromise:  any high school student finishing in top decile received a guaranteed admission to Texas public university (Texas A&M University). Instead of competing with applicants from the entire state, students only had to compete with their immediate classmates to access higher education.
 
 # Literature review
 <i>Discuss how other researchers have addressed similar problems, what their achievements are, and what the advantage and drawbacks of each reviewed approach are. Explain how your investigation is similar or different to the state-of-the-art. Please cite the relevant papers where appropriate. </i>
@@ -99,23 +124,23 @@ Despite some claims, people have acknowledged a gap in access to higher educatio
 
 
 
-
-# Load Data
+# Data
 
 ```{r}
 
 # change to your local data dir outside the repo
-local_data_dir <- '../../data/theop'
+local_data_dir <- 'C:/Users/daria/Documents/theop'
 # 
 # 
 # # load application and transactions data frames
 load(paste0(local_data_dir, '/data_model/df_applications.RData'))
 load(paste0(local_data_dir, '/data_model/df_transcripts.RData'))
-# 
-# load("C:\\Users\\bpinb\\OneDrive\\Desktop\\Coursework\\DATA 621 Business Analytics and Data Mining\\Final project\\Data\\theop\\theop\\data_model\\df_applications.RData")
-# load("C:\\Users\\bpinb\\OneDrive\\Desktop\\Coursework\\DATA 621 Business Analytics and Data Mining\\Final project\\Data\\theop\\theop\\data_model\\df_transcripts.RData")
-
 ```
+
+
+
+
+
 
 ```{r}
 # clean application data and remove labels
@@ -128,99 +153,70 @@ app_df <- factor_haven(app_df,col_lst)
 # clean transcripts and remove labels
 transcript_df <- df_transcripts
 
-col_lst <- c("term","semgpa","hrearn","term_major_dept","term_major_field")
+col_lst <- c("term","hrearn","term_major_dept","term_major_field")
 
 transcript_df <- factor_haven(transcript_df,col_lst)
 
 ```
 
-```{r}
-#rm(df_transcripts, df_applications)
-```
-
-```{r distrib}
-
-transcript_df %>% dplyr::select(where(is.numeric)) %>%
-  #dplyr::select(!target) %>%
-  pivot_longer(everything(),names_to = c('variables'),values_to = c('values')) %>% 
-  ggplot() +
-  geom_histogram(aes(x=values, y = ..density..), alpha=0.5, colour='black', linewidth=0.2) +
-  #geom_density(aes(x=values), color='purple') +
-  facet_wrap(vars(variables), scales="free")
-
-```
 
 ```{r}
 
-rcore <- rcorr(as.matrix(transcript_df %>% dplyr::select(where(is.numeric))))
-
-coeff <- rcore$r
-
-corrplot(coeff, tl.cex = .5, tl.col="black", method = 'color', addCoef.col = "black",type="upper", order="hclust", number.cex=0.7, diag=FALSE)
-
+## Choose Texas A&M college and compare the admissions policy at a university before and after top 10%. Make variables categorical if needed.
+texas_applications <- filter(app_df, univ == "am") %>% dplyr::select(!c(termapp, sat_not_recenteredR, admit_ut_summer, univ)) %>% 
+        drop_na(satR,decileR)
+#texas_transcripts <- filter(transcript_df, univ == "am") %>% dplyr::select(!univ)
 ```
 
-
-
-Choose Texas A&M college and compare the admissions policy at a university before and after top 10%. Make variables categorical if needed.
 
 ```{r}
-texas_applications <- filter(df_applications, univ == "am") %>% dplyr::select(!c(termapp, sat_not_recenteredR, admit_ut_summer, univ))
-texas_transcripts <- filter(df_transcripts, univ == "am") %>% dplyr::select(!univ)
+
+## Dummy Variables for factors with two levels
+dummy_vars <- function(df){
+  df %>%
+    mutate(
+      male = factor(ifelse(male == "Male", 1, 0)), 
+      US_Citizen = factor(ifelse(citizenship == "US Citizen",  1, 0)),
+      Texas_resident = factor(ifelse(restype == "Texas Resident",  1, 0)),
+      admit = factor(ifelse(admit == "Yes",  1, 0)),
+      admit_prov = factor(ifelse(admit_prov == "Yes",  1, 0)),
+      enroll = factor(ifelse(enroll == "Yes",  1, 0))
+    ) %>% 
+    dplyr::select(-c(citizenship,restype))
+      }
+
+texas_applications <- dummy_vars(texas_applications)
+
+
+texas_applications$satR <- as.numeric(texas_applications$satR)
+texas_applications$actR <- as.numeric(texas_applications$actR)
+texas_applications$testscoreR <- as.numeric(texas_applications$testscoreR)
+texas_applications$gradyear <- as.numeric(texas_applications$gradyear)
+
 ```
 
-```{r}
-factor_vars_1 <- c("termdes","male","ethnic","citizenship","restype","decileR","quartile",
-                 "major_field","hsprivate","hstypeR","hsinstate","hseconstatus","admit","admit_prov","enroll")
-
-for (v in factor_vars_1) {
-  texas_applications <- texas_applications %>% mutate(!!v := factor(get(v)))
-}
-
-factor_vars_2 <- c("term","term_major_dept","term_major_field")
-
-for (v in factor_vars_2) {
-  texas_transcripts <- texas_transcripts %>% mutate(!!v := factor(get(v)))
-}
-```
 
 
-
-# Data Exploration
+We employ administrative records from a Texas A&M University (1992-2022) that include info about admissions selectivity, public/private status, and the ethno-racial composition of their student body for this analysis. Importantly, the time period for the public organization comprises years prior to and following the judicial ban on affirmative action. This is significant because, while the judicial restriction applied to all schools in the 5th Circuit District, the top 10% policy was restricted to public colleges and universities. 
+These records contain a plethora of information about the applicant pool, and have been standardized where necessary, and checked for consistency.
 
 The **application** dataset contained 163,027 observations of 24 predictor variables and **transcripts** dataset contained 637,028 observations of 10 predictor variables, where each record represented an individual applicant.
 These variables describe items typically found on a college admission application such as the year and term an applicant desired to enroll, applicant 
 demographics, applicant academic characteristics, and high school characteristics.
 
+Unfortunately, the data does not often include information regarding a student's high school academics or application essays. In evaluating the results, we take great note of these data constraints.
+
 
 
 <img src="https://raw.githubusercontent.com/cliftonleesps/data621_group1/main/final_project/project_data.png" width="1200" style="display: block; margin-left: auto; margin-right: auto; width: 100%;"/>
 
-### 1.1 Summary Statistics
-
 Each record in the application dataset included a response variable "admit" (Institution’s admission decision), was a boolean where "1" indicated the person was admitted.
-Each record in the transcript dataset registers academic progress toward a degree for a single enrollee in a single semester (hours earned, semester GPA, cumulative GPA, and department and field of major).
 
-A sample of the data appears in the following tables:
+A sample of the data appears in the following table:
 
 ```{r}
 DT::datatable(
       texas_applications[1:25,],
-      extensions = c('Scroller'),
-      options = list(scrollY = 350,
-                     scrollX = 500,
-                     deferRender = TRUE,
-                     scroller = TRUE,
-                     dom = 'lBfrtip',
-                     fixedColumns = TRUE, 
-                     searching = FALSE), 
-      rownames = FALSE) 
-```
-
-
-```{r}
-DT::datatable(
-      texas_transcripts[1:25,],
       extensions = c('Scroller'),
       options = list(scrollY = 350,
                      scrollX = 500,
@@ -238,16 +234,10 @@ While exploring this data, we made the following observations for the **applicat
 -   21 variables were categorical, and 3 were numeric.
 -   `actR`, `gradyear`, `hscentury`, `hslos` variables had more that 50% of the missing data.
 
-For the **transcripts data**:
-
--  no missing values besides `cgpa` had only 64 missing values out of 637,028 observations.
--  6 variables were categorical, and 4 were numeric.
-
 
 ```{r}
 
 texas_applications %>% 
-  #dplyr::select(!c(source, target)) %>%
   skim() %>%
   dplyr::select(skim_variable, complete_rate, n_missing, 
                 numeric.p0, numeric.p100) %>%
@@ -257,23 +247,15 @@ texas_applications %>%
   arrange(variable) %>%
   nice_table()
 ```
+
 
 ```{r}
-
-texas_transcripts %>% 
-  #dplyr::select(!c(source, target)) %>%
-  skim() %>%
-  dplyr::select(skim_variable, complete_rate, n_missing, 
-                numeric.p0, numeric.p100) %>%
-  dplyr::rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
-  mutate(complete_rate=round(complete_rate,2), 
-         min=round(min,2), max=round(max,2)) %>%
-  arrange(variable) %>%
-  nice_table()
+#remove data with NA more than 50%
+texas_applications <- texas_applications %>% dplyr::select(-c(actR,gradyear,hscentury,hseconstatus,hslos))
 
 ```
 
-### 1.2 Distribution
+
 
 76% of all the students were admitted to the university.
 ```{r}
@@ -286,137 +268,115 @@ By checking the frequency of the variables with few unique values ("male","ethni
 As demonstrated by the graph below, more than 50% of the data for the `citizenship`, `restype` and `ethnic` variables was `US Citizen`, `Texas Resident` and `White, Non-Hispanic` accordingly:
 
 ```{r discrete_plot}
-texas_applications[,c("male","ethnic", "citizenship", "restype","decileR","major_field")] %>%
+texas_applications[,c("admit","male", "US_Citizen", "Texas_resident","admit_prov","enroll")] %>%
   gather("variable","value") %>%
   group_by(variable) %>%
   count(value) %>%
-  mutate(value = factor(value,levels=8:0)) %>%
-  mutate(percent = n*100/163027) %>%
+  mutate(value = factor(value,levels=2:0)) %>%
+  mutate(percent = n*100/134020) %>%
   ggplot(.,
   aes(variable,percent)) +
   geom_bar(stat = "identity", aes(fill = value)) +
   xlab("Variable") +
   ylab("Percentage") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  scale_fill_manual(values = rev(c("#003f5c","#58508d", "#bc5090", "#ff6361", "#ffa600","#CC79a7", "black", "green", "blue")))
+  scale_fill_manual(values = rev(c("#003f5c","#58508d", "#bc5090")))
 ```
 
+```{r eval=FALSE}
+# a <- ggplot(texas_transcripts, aes(x = cgpa)) +
+#   geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+#   labs(x = "Per semester cumulative gpa", y = "Count") 
+# 
+# 
+# b <- ggplot(texas_transcripts, aes(x = semgpa)) +
+#   geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+#   labs(x = "Semester gpa", y = "Count")
+# 
+# plot<- ggarrange(a, b, ncol=2, nrow=1)
+# 
+# annotate_figure(plot, top = text_grob("Distribution of GPA", 
+#                color = "black", face = "bold", size = 14))
+```
+
+```{r eval=FALSE}
+# m_df <- texas_transcripts %>% dplyr::select(c(semgpa,cgpa)) %>% melt() 
+# 
+# m_df %>% ggplot(aes(x= value)) + 
+# geom_histogram(color='#023020', fill='gray') + 
+#   facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+```
+
+
+
 ```{r}
-a <- ggplot(texas_transcripts, aes(x = cgpa)) +
-  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
-  labs(x = "Per semester cumulative gpa", y = "Count")
+a <- ggplot(texas_applications, aes(x = quartile)) +
+  geom_bar(binwidth = 1, fill = "skyblue", color = "black") +
+  labs(x = "Quartile", y = "Count")+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
+b <- ggplot(texas_applications, aes(x = decileR)) +
+  geom_bar(binwidth = 1, fill = "skyblue", color = "black") +
+  labs(x = "Decile", y = "Count") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-b <- ggplot(texas_transcripts, aes(x = semgpa)) +
-  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
-  labs(x = "Semester gpa", y = "Count")
 
 plot<- ggarrange(a, b, ncol=2, nrow=1)
 
-annotate_figure(plot, top = text_grob("Distribution of GPA", 
+annotate_figure(plot, top = text_grob("Distribution of Student HS class rank", 
                color = "black", face = "bold", size = 14))
 ```
-
-```{r}
-m_df <- texas_applications %>% dplyr::select(c(satR, actR, testscoreR)) %>% melt() 
-
-m_df %>% ggplot(aes(x= value)) + 
-geom_histogram(color='#023020', fill='gray') + 
-  facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
-
-```
-
-
-```{r}
-m_df <- texas_transcripts %>% dplyr::select(c(semgpa,cgpa)) %>% melt() 
-
-m_df %>% ggplot(aes(x= value)) + 
-geom_histogram(color='#023020', fill='gray') + 
-  facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
-
-```
-
-### 1.3 Boxplots
 
 
 
 # Transform Data
+Students with missing values for `ethnic` variable are combined with  "White, Non-Hispanic" students, resulting in cautious estimates of policy effects.
+
+```{r message=FALSE, warning=FALSE,}
+
+levels(texas_applications$hsprivate) <- c(levels(texas_applications$hsprivate),"None")
+texas_applications$hsprivate[is.na(texas_applications$hsprivate)] <- "None"
+
+levels(texas_applications$hsinstate) <- c(levels(texas_applications$hsinstate),"None")
+texas_applications$hsinstate[is.na(texas_applications$hsinstate)] <- "None"
+
+texas_applications <- texas_applications %>% mutate(ethnic = ifelse(is.na(ethnic), "5", ethnic))
+texas_applications$ethnic <- as.factor(texas_applications$ethnic)
+
+# set values, dummy variable if top 10% or not
+texas_applications <- texas_applications %>% mutate(top10 = ifelse(decileR == "Top 10%", 1, 0))
+texas_applications$top10 <- as.factor(texas_applications$top10)
+
+levels(texas_applications$decileR) <- c(levels(texas_applications$decileR),"None")
+texas_applications$decileR[is.na(texas_applications$decileR)] <- "None"
 
 
-```{r}
-#maybe split data by year: before 1998 and after
-
-appl_1997 <- filter(texas_applications, yeardes < 1998)
-appl_1998 <- filter(texas_applications, yeardes >= 1998)
-
-transc_1997 <- filter(texas_transcripts, year < 1998)
-transc_1998 <- filter(texas_transcripts, year >= 1998)
-```
+levels(texas_applications$quartile) <- c(levels(texas_applications$quartile),"None")
+texas_applications$decileR[is.na(texas_applications$decileR)] <- "None"
 
 
-```{r}
-t_df <- transcript_df
-
-t_df$term_num <- as.numeric(t_df$term)
-#t_df <- t_df %>% mutate(id = id + 1)
-t_df$term_num = t_df$term_num + 1
-t_df$term_num[t_df$term_num == 2] <- 1
-t_df$term_num[t_df$term_num == 6] <- 2
-t_df$term_num[t_df$term_num == 7] <- 6
-t_df$term_num = t_df$term_num / 10
-t_df$term_num = t_df$year + t_df$term_num
-```
-
-
-```{r}
-avg_df <- t_df %>%
-  group_by(studentid) %>%
-  summarise(avg_gpa = mean(cgpa)
- )
-
-first_df <- t_df %>%
-  group_by(studentid) %>%
-  slice(which.min(term_num))
-  
-last_df <- t_df %>%
-  group_by(studentid) %>%
-  slice(which.max(term_num))
-
-merge_df <- merge(avg_df, first_df, by='studentid')
-
-
-merge_df <- merge(merge_df, last_df, by='studentid', 
-                  suffixes = c(".first",".last"))
-
-
-merge_df <- merge(merge_df, app_df, by='studentid')
-
-
-
-model_df <- merge_df %>% 
-  dplyr::select('avg_gpa','male','ethnic','citizenship','restype','satR','testscoreR','decileR')
- 
-levels(model_df$citizenship) <- c(levels(model_df$citizenship),"None")
-model_df$citizenship[is.na(model_df$citizenship)] <- "None"
-levels(model_df$ethnic) <- c(levels(model_df$ethnic),"None")
-model_df$ethnic[is.na(model_df$ethnic)] <- "None"
-levels(model_df$restype) <- c(levels(model_df$restype),"None")
-model_df$restype[is.na(model_df$restype)] <- "None"
-levels(model_df$male) <- c(levels(model_df$male),"None")
-model_df$male[is.na(model_df$male)] <- "None"
-
-# set values
-model_df$decileTop10 <- FALSE
-model_df$decileTop10[as.numeric(model_df$decileR) == 1] <- TRUE
-levels(model_df$decileR) <- c(levels(model_df$decileR),"None")
-model_df$decileR[is.na(model_df$decileR)] <- "None"
+#remove 52 observations where male=NA
+texas_applications <- texas_applications %>%                                        
+  filter(!is.na(male))
 
 ```
 
-```{r}
 
-model_df %>% 
-  #dplyr::select(!c(source, target)) %>%
+
+```{r message=FALSE, warning=FALSE,}
+# filter 
+attr_str <- c('admit', 'termdes', 'male','ethnic','US_Citizen','Texas_resident','satR','testscoreR',
+              'top10','hsprivate','hsinstate','yeardes', 'enroll')
+
+am_df <- texas_applications %>% dplyr::select(attr_str)
+
+
+```
+
+
+
+```{r message=FALSE, warning=FALSE,}
+
+am_df %>% 
   skim() %>%
   dplyr::select(skim_variable, complete_rate, n_missing, 
                 numeric.p0, numeric.p100) %>%
@@ -429,45 +389,465 @@ model_df %>%
 
 ```
 
-```{r}
-rcore <- rcorr(as.matrix(merge_df %>% dplyr::select(!c('year.first','year.last')) %>% dplyr::select(where(is.numeric))))
 
-coeff <- rcore$r
+```{r message=FALSE, warning=FALSE,}
+#m_df <- merge_df %>% slice_sample(n=2000) %>%
+m_df <- am_df %>%
+  dplyr::select(where(is.numeric) & !c('admit','enroll')) %>% 
+  pivot_longer(!c('satR'), names_to='variable' , values_to = 'value') %>% 
+  drop_na()
 
-corrplot(coeff, tl.cex = .8, tl.col="black", method = 'color', addCoef.col = "black", type="upper", order="hclust", number.cex=0.7, diag=FALSE)
+m_df %>% ggplot(aes(x=value)) + 
+#m_df %>% ggplot(aes(x=value, group=avg_gpa, fill=avg_gpa)) + 
+geom_density(color='#023020') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
 
 ```
 
-### Merge dataframes.
 
-Check for duplicates in applications and transcripts.
-For applications there were duplicates for the desired year of admission, so we took the minimum desired year.
-For transcripts, make sure there are no duplicates for the same semester.
-We also limited to enrollment at the applied school to track progress only at schools of enrollment.
+```{r message=FALSE, warning=FALSE,}
+m_df <- am_df %>%
+  dplyr::select((where(is.numeric) | c('admit','enroll')) & !c(yeardes)) %>% 
+  pivot_longer(!c('admit','enroll'), names_to='variable' , values_to = 'value') %>% 
+  drop_na()
+
+m_df %>% ggplot(aes(y=value, x=admit, fill=enroll)) + 
+#m_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) + 
+geom_boxplot(color='#023020') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+
+# m_df %>% ggplot(aes(y=value, x=enroll)) + 
+# #m_df %>% ggplot(aes(x=value, group=TARGET_FLAG, fill=TARGET_FLAG)) + 
+# geom_boxplot(color='#023020') + facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
+
+```
+
+
+```{r message=FALSE, warning=FALSE,}
+
+#m_df <- am_df 
+
+m_df <- am_df %>%
+  group_by(admit, ethnic, male) %>%
+  summarise(n = n())
+
+#treemap(m_df, index=c("ethnic","admit"), vSize="n", type="index")
+treemap(m_df, index=c("admit","ethnic"), vSize="n", type="index",
+      title="My Treemap",                      # Customize your title
+      fontsize.title=12,
+      align.labels=list(
+        c("center", "center"), 
+        c("right", "bottom")
+        ),                                   # Where to place labels in the rectangle?
+    overlap.labels=0.5,                      # 
+    inflate.labels=F, )
+
+
+```
+
+```{r message=FALSE, warning=FALSE,}
+
+m_df <- am_df %>%
+  group_by(admit, ethnic, male) %>%
+  summarise(n = n())
+
+# plot
+ggplot(m_df, aes(fill=ethnic, y=n, x=admit)) + 
+  geom_bar(position="stack", stat="identity") + 
+  scale_fill_viridis(discrete=TRUE, name="") +
+  facet_wrap(~admit, scales = 'free',  ncol = 4)
+  theme_ipsum() +
+  ylab("Money input") + 
+  xlab("Month")
+
+
+
+```
+
+# Models
+As the first step, we built the generalized linear model based on the dataset with some variables transformed to categorical from numeric for the time before Fall, 1998.
 
 ```{r}
-tabyl(app_df$termdes)
+#no termdes=Fall or summer II only
+pre_df <- am_df %>% dplyr::filter(yeardes < 1998)
+b <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Summer II")
+
+pre_df <- rbind(pre_df,b)
+```
+
+```{r}
+pre_df %>%
+  #dplyr::select(!c(studentid)) %>%
+  skim() %>%
+  dplyr::select(skim_variable, complete_rate, n_missing, 
+                numeric.p0, numeric.p100) %>%
+  rename(variable=skim_variable, min=numeric.p0, max=numeric.p100) %>%
+  mutate(complete_rate=round(complete_rate,2), 
+         min=round(min,2), max=round(max,2)) %>%
+  arrange(variable) %>%
+  nice_table()
+
+```
+
+Since our dependent variable is binary (0 and 1), we used logistic regression. To do so, the function `glm()` with `family=binomial` was used. At the beginning, variable below were included.
+```{r}
+
+am_model_1 <- glm(pre_df, formula = admit ~ . -enroll -yeardes -termdes, family = binomial(link = "probit"))
+summary(am_model_1)
+
+```
+Using StepAic() function helped to improve the model performance.
+```{r}
+
+am_model_1_aic <- am_model_1 %>% stepAIC(trace = FALSE)
+summ(am_model_1_aic)
+
+```
+
+
+## Model Results
+
+
+As it appeared, `ethnic` variable had the most negative effect for the university acceptance. While being Texas resident or being in top 10% could help to be admitted.
+
+The `null deviance` of `r round(am_model_1_aic$null.deviance,2)` defined how well the target variable could be predicted by a model with only an intercept term.
+
+The `residual deviance` of `r round(am_model_1_aic$deviance,2)` defined how well the target variable could be predicted by the AIC model that we fit with the predictor variables listed above.
+The lower the value, the better the model's predictions of the response variable.
+
+The p-value associated with this `Chi-Square Statistic` was 0 (less than .05), so the model could be useful.
+
+The Akaike information criterion (`AIC`) was `r round(am_model_1_aic$aic,2)`.
+The lower the AIC value, the better the model's ability to fit the data.
+
+
+#### Checking Model Assumptions
+
+The resulting plots show us similar to model 1 picture: under-fitting at lower predicted values, with the predicted proportions being larger than the observed proportions; over-fitting for a couple of predictor patterns at higher predicted values with the predicted values are much larger than the predicted proportions.
+The Standardized Pearson Residuals plot shows an approximate Standard Normal distribution if the model fits.  The model seems good in the middle range but there are extremes on the right and left sides. Some normality of the residuals for the binomial logistic regression models  is just an evidence of a decent fitting model.
+
+```{r check_lm2}
+par(mfrow=c(2,2))
+plot(am_model_1_aic)
+```
+
+By checking the linearity assumptions, we see that only `rm` seem like linear relation with the logit results.
+```{r model_2_linearity}
+probabilities <- predict(am_model_1_aic, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, "1", "0")
+head(predicted.classes)
+
+#Only numeric predictors
+data <- pre_df %>%
+  dplyr::select_if(is.numeric) 
+predictors <- colnames(data)
+
+# Bind the logit and tidying the data for plot
+data <- data %>%
+  mutate(logit = log(probabilities/(1-probabilities))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+
+```
+
+The Standardized Residuals plot seems to have a constant variance though there are some outliers.
+```{r model_2_residuals}
+am_model_1_aic.data <- augment(am_model_1_aic) %>% 
+  mutate(index = 1:n())
+
+ggplot(am_model_1_aic.data, aes(index, .std.resid)) + 
+  geom_point(aes(color = admit), alpha = .5) +
+  theme_bw()
+```
+
+The marginal model plots below show reasonable agreement across the two sets of fits indicating that model_2_aic is a valid model.
+
+```{r warning=FALSE, message=FALSE}
+car::mmps(am_model_1_aic, span = 3/4, layout = c(2, 2))
+```
+
+In terms of multicollinearity, all variables have a VIF less than 5. As a result, multicollinearity shouldn't be a problem for our model.
+```{r model_2_vif}
+car::vif(am_model_1_aic)
+```
+
+
+
+# Predict
+
+Once the uniform admission law was fully in force, fall, 1998.
+```{r}
+
+am1998_df <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Fall")
+```
+
+```{r}
+
+am1998_pred <- predict.glm(am_model_1_aic, am1998_df, "response")
+
+am1998_df$prob_admit <- am1998_pred
+am1998_df$pred_admit <- ifelse(am1998_pred >= 0.5, 1, 0)
+
+
+```
+
+
+```{r}
+
+log_matrix_1 <- confusionMatrix(factor(am1998_df$pred_admit), 
+                                factor(am1998_df$admit), "1")
+
+log_matrix_1
+
+
+```
+
+1999
+```{r}
+
+
+am1999_df <- am_df %>% dplyr::filter(yeardes == 1999)
+
+am1999_pred <- predict.glm(am_model_1_aic, am1999_df, "response")
+
+am1999_df$prob_admit <- am1999_pred
+am1999_df$pred_admit <- ifelse(am1999_pred >= 0.5, 1, 0)
+
+
+```
+
+
+```{r}
+log_matrix_2 <- confusionMatrix(factor(am1999_df$pred_admit), 
+                                factor(am1999_df$admit), '1')
+
+log_matrix_2
+```
+
+
+2000
+```{r}
+
+
+am2000_df <- am_df %>% dplyr::filter(yeardes == 2000)
+
+am2000_pred <- predict.glm(am_model_1_aic, am2000_df, "response")
+
+am2000_df$prob_admit <- am2000_pred
+am2000_df$pred_admit <- ifelse(am2000_pred >= 0.5, 1, 0)
+
+
+```
+
+
+```{r}
+log_matrix_3 <- confusionMatrix(factor(am2000_df$pred_admit), 
+                                factor(am2000_df$admit), '1')
+
+log_matrix_3
+```
+
+
+2001
+
+```{r}
+am2001_df <- am_df %>% dplyr::filter(yeardes == 2001)
+
+am2001_pred <- predict.glm(am_model_1_aic, am2001_df, "response")
+
+am2001_df$prob_admit <- am2001_pred
+am2001_df$pred_admit <- ifelse(am2001_pred >= 0.5, 1, 0)
+
+
+```
+
+
+```{r}
+log_matrix_4 <- confusionMatrix(factor(am2001_df$pred_admit), 
+                                factor(am2001_df$admit), '1')
+
+log_matrix_4
+```
+
+2002
+```{r}
+am2002_df <- am_df %>% dplyr::filter(yeardes == 2002)
+
+am2002_pred <- predict.glm(am_model_1_aic, am2002_df, "response")
+
+am2002_df$prob_admit <- am2002_pred
+am2002_df$pred_admit <- ifelse(am2002_pred >= 0.5, 1, 0)
+
+
+```
+
+
+```{r}
+log_matrix_5 <- confusionMatrix(factor(am2002_df$pred_admit), 
+                                factor(am2002_df$admit), '1')
+
+log_matrix_5
+```
+
+
+# Lasso???
+
+
+```{r}
+# set seed for consistancy 
+set.seed(42)
+
+# build X matrix and Y vector
+X <- model.matrix(admit ~ ., data=pre_df)[,-1]
+Y <- pre_df[,"admit"] 
+
+```
+
+
+```{r}
+
+lasso.model<- cv.glmnet(x=X,y=Y,
+                       family = "binomial", 
+                       link = "logit",
+                       standardize = TRUE,                       #standardize  
+                       nfold = 5,
+                       alpha=1)                                  #alpha=1 is lasso
+
+l.min <- lasso.model$lambda.min
+l.1se <- lasso.model$lambda.1se
+coef(lasso.model, s = "lambda.min" )
+coef(lasso.model, s = "lambda.1se" )
+lasso.model
+
+```
+
+
+```{r}
+
+par(mfrow=c(2,2))
+
+plot(lasso.model)
+plot(lasso.model$glmnet.fit, xvar="lambda", label=TRUE)
+plot(lasso.model$glmnet.fit, xvar='dev', label=TRUE)
+
+rocs <- roc.glmnet(lasso.model, newx = X, newy = Y )
+plot(rocs,type="l")  
+
+```
+
+
+```{r}
+#' Title
+#'
+#' @param fit
+#' @param lambda
+#'
+#' @return
+#' @export
+#'
+#' @examples
+glmnet_cv_aicc <- function(fit, lambda = 'lambda.1se'){
+  whlm <- which(fit$lambda == fit[[lambda]])
+  with(fit$glmnet.fit,
+       {
+         tLL <- nulldev - nulldev * (1 - dev.ratio)[whlm]
+         k <- df[whlm]
+         n <- nobs
+         return(list('AICc' = - tLL + 2 * k + 2 * k * (k + 1) / (n - k - 1),
+                     'BIC' = log(n) * k - tLL))
+       })
+}
+
+```
+
+
+```{r}
+assess.glmnet(lasso.model,           
+              newx = X,              
+              newy = Y )    
+
+print(glmnet_cv_aicc(lasso.model, 'lambda.min'))
+print(glmnet_cv_aicc(lasso.model, 'lambda.1se'))
+
+```
+
+
+```{r}
+coef(lasso.model, s = "lambda.min" )
+vip(lasso.model, num_features=20 ,geom = "col", include_type=TRUE, lambda = "lambda.min")
+```
+
+#### Model Results
+
+
+The coefficients extracted at the lambda.min value are used to predict the relative crime rate for the testing data set. The confusion matrix highlights an accuracy of 91%.
+```{r eval=FALSE}
+# Create matrix new data
+X_test <- model.matrix(admit ~ ., data=am1998_df)[,-1]
+Y_test <- am1998_df[,"admit"] 
+
+
+# predict using coefficients at lambda.min
+lassoPred <- predict(lasso.model, newx = X_test, type = "response", s = 'lambda.min')
+
+pred_df <- am1998_df
+pred_df$admit_prob <- lassoPred[,1]
+pred_df$admit_pred <- ifelse(lassoPred >= 0.5, 1, 0)[,1]
+
+```
+
+
+```{r eval=FALSE}
+
+confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.min')
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r eval=FALSE}
+### Merge dataframes.
+
+# Check for duplicates in applications and transcripts.
+# For applications there were duplicates for the desired year of admission, so we took the minimum desired year.
+# For transcripts, make sure there are no duplicates for the same semester.
+# We also limited to enrollment at the applied school to track progress only at schools of enrollment.
+
+#we are working with applications data only, we don't need transcripts
+
+#tabyl(app_df$termdes)
 #dupes <- get_dupes(app_df, studentid_uniq, enroll)
 
-app_df <- app_df |>
-  mutate(termdes_num = case_when(termdes=='Spring' ~ 1
-                                 , termdes=='Summer I' ~ 2
-                                 , termdes=='Summer II' ~ 3
-                                 , termdes=='Fall' ~ 4)) |>
-  group_by(studentid_uniq) |>
-  filter(yeardes==min(yeardes)) |>
-  filter(termdes_num==min(termdes_num)) |>
-  filter(enroll=="Yes") |>
-  ungroup()
+#app_df <- app_df |>
+ # mutate(termdes_num = case_when(termdes=='Spring' ~ 1
+                            #     , termdes=='Summer I' ~ 2
+                             #    , termdes=='Summer II' ~ 3
+                              #   , termdes=='Fall' ~ 4)) |>
+ # group_by(studentid_uniq) |>
+ # filter(yeardes==min(yeardes)) |>
+ # filter(termdes_num==min(termdes_num)) |>
+ # filter(enroll=="Yes") |>
+ # ungroup()
   
 #dupes <- get_dupes(transcript_df, studentid_uniq, year, term)
 
-transcript_df <- transcript_df |>
-  distinct()
+#transcript_df <- transcript_df |>
+  #distinct()
 
 # Join them together
-all <- app_df |>
-  left_join(transcript_df, by=c('studentid_uniq', 'univ'))
+#all <- app_df |>
+ # left_join(transcript_df, by=c('studentid_uniq', 'univ'))
   
 # tabyl(all$ethnic)
 # tabyl(all$univ.x)
@@ -478,57 +858,64 @@ all <- app_df |>
 # tabyl(all$admit_prov)
 # tabyl(all$year)
 
-rm(transcript_df, app_df)
+#rm(transcript_df, app_df)
 
 ```
 
+
+
+
+
+```{r eval=FALSE}
+
+
+
 ### Cleaning
 
-Since the goal was to determine whether the 10% rule was predictive of retention (total number of semesters), and performance (cumulative GPA), to make this easier we widened the data and removed the semester-based tabulation in favor of cumulative.
+# Since the goal was to determine whether the 10% rule was predictive of retention (total number of semesters), and performance (cumulative GPA), to make this easier we widened the data and removed the semester-based tabulation in favor of cumulative.
+# 
+# 1.  Create cumulative fields for `hrearn` and total numbers of semesters.
+# 2.  Drop `gpahrs` since this was only available for one school, Texas A&M Kingsville.
+# 3.  Drop several other variables:
+#     -   `studentid` since we generated a unique id with studentid and school abbreviation.
+#     -   `yeardes` year of admission desired, since intuitively this would be very hard to interpret as a predictor.
+#     -   `satR` and `actR` since these were already coalesced in the `testscoreR` column.
+#     -   `termapp` application term since we wanted to be timing-agnostic.
+#     -   `termdes_num` since we already had the variable represented as `termdes`
+#     -   `semgpa` semester by semester GPA, but we were only interested in cumulative.
+#     -   `gradyear` year of graduation as again, we wanted to be timing-agnostic.
 
-1.  Create cumulative fields for `hrearn` and total numbers of semesters.
-2.  Drop `gpahrs` since this was only available for one school, Texas A&M Kingsville.
-3.  Drop several other variables:
-    -   `studentid` since we generated a unique id with studentid and school abbreviation.
-    -   `yeardes` year of admission desired, since intuitively this would be very hard to interpret as a predictor.
-    -   `satR` and `actR` since these were already coalesced in the `testscoreR` column.
-    -   `termapp` application term since we wanted to be timing-agnostic.
-    -   `termdes_num` since we already had the variable represented as `termdes`
-    -   `semgpa` semester by semester GPA, but we were only interested in cumulative.
-    -   `gradyear` year of graduation as again, we wanted to be timing-agnostic.
-
-```{r}
-
-cleaned <- all |>
-  dplyr::select(-c(studentid.x, studentid.y, yeardes, gpahrs, satR, actR, termapp, termdes_num, semgpa)) |>
-  distinct() |>
-  mutate(termnum = case_when(term=='Spring' ~ 1
-                                 , term=='Summer I' ~ 2
-                                 , term=='Summer II' ~ 3
-                                 , term=='Fall' ~ 4)) |>
-  group_by(studentid_uniq) |>
-  mutate(cum_hrs = sum(as.numeric(hrearn)) - n(),
-         cum_terms = n(),
-         enrolled_pre_98 = case_when(year<=1998 ~ "Pre"
-                            , year>1998 ~ "Post"
-                            , T ~ "Unknown")) |>
-  filter(year==max(year)) |>    # To get maximum enrollment
-  filter(termnum==max(termnum)) |>  # ... and maximum cgpa.
-  filter(!(enrolled_pre_98=="Unknown")) |>  # Drop cases without term years as we do not know when this would be as it relates to the TX law.
-  ungroup() |>
-  dplyr::select(-c(year, term, hrearn, termnum)) |>
-  dplyr::select(studentid_uniq, everything())  # Just move studentid_uniq to left index.
-
-
-skim(cleaned)
-
-cleaned <- as.data.frame(cleaned)
-cleaned.m <- melt(cleaned)
-
-cleaned.m %>% ggplot(aes(x=value)) +
-  geom_density(color='#023020') +
-  facet_wrap(~variable, scales = 'free') +
-  theme_bw()
+# 
+# cleaned <- all |>
+#   dplyr::select(-c(studentid.x, studentid.y, yeardes, gpahrs, satR, actR, termapp, termdes_num, semgpa)) |>
+#   distinct() |>
+#   mutate(termnum = case_when(term=='Spring' ~ 1
+#                                  , term=='Summer I' ~ 2
+#                                  , term=='Summer II' ~ 3
+#                                  , term=='Fall' ~ 4)) |>
+#   group_by(studentid_uniq) |>
+#   mutate(cum_hrs = sum(as.numeric(hrearn)) - n(),
+#          cum_terms = n(),
+#          enrolled_pre_98 = case_when(year<=1998 ~ "Pre"
+#                             , year>1998 ~ "Post"
+#                             , T ~ "Unknown")) |>
+#   filter(year==max(year)) |>    # To get maximum enrollment
+#   filter(termnum==max(termnum)) |>  # ... and maximum cgpa.
+#   filter(!(enrolled_pre_98=="Unknown")) |>  # Drop cases without term years as we do not know when this would be as it relates to the TX law.
+#   ungroup() |>
+#   dplyr::select(-c(year, term, hrearn, termnum)) |>
+#   dplyr::select(studentid_uniq, everything())  # Just move studentid_uniq to left index.
+# 
+# 
+# skim(cleaned)
+# 
+# cleaned <- as.data.frame(cleaned)
+# cleaned.m <- melt(cleaned)
+# 
+# cleaned.m %>% ggplot(aes(x=value)) +
+#   geom_density(color='#023020') +
+#   facet_wrap(~variable, scales = 'free') +
+#   theme_bw()
 
 ```
 
