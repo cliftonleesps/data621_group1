@@ -1155,7 +1155,7 @@ a$variable = as.integer(a$variable)
 
 
 
-m_df <- am_df %>% dplyr::filter(yeardes > 1997) %>%
+m_df <- am_df %>% dplyr::filter(yeardes > 1996) %>%
   dplyr::filter(admit == 1) %>%
   dplyr::select(admit, ethnic, yeardes) %>%
   group_by(ethnic,yeardes) %>%
@@ -1171,7 +1171,7 @@ c <- a %>% full_join(b, by=c('ethnic','variable'))
 c$dif_per <- c$percent - c$actual_per
 
 
-c %>% 
+c %>% dplyr::filter(variable > 1997) %>%
     ggplot(aes(x=variable, y=dif_per, colour = ethnic, group = ethnic)) + 
     geom_line() + 
     geom_point(size=1) +
@@ -1180,9 +1180,10 @@ c %>%
 
 
 
-c %>% dplyr::select(ethnic,variable,dif_per) %>% drop_na() %>%
+c %>% dplyr::filter(variable > 1997) %>% 
+  dplyr::select(ethnic,variable,dif_per) %>% drop_na() %>%
   pivot_wider(names_from = variable, values_from = dif_per ,names_sort = TRUE) %>%
-  nice_table(cap='Actual vs Predicted Lasso')
+  nice_table(cap='Admission Demographics (predicted - actual)')
 
 
 
@@ -1317,62 +1318,6 @@ d %>% nice_table(cap='Lasso Admission Demographics')
 
 ```
 
-
-
-
-
-```{r}
-
-d <- demographic_df %>% dplyr::filter(admit == 1) %>%
-        pivot_longer(!c('admit','ethnic'), names_to='variable' , values_to = 'value')
-
-d <- transform(d, percent = ave(value,variable,FUN = prop.table))
-
-d %>% 
-    ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
-    geom_line() + 
-    geom_point(size=0.5) +
-    facet_wrap( ~ethnic, ncol = 4, as.table=TRUE, labeller = "label_both", scales="free_y") +
-    theme_bw()
-
-
-
-# display table
-d <- d %>% dplyr::select(!c(value,admit)) %>%
-  pivot_wider(names_from = variable, values_from = percent ,names_sort = TRUE)
-
-d %>% nice_table(cap='glm() Addmission Demographics')
-
-
-
-
-```
-
-
-
-```{r}
-
-d <- demographic_lasso_df %>% dplyr::filter(admit == 1) %>% dplyr::select(!c(admit)) %>%
-        pivot_longer(!c('ethnic'), names_to='variable' , values_to = 'value')
-
-d <- transform(d, percent = ave(value,variable,FUN = prop.table))
-
-d %>% 
-    ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
-    geom_line() + 
-    geom_point(size=0.5) +
-    facet_wrap( ~ethnic, ncol = 4, as.table=TRUE, labeller = "label_both", scales="free_y") +
-    theme_bw()
-
-
-
-# display table
-d <- d %>% dplyr::select(!c(value)) %>%
-  pivot_wider(names_from = variable, values_from = percent ,names_sort = TRUE)
-
-d %>% nice_table(cap='glm() Addmission Demographics')
-
-```
 
 
 
