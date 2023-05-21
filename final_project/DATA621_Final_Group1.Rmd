@@ -209,7 +209,7 @@ lasso_coef <- function(df, y, c_df) {
   
   lasso.model<- cv.glmnet(x=X,y=Y,
                          family = "binomial", 
-                         link = "logit",
+                         link = "probit",
                          standardize = TRUE,                       #standardize  
                          nfold = 5,
                          alpha=1)                                  #alpha=1 is lasso
@@ -347,8 +347,11 @@ The ideas behind the the law were many. One was to continue shifting away from t
 <i>Discuss how other researchers have addressed similar problems, what their achievements are, and what the advantage and drawbacks of each reviewed approach are. Explain how your investigation is similar or different to the state-of-the-art. Please cite the relevant papers where appropriate. </i>
 
 # Methodology 
-<i>Discuss the key aspects of your problem, data set and regression model(s). Given that you are working on real-world data, explain at a high-level your exploratory data analysis, how you prepared the data for regression modeling, your process for building regression models, and your model selection.</i> 
+To measure the effects of both the Hopwood and Top 10% laws, we utilized a publicly available dataset called the Texas Higher Education Opportunity Project (THEOP). This dataset collects administrative data on applications, admissions and enrollment from 9 colleges and universities in the state that differ in the selectivity of their admissions, and conducts a two-cohort longitudinal survey of sophomores and seniors who were enrolled in Texas public schools as of spring, 2002.
 
+Even though the laws affected all public schools, we narrowed our focus on Texas A&M, one of the flagship state schools where competition for admission is quite high. Again, legislators intended to both increase student diversity without explicity selecting students primarily on their ethnicity. In essence, colleges needed to find 'proxy' indicators of diversity.
+
+We transformed most of the dataset into factors and left a few numerical predictors. Many predictors naturally fell into categories especially ethnicity and class rankings. We then created generalized linear and lasso models to see how well we could predict admission rates based on student performance and demographic predictors. If the laws had discerable and direct effects, we expected differences between the predicted and actual admission rates to Texas A&M's incoming freshman classes.
 
 
 # Data
