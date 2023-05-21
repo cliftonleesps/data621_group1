@@ -255,17 +255,17 @@ demographicCount <- function(df, model, y, d_df) {
   }
   
   am_pred <- predict.glm(model, am_df, "response")
-  am_df$prob_admit <- am_pred
-  am_df$pred_admit <- ifelse(am_pred >= 0.5, 1, 0)
+  am_df$admit_prob <- am_pred
+  am_df$admit_pred <- ifelse(am_pred >= 0.5, 1, 0)
   
-  log_matrix_1 <- confusionMatrix(factor(am_df$pred_admit), 
+  log_matrix_1 <- confusionMatrix(factor(am_df$admit_pred), 
                                 factor(am_df$admit), "1")
   
   log_matrix_1
 
   
   d <- am_df %>% 
-    group_by(admit,ethnic) %>%
+    group_by(admit_pred,ethnic) %>%
     summarise(y = n())
   
   names(d) <- c('admit', 'ethnic', y)
@@ -290,7 +290,7 @@ demographicCount <- function(df, model, y, d_df) {
 #' @examples
 demographicCountLasso <- function(df, l_model, y, d_df) {
   
-  
+
   if (y == 1998) {
     am_df <- df %>% dplyr::filter(yeardes == y & termdes=="Fall") %>% dplyr::select(!c(enroll,yeardes,termdes))
   } else {
@@ -316,7 +316,7 @@ demographicCountLasso <- function(df, l_model, y, d_df) {
 
   
   d <- am_df %>% 
-    group_by(admit,ethnic) %>%
+    group_by(admit_pred,ethnic) %>%
     summarise(y = n())
   
   names(d) <- c('admit', 'ethnic', y)
@@ -726,6 +726,7 @@ demographic_df <- pre_df %>%
   dplyr::filter(yeardes == 1997) %>%
   group_by(admit,ethnic) %>%
   summarise(pre = n())
+demographic_df$admit <- as.numeric(demographic_df$admit) -1 
 
 names(demographic_df) <- c('admit','ethnic','1997')
 
@@ -900,6 +901,8 @@ demographic_lasso_df <- pre_df %>%
   group_by(admit,ethnic) %>%
   summarise(pre = n())
 
+demographic_lasso_df$admit <- as.numeric(demographic_lasso_df$admit) - 1
+
 names(demographic_lasso_df) <- c('admit','ethnic','1997')
 
 ```
@@ -1041,13 +1044,6 @@ confusion.glmnet(lasso.model, newx = X_test, newy = Y_test, s = 'lambda.min')
 
 
 
-
-
-```{r}
-
-```
-
-
 ```{r}
 
 demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 1998, demographic_lasso_df)
@@ -1093,6 +1089,109 @@ d %>% nice_table(cap='Admission Demographics Actual')
 ```
 
 
+
+
+
+
+
+```{r}
+
+a_df <- demographic_df %>%
+  dplyr::filter(admit == 1) %>%
+  #dplyr::select(admit, ethnic, yeardes) %>%
+  pivot_longer(!c('ethnic','admit'), names_to='variable' , values_to = 'value') 
+
+a <- transform(a_df, percent = ave(value,variable,FUN = prop.table))
+a$variable = as.integer(a$variable)
+
+
+
+m_df <- am_df %>% dplyr::filter(yeardes > 1997) %>%
+  dplyr::filter(admit == 1) %>%
+  dplyr::select(admit, ethnic, yeardes) %>%
+  group_by(ethnic,yeardes) %>%
+  summarise(count = n())
+
+b <- transform(m_df, percent = ave(count,yeardes,FUN = prop.table))
+names(b) <- c('ethnic','variable','actual_count','actual_per')
+b$variable = as.integer(b$variable)
+
+c <- a %>% full_join(b, by=c('ethnic','variable'))
+
+
+c$dif_per <- c$percent - c$actual_per
+
+
+c %>% 
+    ggplot(aes(x=variable, y=dif_per, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    geom_point(size=1) +
+    labs(title='Admission Demographics (predicted - actual)') +
+    theme_bw()
+
+
+
+c %>% dplyr::select(ethnic,variable,dif_per) %>% drop_na() %>%
+  pivot_wider(names_from = variable, values_from = dif_per ,names_sort = TRUE) %>%
+  nice_table(cap='Actual vs Predicted Lasso')
+
+
+```
+
+
+
+
+
+```{r}
+
+
+a_df <- demographic_lasso_df %>%
+  dplyr::filter(admit == 1) %>%
+  #dplyr::select(admit, ethnic, yeardes) %>%
+  pivot_longer(!c('ethnic','admit'), names_to='variable' , values_to = 'value') 
+
+a <- transform(a_df, percent = ave(value,variable,FUN = prop.table))
+a$variable = as.integer(a$variable)
+
+
+
+m_df <- am_df %>% dplyr::filter(yeardes > 1997) %>%
+  dplyr::filter(admit == 1) %>%
+  dplyr::select(admit, ethnic, yeardes) %>%
+  group_by(ethnic,yeardes) %>%
+  summarise(count = n())
+
+b <- transform(m_df, percent = ave(count,yeardes,FUN = prop.table))
+names(b) <- c('ethnic','variable','actual_count','actual_per')
+b$variable = as.integer(b$variable)
+
+c <- a %>% full_join(b, by=c('ethnic','variable'))
+
+
+c$dif_per <- c$percent - c$actual_per
+
+
+c %>% 
+    ggplot(aes(x=variable, y=dif_per, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    geom_point(size=1) +
+    labs(title='Admission Demographics (predicted - actual)') +
+    theme_bw()
+
+
+
+c %>% dplyr::select(ethnic,variable,dif_per) %>% drop_na() %>%
+  pivot_wider(names_from = variable, values_from = dif_per ,names_sort = TRUE) %>%
+  nice_table(cap='Actual vs Predicted Lasso')
+
+
+
+```
+
+
+
+
+# GLM
 
 
 ```{r}
@@ -1224,12 +1323,12 @@ d %>% nice_table(cap='Lasso Admission Demographics')
 
 ```{r}
 
-d <- demographic_df %>% 
+d <- demographic_df %>% dplyr::filter(admit == 1) %>%
         pivot_longer(!c('admit','ethnic'), names_to='variable' , values_to = 'value')
 
 d <- transform(d, percent = ave(value,variable,FUN = prop.table))
 
-d %>% dplyr::filter(admit == 1) %>%
+d %>% 
     ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
     geom_line() + 
     geom_point(size=0.5) +
@@ -1239,7 +1338,7 @@ d %>% dplyr::filter(admit == 1) %>%
 
 
 # display table
-d <- d %>% dplyr::select(!c(value)) %>%
+d <- d %>% dplyr::select(!c(value,admit)) %>%
   pivot_wider(names_from = variable, values_from = percent ,names_sort = TRUE)
 
 d %>% nice_table(cap='glm() Addmission Demographics')
@@ -1253,12 +1352,12 @@ d %>% nice_table(cap='glm() Addmission Demographics')
 
 ```{r}
 
-d <- demographic_lasso_df %>% 
-        pivot_longer(!c('admit','ethnic'), names_to='variable' , values_to = 'value')
+d <- demographic_lasso_df %>% dplyr::filter(admit == 1) %>% dplyr::select(!c(admit)) %>%
+        pivot_longer(!c('ethnic'), names_to='variable' , values_to = 'value')
 
 d <- transform(d, percent = ave(value,variable,FUN = prop.table))
 
-d %>% dplyr::filter(admit == 1) %>%
+d %>% 
     ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
     geom_line() + 
     geom_point(size=0.5) +
@@ -1274,6 +1373,8 @@ d <- d %>% dplyr::select(!c(value)) %>%
 d %>% nice_table(cap='glm() Addmission Demographics')
 
 ```
+
+
 
 
 
