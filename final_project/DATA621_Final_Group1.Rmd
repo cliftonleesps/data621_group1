@@ -909,7 +909,7 @@ names(demographic_lasso_df) <- c('admit','ethnic','1997')
 
 lasso.model<- cv.glmnet(x=X,y=Y,
                        family = "binomial", 
-                       link = "logit",
+                       link = "probit",
                        standardize = TRUE,                       #standardize  
                        nfold = 5,
                        alpha=1)                                  #alpha=1 is lasso
@@ -1012,17 +1012,6 @@ ggplot() +
 The coefficients extracted at the lambda.min value are used to predict the relative crime rate for the testing data set. The confusion matrix highlights an accuracy of 91%.
 
 
-
-```{r}
-
-
-
-
-```
-
-
-
-
 ```{r}
 # Create matrix new data
 am_lasso1998_df <- am_df %>% dplyr::filter(yeardes == 1998 & termdes=="Fall") %>%
@@ -1078,6 +1067,36 @@ demographic_lasso_df <- demographicCountLasso(am_df, lasso.model, 2002, demograp
 
 ```{r}
 
+m_df <- am_df %>%
+  dplyr::filter(admit == 1) %>%
+  dplyr::select(admit, ethnic, yeardes) %>%
+  group_by(ethnic,yeardes) %>%
+  summarise(count = n())
+
+d <- transform(m_df, percent = ave(count,yeardes,FUN = prop.table))
+
+d %>% 
+    ggplot(aes(x=yeardes, y = percent, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    geom_point(size=1) +
+    labs(title='Admission Demographics Texas A&M Actual') +
+    scale_x_continuous(n.breaks=11)
+    theme_bw()
+
+
+# display table
+d <- d %>% dplyr::select(!c(count)) %>%
+  pivot_wider(names_from = yeardes, values_from = percent ,names_sort = TRUE)
+
+d %>% nice_table(cap='Admission Demographics Actual')
+
+```
+
+
+
+
+```{r}
+
 m_df <- coef_tbl %>%
   #dplyr::select(where(is.numeric) & !c('admit','enroll')) %>% 
   dplyr::filter(coef != '(Intercept)') %>%
@@ -1089,11 +1108,20 @@ ggplot(data=m_df, aes(x=variable, y = value, colour = coef, group = coef)) +
   geom_line() + 
   geom_point(size=0.5) +
   facet_wrap( ~coef, ncol = 4, as.table=TRUE, labeller = "label_both") +
+  labs(title='glm() Admission Coefficients') +
   theme_bw()
 
-coef_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='glm() Addmission Coefficients')
+m_df %>% 
+    ggplot(aes(x=variable, y=value, colour = coef, group = coef)) + 
+    geom_line() + 
+    geom_point(size=1) +
+    labs(title='glm() Admission Coefficients') +
+    theme_bw()
+
+coef_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='glm() Admission Coefficients')
 
 ```
+
 
 
 ```{r}
@@ -1109,9 +1137,84 @@ ggplot(data=m_df, aes(x=variable, y = value, colour = coef, group = coef)) +
   geom_line() + 
   geom_point(size=0.5) +
   facet_wrap( ~coef, ncol = 4, as.table=TRUE, labeller = "label_both") +
+  labs(title='Lasso Admission Coefficients') +
   theme_bw()
 
-coef_lasso_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='Lasso Addmission Coefficients')
+m_df %>% 
+    ggplot(aes(x=variable, y=value, colour = coef, group = coef)) + 
+    geom_line() + 
+    geom_point(size=1) +
+    labs(title='Lasso Admission Coefficients') +
+    theme_bw()
+
+coef_lasso_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='Lasso Admission Coefficients')
+
+```
+
+
+
+```{r}
+
+d <- demographic_df %>% dplyr::filter(admit == 1) %>% 
+        pivot_longer(!c('admit','ethnic'), names_to='variable' , values_to = 'value')
+
+d <- transform(d, percent = ave(value,variable,FUN = prop.table))
+
+d %>% 
+    ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    geom_point(size=0.5) +
+    labs(title='glm() Admission Demographics') +
+    facet_wrap( ~ethnic, ncol = 4, as.table=TRUE, labeller = "label_both", scales="free_y") +
+    theme_bw()
+
+d %>% 
+    ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    labs(title='glm() Admission Demographics') +
+    geom_point(size=1) +
+    theme_bw()
+
+# display table
+d <- d %>% dplyr::select(!c(value,admit)) %>%
+  pivot_wider(names_from = variable, values_from = percent ,names_sort = TRUE)
+
+d %>% nice_table(cap='glm() Admission Demographics')
+
+
+
+
+```
+
+
+
+```{r}
+
+d <- demographic_lasso_df %>% dplyr::filter(admit == 1) %>% 
+        pivot_longer(!c('admit','ethnic'), names_to='variable' , values_to = 'value')
+
+d <- transform(d, percent = ave(value,variable,FUN = prop.table))
+
+d %>% 
+    ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    geom_point(size=0.5) +
+    labs(title='Lasso Admission Demographics') +
+    facet_wrap( ~ethnic, ncol = 4, as.table=TRUE, labeller = "label_both", scales="free_y") +
+    theme_bw()
+
+d %>% 
+    ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    labs(title='Lasso Admission Demographics') +
+    geom_point(size=1) +
+    theme_bw()
+
+# display table
+d <- d %>% dplyr::select(!c(value,admit)) %>%
+  pivot_wider(names_from = variable, values_from = percent ,names_sort = TRUE)
+
+d %>% nice_table(cap='Lasso Admission Demographics')
 
 ```
 
