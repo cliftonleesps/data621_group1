@@ -359,8 +359,8 @@ We transformed most of the dataset into factors and left a few numerical predict
 ```{r}
 
 # change to your local data dir outside the repo
-#local_data_dir <- 'C:/Users/daria/Documents/theop'
-local_data_dir <- '../../data/theop'
+local_data_dir <- 'C:/Users/daria/Documents/theop'
+#local_data_dir <- '../../data/theop'
 
 
 # # load application and transactions data frames
@@ -491,9 +491,15 @@ texas_applications <- texas_applications %>% dplyr::select(-c(actR,gradyear,hsce
 
 76% of all the students were admitted to the university.
 ```{r}
-texas_applications%>%
-  ggplot() +
-  geom_bar(aes(x=admit), colour='black', size=0.2) 
+texas_applications %>% 
+  count(admit) %>% 
+  mutate(perc = n *100/ nrow(texas_applications)) -> adas
+
+ggplot(adas, aes(x = admit, y = perc)) + 
+  geom_bar(stat = "identity", colour='black', size=0.2)+
+  xlab("If a student was admitted") +
+  ylab("Percentage, %") 
+
 ```
 
 By checking the frequency of the variables with few unique values ("male","ethnic", "citizenship", "restype","decileR","major_field"), we checked the frequency of each value.
@@ -518,48 +524,32 @@ texas_applications[,c("admit","male", "US_Citizen", "Texas_resident","admit_prov
 
 
 
-```{r eval=FALSE}
-# a <- ggplot(texas_transcripts, aes(x = cgpa)) +
-#   geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
-#   labs(x = "Per semester cumulative gpa", y = "Count") 
-# 
-# 
-# b <- ggplot(texas_transcripts, aes(x = semgpa)) +
-#   geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
-#   labs(x = "Semester gpa", y = "Count")
-# 
-# plot<- ggarrange(a, b, ncol=2, nrow=1)
-# 
-# annotate_figure(plot, top = text_grob("Distribution of GPA", 
-#                color = "black", face = "bold", size = 14))
-```
-
-
-
-```{r eval=FALSE}
-# m_df <- texas_transcripts %>% dplyr::select(c(semgpa,cgpa)) %>% melt() 
-# 
-# m_df %>% ggplot(aes(x= value)) + 
-# geom_histogram(color='#023020', fill='gray') + 
-#   facet_wrap(~variable, scales = 'free',  ncol = 4) + theme_bw()
-
-```
 
 
 
 ```{r}
-a <- ggplot(texas_applications, aes(x = quartile)) +
-  geom_bar(binwidth = 1, fill = "skyblue", color = "black") +
+texas_applications %>% 
+  count(quartile) %>% 
+  mutate(perc = n *100/ nrow(texas_applications)) -> a1
+
+texas_applications %>% 
+  count(decileR) %>% 
+  mutate(perc = n *100/ nrow(texas_applications)) -> b1
+
+
+
+a <- ggplot(a1, aes(x = quartile, y = perc)) +
+    geom_bar(stat = "identity", binwidth = 1, fill = "skyblue", color = "black", size=0.2)+
   labs(x = "Quartile", y = "Count")+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
-b <- ggplot(texas_applications, aes(x = decileR)) +
-  geom_bar(binwidth = 1, fill = "skyblue", color = "black") +
-  labs(x = "Decile", y = "Count") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+b <- ggplot(b1, aes(x = decileR, y = perc)) +
+  geom_bar(stat = "identity", binwidth = 1, fill = "skyblue", color = "black", size=0.2)+
+  labs(x = "Decile", y = "Percent") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 
 plot<- ggarrange(a, b, ncol=2, nrow=1)
 
-annotate_figure(plot, top = text_grob("Distribution of Student HS class rank", 
+annotate_figure(plot, top = text_grob("Distribution of Student's HS class rank", 
                color = "black", face = "bold", size = 14))
 ```
 
@@ -1127,6 +1117,8 @@ c %>%
     geom_line() + 
     geom_point(size=1) +
     labs(title='Admission Demographics (predicted - actual)') +
+    xlab("Year") +
+    ylab("Difference: Predicted-Actual") +
     theme_bw()
 
 
@@ -1176,6 +1168,8 @@ c %>% dplyr::filter(variable > 1997) %>%
     geom_line() + 
     geom_point(size=1) +
     labs(title='Admission Demographics (predicted - actual)') +
+    xlab("Year") +
+    ylab("Difference: Predicted-Actual") +
     theme_bw()
 
 
