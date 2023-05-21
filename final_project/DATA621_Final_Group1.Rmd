@@ -722,6 +722,8 @@ demographic_df <- pre_df %>%
   group_by(admit,ethnic) %>%
   summarise(pre = n())
 
+names(demographic_df) <- c('admit','ethnic','1997')
+
 ```
 
 
@@ -1109,6 +1111,61 @@ coef_lasso_tbl %>% dplyr::select(!c(model)) %>% nice_table(cap='Lasso Addmission
 ```
 
 
+
+
+
+```{r}
+
+d <- demographic_df %>% 
+        pivot_longer(!c('admit','ethnic'), names_to='variable' , values_to = 'value')
+
+d <- transform(d, percent = ave(value,variable,FUN = prop.table))
+
+d %>% dplyr::filter(admit == 1) %>%
+    ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    geom_point(size=0.5) +
+    facet_wrap( ~ethnic, ncol = 4, as.table=TRUE, labeller = "label_both", scales="free_y") +
+    theme_bw()
+
+
+
+# display table
+d <- d %>% dplyr::select(!c(value)) %>%
+  pivot_wider(names_from = variable, values_from = percent ,names_sort = TRUE)
+
+d %>% nice_table(cap='glm() Addmission Demographics')
+
+
+
+
+```
+
+
+
+```{r}
+
+d <- demographic_lasso_df %>% 
+        pivot_longer(!c('admit','ethnic'), names_to='variable' , values_to = 'value')
+
+d <- transform(d, percent = ave(value,variable,FUN = prop.table))
+
+d %>% dplyr::filter(admit == 1) %>%
+    ggplot(aes(x=variable, y = percent, colour = ethnic, group = ethnic)) + 
+    geom_line() + 
+    geom_point(size=0.5) +
+    facet_wrap( ~ethnic, ncol = 4, as.table=TRUE, labeller = "label_both", scales="free_y") +
+    theme_bw()
+
+
+
+# display table
+d <- d %>% dplyr::select(!c(value)) %>%
+  pivot_wider(names_from = variable, values_from = percent ,names_sort = TRUE)
+
+d %>% nice_table(cap='glm() Addmission Demographics')
+
+```
 
 
 
